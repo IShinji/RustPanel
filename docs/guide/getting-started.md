@@ -34,10 +34,9 @@ RustPanel/
 
 ## 开始阅读架构规划
 
-作为一名初次接触此项目的开发者，强烈建议你首先阅读：
-👉 **[RustPanel 架构演进与功能闭环路线图](../planning/tasks-v2.0-architecture-evolution.md)**
-
-该文档详细列出了实现 RustPanel 从骨架到具体业务逻辑（如 Web SSH，文件管理，Nginx 自动反代，证书自动签发等）的 7 个阶段及所有对应的 P1 级任务。
+作为一名初次接触此项目的开发者，建议你阅读最新的路线图：
+- 👉 **[v3.0 宝塔免费版功能对齐](../planning/tasks-v3.0-free-version-alignment.md)** (当前正在进行的阶段)
+- 👉 **[v2.0 架构演进与功能闭环](../planning/tasks-v2.0-architecture-evolution.md)** (了解系统底层架构)
 
 ## 项目协作（面向 AI 与开发者）
 
@@ -55,4 +54,4 @@ RustPanel/
 ./scripts/verify-all.sh
 ```
 
-由于当前项目正在向“第一步：通信底座与系统守护 (Foundation & Daemon)”进发，你可以参考上述规划文档，按步骤逐步将功能落实到 `src` 和 `web` 目录。
+目前项目已完成核心骨架构建，正在逐步补齐高级运维功能。如果你是第一次运行，建议从 v3.0 的“安全底座”任务开始。
