@@ -1,6 +1,5 @@
 use clap::Parser;
 use rustpanel_backend::{
-    auth::JwtAuthority,
     cli::{daemonize, Cli},
     init_tracing, serve,
 };
@@ -18,6 +17,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         daemonize()?;
     }
 
-    let _jwt_authority = JwtAuthority::from_env()?;
     serve(cli.listen_addr()).await
 }

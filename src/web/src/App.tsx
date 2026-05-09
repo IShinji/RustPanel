@@ -5,20 +5,28 @@ import "@xterm/xterm/css/xterm.css";
 import {
   Activity,
   Archive,
+  Ban,
   Boxes,
   Clock,
+  Copy,
   Database,
   Download,
+  FileDown,
   FileText,
+  FileUp,
   Folder,
   FolderPlus,
   Globe,
   Pause,
   Play,
+  Plus,
+  Power,
   RefreshCw,
   RotateCw,
   Save,
   Server,
+  Shield,
+  ShieldAlert,
   ShieldCheck,
   Square,
   Store,
@@ -42,18 +50,74 @@ import { CronRunState, CronTask, CronTaskState } from "./gen/rustpanel/v1/cron_p
 import { ContainerItem } from "./gen/rustpanel/v1/docker_pb";
 import { ArchiveFormat, FileItem, FileKind } from "./gen/rustpanel/v1/fs_pb";
 import { SystemStatus } from "./gen/rustpanel/v1/monitor_pb";
+import {
+  FirewallAction,
+  FirewallBackend,
+  FirewallDirection,
+  FirewallProtocol,
+  FirewallRule
+} from "./gen/rustpanel/v1/security_pb";
 import { SiteItem } from "./gen/rustpanel/v1/site_pb";
 import { createRpcClients } from "./lib/rpc";
 import { formatBytes, formatDuration, formatPercent, safeError } from "./lib/format";
 import { useMonitorStore } from "./store/monitor";
 
 type Clients = ReturnType<typeof createRpcClients>;
-type TabId = "dashboard" | "terminal" | "files" | "docker" | "sites" | "database" | "cron";
+type TabId = "dashboard" | "security" | "terminal" | "files" | "docker" | "sites" | "database" | "cron";
+type FirewallForm = {
+  id: string;
+  name: string;
+  protocol: FirewallProtocol;
+  action: FirewallAction;
+  direction: FirewallDirection;
+  portStart: string;
+  portEnd: string;
+  source: string;
+  destination: string;
+  enabled: boolean;
+  comment: string;
+};
+type SecurityOptionsForm = {
+  disablePing: boolean;
+  scanProtectionEnabled: boolean;
+  scanBurst: number;
+  scanWindowSeconds: number;
+  backendPreference: FirewallBackend;
+  lastApplyMessage: string;
+  panelAccessPath: string;
+  panelListenAddr: string;
+  twoFactorRequired: boolean;
+};
 
 const clients = createRpcClients();
+const defaultFirewallForm: FirewallForm = {
+  id: "",
+  name: "SSH 管理",
+  protocol: FirewallProtocol.TCP,
+  action: FirewallAction.ALLOW,
+  direction: FirewallDirection.INBOUND,
+  portStart: "22",
+  portEnd: "",
+  source: "",
+  destination: "",
+  enabled: true,
+  comment: "面板安全入口"
+};
+const defaultSecurityOptions: SecurityOptionsForm = {
+  disablePing: false,
+  scanProtectionEnabled: false,
+  scanBurst: 20,
+  scanWindowSeconds: 60,
+  backendPreference: FirewallBackend.UNSPECIFIED,
+  lastApplyMessage: "",
+  panelAccessPath: "/",
+  panelListenAddr: "",
+  twoFactorRequired: false
+};
 
 const tabs: Array<{ id: TabId; label: string; icon: typeof Activity }> = [
   { id: "dashboard", label: "仪表盘", icon: Activity },
+  { id: "security", label: "安全", icon: Shield },
   { id: "terminal", label: "终端", icon: TerminalSquare },
   { id: "files", label: "文件", icon: Folder },
   { id: "docker", label: "容器", icon: Boxes },
@@ -92,6 +156,7 @@ export default function App() {
 
       <main className="workspace">
         {active === "dashboard" && <Dashboard clients={clients} />}
+        {active === "security" && <SecurityPanel clients={clients} />}
         {active === "terminal" && <TerminalPanel />}
         {active === "files" && <FileManager clients={clients} />}
         {active === "docker" && <DockerApps clients={clients} />}
@@ -205,6 +270,271 @@ function Dashboard({ clients }: { clients: Clients }) {
             <Line dataKey="memory" dot={false} stroke="#ba5a31" strokeWidth={2} />
           </LineChart>
         </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}
+
+function SecurityPanel({ clients }: { clients: Clients }) {
+  const [rules, setRules] = useState<FirewallRule[]>([]);
+  const [ruleForm, setRuleForm] = useState<FirewallForm>(defaultFirewallForm);
+  const [options, setOptions] = useState<SecurityOptionsForm>(defaultSecurityOptions);
+  const [backupJson, setBackupJson] = useState("");
+  const [status, setStatus] = useState("");
+
+  const load = async () => {
+    try {
+      const response = await clients.security.listFirewallRules({});
+      setRules(response.rules);
+      if (response.options) {
+        setOptions({ ...defaultSecurityOptions, ...response.options });
+      }
+      setStatus("");
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const saveRule = async () => {
+    try {
+      const isIcmp = ruleForm.protocol === FirewallProtocol.ICMP;
+      await clients.security.upsertFirewallRule({
+        rule: {
+          id: ruleForm.id,
+          name: ruleForm.name,
+          protocol: ruleForm.protocol,
+          action: ruleForm.action,
+          direction: ruleForm.direction,
+          portStart: isIcmp ? 0 : Number(ruleForm.portStart || 0),
+          portEnd: isIcmp || !ruleForm.portEnd ? 0 : Number(ruleForm.portEnd),
+          source: ruleForm.source,
+          destination: ruleForm.destination,
+          enabled: ruleForm.enabled,
+          comment: ruleForm.comment,
+          createdAtSeconds: 0n,
+          updatedAtSeconds: 0n
+        }
+      });
+      setRuleForm(defaultFirewallForm);
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const editRule = (rule: FirewallRule) => {
+    setRuleForm({
+      id: rule.id,
+      name: rule.name,
+      protocol: rule.protocol,
+      action: rule.action,
+      direction: rule.direction,
+      portStart: rule.portStart ? String(rule.portStart) : "",
+      portEnd: rule.portEnd ? String(rule.portEnd) : "",
+      source: rule.source,
+      destination: rule.destination,
+      enabled: rule.enabled,
+      comment: rule.comment
+    });
+  };
+
+  const deleteRule = async (rule: FirewallRule) => {
+    try {
+      await clients.security.deleteFirewallRule({ id: rule.id });
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const toggleRule = async (rule: FirewallRule) => {
+    try {
+      await clients.security.setFirewallRuleEnabled({ id: rule.id, enabled: !rule.enabled });
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const saveOptions = async () => {
+    try {
+      const response = await clients.security.updateSecurityOptions({ options });
+      if (response.options) {
+        setOptions({ ...defaultSecurityOptions, ...response.options });
+      }
+      setStatus(response.options?.lastApplyMessage ?? "安全选项已保存");
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const exportRules = async () => {
+    try {
+      const response = await clients.security.exportFirewallRules({});
+      setBackupJson(response.backupJson);
+      setStatus("规则备份已生成");
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const importRules = async () => {
+    try {
+      const response = await clients.security.importFirewallRules({
+        backupJson,
+        replaceExisting: true
+      });
+      setRules(response.rules);
+      if (response.options) {
+        setOptions({ ...defaultSecurityOptions, ...response.options });
+      }
+      setStatus("规则备份已导入");
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  return (
+    <section className="page-grid security-layout">
+      <header className="section-header full-span">
+        <div>
+          <h1>安全管理</h1>
+          <p>{status || options.lastApplyMessage || `${rules.length} 条防火墙规则`}</p>
+        </div>
+        <div className="toolbar">
+          <IconButton label="刷新" icon={RefreshCw} onClick={() => void load()} />
+          <IconButton label="新建规则" icon={Plus} onClick={() => setRuleForm(defaultFirewallForm)} />
+        </div>
+      </header>
+
+      <div className="panel security-options">
+        <div className="panel-title"><ShieldAlert size={18} /><span>入口防护</span></div>
+        <Input
+          label="访问路径"
+          value={options.panelAccessPath}
+          onChange={(panelAccessPath) => setOptions({ ...options, panelAccessPath })}
+        />
+        <Input
+          label="监听地址"
+          value={options.panelListenAddr}
+          onChange={(panelListenAddr) => setOptions({ ...options, panelListenAddr })}
+        />
+        <ToggleRow
+          label="2FA 登录"
+          checked={options.twoFactorRequired}
+          onChange={(twoFactorRequired) => setOptions({ ...options, twoFactorRequired })}
+        />
+        <ToggleRow label="禁 Ping" checked={options.disablePing} onChange={(disablePing) => setOptions({ ...options, disablePing })} />
+        <ToggleRow
+          label="防扫描"
+          checked={options.scanProtectionEnabled}
+          onChange={(scanProtectionEnabled) => setOptions({ ...options, scanProtectionEnabled })}
+        />
+        <NumberInput label="触发次数" value={options.scanBurst} onChange={(scanBurst) => setOptions({ ...options, scanBurst })} />
+        <NumberInput
+          label="窗口秒数"
+          value={options.scanWindowSeconds}
+          onChange={(scanWindowSeconds) => setOptions({ ...options, scanWindowSeconds })}
+        />
+        <SelectRow
+          label="后端"
+          value={options.backendPreference}
+          onChange={(backendPreference) => setOptions({ ...options, backendPreference: Number(backendPreference) as FirewallBackend })}
+          options={[
+            [FirewallBackend.UNSPECIFIED, "自动检测"],
+            [FirewallBackend.UFW, "UFW"],
+            [FirewallBackend.FIREWALLD, "Firewalld"],
+            [FirewallBackend.IPTABLES, "Iptables"]
+          ]}
+        />
+        <button onClick={() => void saveOptions()} type="button"><Save size={15} />保存开关</button>
+      </div>
+
+      <div className="panel rule-form">
+        <div className="panel-title"><ShieldCheck size={18} /><span>{ruleForm.id ? "编辑规则" : "新建规则"}</span></div>
+        <Input label="名称" value={ruleForm.name} onChange={(name) => setRuleForm({ ...ruleForm, name })} />
+        <SelectRow
+          label="协议"
+          value={ruleForm.protocol}
+          onChange={(protocol) => setRuleForm({ ...ruleForm, protocol: Number(protocol) as FirewallProtocol })}
+          options={[
+            [FirewallProtocol.TCP, "TCP"],
+            [FirewallProtocol.UDP, "UDP"],
+            [FirewallProtocol.ICMP, "ICMP"]
+          ]}
+        />
+        <SelectRow
+          label="动作"
+          value={ruleForm.action}
+          onChange={(action) => setRuleForm({ ...ruleForm, action: Number(action) as FirewallAction })}
+          options={[
+            [FirewallAction.ALLOW, "放行"],
+            [FirewallAction.DENY, "屏蔽"],
+            [FirewallAction.REJECT, "拒绝"]
+          ]}
+        />
+        <SelectRow
+          label="方向"
+          value={ruleForm.direction}
+          onChange={(direction) => setRuleForm({ ...ruleForm, direction: Number(direction) as FirewallDirection })}
+          options={[
+            [FirewallDirection.INBOUND, "入站"],
+            [FirewallDirection.OUTBOUND, "出站"]
+          ]}
+        />
+        {ruleForm.protocol !== FirewallProtocol.ICMP && (
+          <div className="inline-grid">
+            <Input label="起始端口" type="number" value={ruleForm.portStart} onChange={(portStart) => setRuleForm({ ...ruleForm, portStart })} />
+            <Input label="结束端口" type="number" value={ruleForm.portEnd} onChange={(portEnd) => setRuleForm({ ...ruleForm, portEnd })} />
+          </div>
+        )}
+        <Input label="来源 IP/CIDR" value={ruleForm.source} onChange={(source) => setRuleForm({ ...ruleForm, source })} />
+        <Input label="目标 IP/CIDR" value={ruleForm.destination} onChange={(destination) => setRuleForm({ ...ruleForm, destination })} />
+        <Input label="备注" value={ruleForm.comment} onChange={(comment) => setRuleForm({ ...ruleForm, comment })} />
+        <ToggleRow label="启用" checked={ruleForm.enabled} onChange={(enabled) => setRuleForm({ ...ruleForm, enabled })} />
+        <button onClick={() => void saveRule()} type="button"><Save size={15} />保存规则</button>
+      </div>
+
+      <div className="panel wide-panel firewall-list">
+        <div className="panel-title"><Shield size={18} /><span>防火墙规则</span></div>
+        <div className="table-list">
+          {rules.map((rule) => (
+            <div className="table-row firewall-row" key={rule.id}>
+              <div>
+                <strong>{rule.name}</strong>
+                <small>
+                  {firewallProtocolLabel(rule.protocol)} · {firewallActionLabel(rule.action)} · {firewallDirectionLabel(rule.direction)}
+                  {rule.protocol !== FirewallProtocol.ICMP ? ` · ${rule.portStart}${rule.portEnd && rule.portEnd !== rule.portStart ? `-${rule.portEnd}` : ""}` : ""}
+                  {rule.source ? ` · ${rule.source}` : ""}
+                </small>
+              </div>
+              <StatusPill label={rule.enabled ? "启用" : "停用"} tone={rule.enabled ? "good" : "muted"} />
+              <div className="row-actions">
+                <IconButton label={rule.enabled ? "停用" : "启用"} icon={Power} onClick={() => void toggleRule(rule)} />
+                <IconButton label="编辑" icon={Copy} onClick={() => editRule(rule)} />
+                <IconButton label="删除" icon={Ban} onClick={() => void deleteRule(rule)} />
+              </div>
+            </div>
+          ))}
+          {!rules.length && <div className="empty-state">暂无规则</div>}
+        </div>
+      </div>
+
+      <div className="panel backup-panel full-span">
+        <div className="panel-title"><FileDown size={18} /><span>规则备份</span></div>
+        <div className="toolbar backup-actions">
+          <button onClick={() => void exportRules()} type="button"><FileDown size={15} />导出</button>
+          <button onClick={() => void importRules()} type="button"><FileUp size={15} />导入覆盖</button>
+        </div>
+        <textarea
+          onChange={(event) => setBackupJson(event.target.value)}
+          spellCheck={false}
+          value={backupJson}
+        />
       </div>
     </section>
   );
@@ -723,21 +1053,102 @@ function IconButton({
   );
 }
 
-function Input({
+function ToggleRow({
+  checked,
+  label,
+  onChange
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="toggle-row">
+      <span>{label}</span>
+      <input checked={checked} onChange={(event) => onChange(event.target.checked)} type="checkbox" />
+    </label>
+  );
+}
+
+function SelectRow({
+  label,
+  onChange,
+  options,
+  value
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: Array<[number, string]>;
+  value: number;
+}) {
+  return (
+    <label className="input-row">
+      <span>{label}</span>
+      <select onChange={(event) => onChange(event.target.value)} value={value}>
+        {options.map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>{optionLabel}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function NumberInput({
   label,
   value,
   onChange
 }: {
   label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <Input
+      label={label}
+      onChange={(nextValue) => onChange(Number(nextValue || 0))}
+      type="number"
+      value={String(value)}
+    />
+  );
+}
+
+function Input({
+  label,
+  type = "text",
+  value,
+  onChange
+}: {
+  label: string;
+  type?: string;
   value: string;
   onChange: (value: string) => void;
 }) {
   return (
     <label className="input-row">
       <span>{label}</span>
-      <input onChange={(event) => onChange(event.target.value)} value={value} />
+      <input onChange={(event) => onChange(event.target.value)} type={type} value={value} />
     </label>
   );
+}
+
+function firewallProtocolLabel(protocol: FirewallProtocol): string {
+  if (protocol === FirewallProtocol.TCP) return "TCP";
+  if (protocol === FirewallProtocol.UDP) return "UDP";
+  if (protocol === FirewallProtocol.ICMP) return "ICMP";
+  return "-";
+}
+
+function firewallActionLabel(action: FirewallAction): string {
+  if (action === FirewallAction.ALLOW) return "放行";
+  if (action === FirewallAction.DENY) return "屏蔽";
+  if (action === FirewallAction.REJECT) return "拒绝";
+  return "-";
+}
+
+function firewallDirectionLabel(direction: FirewallDirection): string {
+  if (direction === FirewallDirection.INBOUND) return "入站";
+  if (direction === FirewallDirection.OUTBOUND) return "出站";
+  return "-";
 }
 
 function parentPath(path: string): string {

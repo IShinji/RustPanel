@@ -34,6 +34,7 @@ pub mod database;
 pub mod docker;
 pub mod files;
 pub mod monitor;
+pub mod security;
 pub mod site;
 pub mod ssl;
 pub mod terminal;
@@ -49,11 +50,13 @@ pub mod proto {
 
 use proto::rustpanel::v1::{
     app_store_service_server::AppStoreServiceServer,
+    auth_service_server::AuthServiceServer,
     cron_service_server::CronServiceServer,
     database_service_server::DatabaseServiceServer,
     docker_service_server::DockerServiceServer,
     file_system_service_server::FileSystemServiceServer,
     monitor_service_server::MonitorServiceServer,
+    security_service_server::SecurityServiceServer,
     site_service_server::SiteServiceServer,
     ssl_service_server::SslServiceServer,
     system_service_server::{SystemService, SystemServiceServer},
@@ -116,11 +119,16 @@ pub fn default_addr() -> SocketAddr {
 }
 
 pub async fn serve(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let auth_service = auth::AuthServiceImpl::from_env(auth::JwtAuthority::from_env()?)?;
     let listener = TcpListener::bind(addr).await?;
     let local_addr = listener.local_addr()?;
     info!(%local_addr, "rustpanel backend listening");
 
-    axum::serve(listener, Shared::new(multiplex_service())).await?;
+    axum::serve(
+        listener,
+        Shared::new(multiplex_service_with_auth(auth_service)),
+    )
+    .await?;
 
     Ok(())
 }
@@ -129,6 +137,7 @@ pub async fn serve(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + S
 struct HttpState {
     files: files::FileManager,
     monitor: Arc<monitor::SystemCollector>,
+    security: security::SecurityConfig,
 }
 
 pub fn http_router() -> Router {
@@ -138,6 +147,7 @@ pub fn http_router() -> Router {
     http_router_with_state(HttpState {
         files: file_service.manager(),
         monitor: monitor_service.collector(),
+        security: security::SecurityConfig::from_env(),
     })
 }
 
@@ -153,7 +163,24 @@ fn http_router_with_state(state: HttpState) -> Router {
         .with_state(state)
 }
 
+#[cfg(test)]
 fn multiplex_service() -> impl tower::Service<
+    Request,
+    Response = HttpResponse<Body>,
+    Error = Infallible,
+    Future: Send + 'static,
+> + Clone {
+    let auth_service = auth::AuthServiceImpl::from_env(
+        auth::JwtAuthority::from_env().expect("valid JWT authority"),
+    )
+    .expect("valid auth service");
+
+    multiplex_service_with_auth(auth_service)
+}
+
+fn multiplex_service_with_auth(
+    auth_service: auth::AuthServiceImpl,
+) -> impl tower::Service<
     Request,
     Response = HttpResponse<Body>,
     Error = Infallible,
@@ -164,12 +191,17 @@ fn multiplex_service() -> impl tower::Service<
     let http = http_router_with_state(HttpState {
         files: file_service.manager(),
         monitor: monitor_service.collector(),
+        security: security::SecurityConfig::from_env(),
     });
     let grpc = Server::builder()
         .accept_http1(true)
         .layer(tonic_web::GrpcWebLayer::new())
+        .add_service(AuthServiceServer::new(auth_service))
         .add_service(SystemServiceServer::new(SystemServiceImpl))
         .add_service(MonitorServiceServer::new(monitor_service))
+        .add_service(SecurityServiceServer::new(
+            security::SecurityServiceImpl::new(),
+        ))
         .add_service(TerminalServiceServer::new(terminal::TerminalServiceImpl))
         .add_service(FileSystemServiceServer::new(file_service))
         .add_service(DockerServiceServer::new(docker::DockerServiceImpl))
@@ -399,8 +431,22 @@ async fn handle_terminal_socket(socket: WebSocket) {
     }
 }
 
-async fn static_fallback(request: Request) -> AxumResponse {
-    assets::static_response(request.uri().path()).into_response()
+async fn static_fallback(State(state): State<HttpState>, request: Request) -> AxumResponse {
+    let path = request.uri().path();
+    let access_path = state.security.panel_access_path().await;
+    let asset_path = if access_path == "/" || path.starts_with("/assets/") {
+        Some(path)
+    } else if path == access_path {
+        Some("/")
+    } else if let Some(stripped) = path.strip_prefix(&format!("{access_path}/")) {
+        Some(if stripped.is_empty() { "/" } else { stripped })
+    } else {
+        None
+    };
+
+    asset_path
+        .map(|path| assets::static_response(path).into_response())
+        .unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
 }
 
 fn internal_error_response(message: String) -> HttpResponse<Body> {

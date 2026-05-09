@@ -8,6 +8,7 @@ import "rustpanel/v1/common.proto";
 message LoginRequest {
   string username = 1;
   string password = 2;
+  string totp_code = 3;
 }
 
 // LoginResponse 返回登录后的访问令牌。
@@ -16,6 +17,7 @@ message LoginResponse {
   string access_token = 2;
   string refresh_token = 3;
   uint64 expires_at = 4;
+  bool requires_two_factor = 5;
 }
 
 // LogoutRequest 表示登出请求。

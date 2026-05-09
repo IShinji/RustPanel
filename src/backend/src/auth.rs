@@ -5,9 +5,23 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use data_encoding::BASE32_NOPAD;
+use hmac::{Hmac, Mac};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use tonic::{metadata::MetadataValue, service::Interceptor, Request, Status};
+use sha1::Sha1;
+use tonic::{
+    metadata::MetadataValue, service::Interceptor, Request, Response as GrpcResponse, Status,
+};
+
+use crate::{
+    error_response, ok_response,
+    proto::rustpanel::v1::{
+        auth_service_server::AuthService, LoginRequest, LoginResponse, LogoutRequest,
+        LogoutResponse, TokenRefreshRequest, TokenRefreshResponse,
+    },
+    security::SecurityConfig,
+};
 
 const DEFAULT_ISSUER: &str = "rustpanel";
 const DEFAULT_TOKEN_TTL_SECONDS: u64 = 86_400;
@@ -15,6 +29,13 @@ const MIN_SECRET_BYTES: usize = 32;
 const DEV_ONLY_SECRET: &str = "rustpanel-dev-only-secret-change-before-production";
 const AUTHORIZATION_HEADER: &str = "authorization";
 const BEARER_PREFIX: &str = "Bearer ";
+const DEFAULT_ADMIN_USERNAME: &str = "admin";
+const DEFAULT_ADMIN_PASSWORD: &str = "rustpanel";
+const TOTP_STEP_SECONDS: u64 = 30;
+const TOTP_DIGITS: u32 = 6;
+const REFRESH_SUBJECT_PREFIX: &str = "refresh:";
+
+type HmacSha1 = Hmac<Sha1>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct JwtClaims {
@@ -42,12 +63,29 @@ pub struct JwtAuthority {
     ttl: Duration,
 }
 
+#[derive(Clone, Debug)]
+pub struct AuthServiceImpl {
+    authority: JwtAuthority,
+    credentials: PanelCredentials,
+    security: SecurityConfig,
+    totp_secret: Option<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PanelCredentials {
+    username: String,
+    password: String,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum AuthError {
     EmptySubject,
     ExpiredOrInvalidToken,
+    InvalidAdminPassword,
+    InvalidTotpSecret,
     InvalidTokenTtl,
     JwtSecretTooShort { min_bytes: usize },
+    MissingProductionAdminPassword,
     MissingProductionSecret,
     TimeOverflow,
 }
@@ -57,9 +95,17 @@ impl Display for AuthError {
         match self {
             Self::EmptySubject => write!(formatter, "subject must not be empty"),
             Self::ExpiredOrInvalidToken => write!(formatter, "token is expired or invalid"),
+            Self::InvalidAdminPassword => write!(formatter, "admin password must not be empty"),
+            Self::InvalidTotpSecret => write!(formatter, "TOTP secret must be valid base32"),
             Self::InvalidTokenTtl => write!(formatter, "JWT TTL must be greater than zero"),
             Self::JwtSecretTooShort { min_bytes } => {
                 write!(formatter, "JWT secret must be at least {min_bytes} bytes")
+            }
+            Self::MissingProductionAdminPassword => {
+                write!(
+                    formatter,
+                    "RUSTPANEL_ADMIN_PASSWORD is required in production"
+                )
             }
             Self::MissingProductionSecret => {
                 write!(formatter, "RUSTPANEL_JWT_SECRET is required in production")
@@ -159,6 +205,125 @@ impl JwtAuthority {
     }
 }
 
+impl AuthServiceImpl {
+    pub fn from_env(authority: JwtAuthority) -> Result<Self, AuthError> {
+        Ok(Self {
+            authority,
+            credentials: PanelCredentials::from_env()?,
+            security: SecurityConfig::from_env(),
+            totp_secret: totp_secret_from_env()?,
+        })
+    }
+}
+
+#[tonic::async_trait]
+impl AuthService for AuthServiceImpl {
+    async fn login(
+        &self,
+        request: Request<LoginRequest>,
+    ) -> Result<GrpcResponse<LoginResponse>, Status> {
+        let request = request.into_inner();
+        if !self
+            .credentials
+            .matches(&request.username, &request.password)
+        {
+            return Err(Status::unauthenticated("invalid username or password"));
+        }
+
+        let requires_two_factor =
+            self.security.two_factor_required().await || self.totp_secret.is_some();
+        if requires_two_factor {
+            let secret = self
+                .totp_secret
+                .as_deref()
+                .ok_or_else(|| Status::failed_precondition("TOTP secret is not configured"))?;
+            if request.totp_code.trim().is_empty()
+                || !verify_totp(
+                    secret,
+                    request.totp_code.trim(),
+                    unix_now().map_err(auth_status)?,
+                )
+            {
+                return Ok(GrpcResponse::new(LoginResponse {
+                    status: Some(error_response(401, "two factor code required")),
+                    access_token: String::new(),
+                    refresh_token: String::new(),
+                    expires_at: 0,
+                    requires_two_factor: true,
+                }));
+            }
+        }
+
+        let issued = self
+            .authority
+            .issue(&request.username)
+            .map_err(auth_status)?;
+        let refresh = self
+            .authority
+            .issue(format!("{REFRESH_SUBJECT_PREFIX}{}", request.username))
+            .map_err(auth_status)?;
+
+        Ok(GrpcResponse::new(LoginResponse {
+            status: Some(ok_response("login ok")),
+            access_token: issued.token,
+            refresh_token: refresh.token,
+            expires_at: issued.expires_at,
+            requires_two_factor: false,
+        }))
+    }
+
+    async fn logout(
+        &self,
+        _request: Request<LogoutRequest>,
+    ) -> Result<GrpcResponse<LogoutResponse>, Status> {
+        Ok(GrpcResponse::new(LogoutResponse {
+            status: Some(ok_response("logout ok")),
+        }))
+    }
+
+    async fn token_refresh(
+        &self,
+        request: Request<TokenRefreshRequest>,
+    ) -> Result<GrpcResponse<TokenRefreshResponse>, Status> {
+        let claims = self
+            .authority
+            .validate(&request.into_inner().refresh_token)
+            .map_err(auth_status)?;
+        let subject = claims
+            .sub
+            .strip_prefix(REFRESH_SUBJECT_PREFIX)
+            .ok_or_else(|| Status::unauthenticated("invalid refresh token"))?;
+        let issued = self.authority.issue(subject).map_err(auth_status)?;
+
+        Ok(GrpcResponse::new(TokenRefreshResponse {
+            status: Some(ok_response("token refreshed")),
+            access_token: issued.token,
+            expires_at: issued.expires_at,
+        }))
+    }
+}
+
+impl PanelCredentials {
+    fn from_env() -> Result<Self, AuthError> {
+        let username = env::var("RUSTPANEL_ADMIN_USERNAME")
+            .unwrap_or_else(|_| DEFAULT_ADMIN_USERNAME.to_owned());
+        let password = match env::var("RUSTPANEL_ADMIN_PASSWORD") {
+            Ok(password) => password,
+            Err(_) if is_production_env() => return Err(AuthError::MissingProductionAdminPassword),
+            Err(_) => DEFAULT_ADMIN_PASSWORD.to_owned(),
+        };
+        if password.trim().is_empty() {
+            return Err(AuthError::InvalidAdminPassword);
+        }
+        Ok(Self { username, password })
+    }
+
+    fn matches(&self, username: &str, password: &str) -> bool {
+        constant_time_eq(self.username.as_bytes(), username.as_bytes())
+            & constant_time_eq(self.password.as_bytes(), password.as_bytes())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AuthInterceptor {
     authority: Arc<JwtAuthority>,
@@ -210,6 +375,70 @@ fn bearer_token(value: Option<&MetadataValue<tonic::metadata::Ascii>>) -> Result
     }
 
     Ok(token)
+}
+
+fn totp_secret_from_env() -> Result<Option<Vec<u8>>, AuthError> {
+    env::var("RUSTPANEL_TOTP_SECRET")
+        .or_else(|_| env::var("RUSTPANEL_2FA_SECRET"))
+        .ok()
+        .filter(|secret| !secret.trim().is_empty())
+        .map(|secret| decode_totp_secret(&secret))
+        .transpose()
+}
+
+fn decode_totp_secret(secret: &str) -> Result<Vec<u8>, AuthError> {
+    let normalized = secret
+        .chars()
+        .filter(|char| !char.is_whitespace() && *char != '=')
+        .flat_map(char::to_uppercase)
+        .collect::<String>();
+    BASE32_NOPAD
+        .decode(normalized.as_bytes())
+        .map_err(|_| AuthError::InvalidTotpSecret)
+}
+
+fn verify_totp(secret: &[u8], code: &str, timestamp_seconds: u64) -> bool {
+    if code.len() != TOTP_DIGITS as usize || !code.chars().all(|char| char.is_ascii_digit()) {
+        return false;
+    }
+    let counter = timestamp_seconds / TOTP_STEP_SECONDS;
+    (counter.saturating_sub(1)..=counter.saturating_add(1)).any(|candidate| {
+        totp_code(secret, candidate)
+            .map(|expected| constant_time_eq(expected.as_bytes(), code.as_bytes()))
+            .unwrap_or(false)
+    })
+}
+
+fn totp_code(secret: &[u8], counter: u64) -> Result<String, AuthError> {
+    let mut mac = HmacSha1::new_from_slice(secret).map_err(|_| AuthError::InvalidTotpSecret)?;
+    mac.update(&counter.to_be_bytes());
+    let digest = mac.finalize().into_bytes();
+    let offset = (digest[19] & 0x0f) as usize;
+    let binary = ((u32::from(digest[offset]) & 0x7f) << 24)
+        | (u32::from(digest[offset + 1]) << 16)
+        | (u32::from(digest[offset + 2]) << 8)
+        | u32::from(digest[offset + 3]);
+    let modulo = 10_u32.pow(TOTP_DIGITS);
+    Ok(format!(
+        "{:0width$}",
+        binary % modulo,
+        width = TOTP_DIGITS as usize
+    ))
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    let max_len = left.len().max(right.len());
+    let mut diff = left.len() ^ right.len();
+    for index in 0..max_len {
+        let left_byte = left.get(index).copied().unwrap_or_default();
+        let right_byte = right.get(index).copied().unwrap_or_default();
+        diff |= usize::from(left_byte ^ right_byte);
+    }
+    diff == 0
+}
+
+fn auth_status(error: AuthError) -> Status {
+    Status::unauthenticated(error.to_string())
 }
 
 fn unix_now() -> Result<u64, AuthError> {
@@ -313,5 +542,22 @@ mod tests {
                 .code(),
             tonic::Code::Unauthenticated
         );
+    }
+
+    #[test]
+    fn totp_matches_rfc6238_vector_truncated_to_six_digits() {
+        let secret = decode_totp_secret("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ").expect("secret");
+        let code = totp_code(&secret, 59 / TOTP_STEP_SECONDS).expect("code");
+
+        assert_eq!(code, "287082");
+        assert!(verify_totp(&secret, "287082", 59));
+        assert!(!verify_totp(&secret, "000000", 59));
+    }
+
+    #[test]
+    fn constant_time_eq_requires_same_bytes() {
+        assert!(constant_time_eq(b"rustpanel", b"rustpanel"));
+        assert!(!constant_time_eq(b"rustpanel", b"rustpanel2"));
+        assert!(!constant_time_eq(b"rustpanel", b"rustpanic"));
     }
 }

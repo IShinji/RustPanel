@@ -1,0 +1,153 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// FirewallProtocol 描述防火墙规则匹配的网络协议。
+enum FirewallProtocol {
+  FIREWALL_PROTOCOL_UNSPECIFIED = 0;
+  FIREWALL_PROTOCOL_TCP = 1;
+  FIREWALL_PROTOCOL_UDP = 2;
+  FIREWALL_PROTOCOL_ICMP = 3;
+}
+
+// FirewallAction 描述命中规则后的处理动作。
+enum FirewallAction {
+  FIREWALL_ACTION_UNSPECIFIED = 0;
+  FIREWALL_ACTION_ALLOW = 1;
+  FIREWALL_ACTION_DENY = 2;
+  FIREWALL_ACTION_REJECT = 3;
+}
+
+// FirewallDirection 描述规则作用方向。
+enum FirewallDirection {
+  FIREWALL_DIRECTION_UNSPECIFIED = 0;
+  FIREWALL_DIRECTION_INBOUND = 1;
+  FIREWALL_DIRECTION_OUTBOUND = 2;
+}
+
+// FirewallBackend 描述 RustPanel 可适配的系统防火墙后端。
+enum FirewallBackend {
+  FIREWALL_BACKEND_UNSPECIFIED = 0;
+  FIREWALL_BACKEND_UFW = 1;
+  FIREWALL_BACKEND_FIREWALLD = 2;
+  FIREWALL_BACKEND_IPTABLES = 3;
+}
+
+// FirewallRule 描述一条可视化防火墙规则。
+message FirewallRule {
+  string id = 1;
+  string name = 2;
+  FirewallProtocol protocol = 3;
+  FirewallAction action = 4;
+  FirewallDirection direction = 5;
+  uint32 port_start = 6;
+  uint32 port_end = 7;
+  string source = 8;
+  string destination = 9;
+  bool enabled = 10;
+  string comment = 11;
+  uint64 created_at_seconds = 12;
+  uint64 updated_at_seconds = 13;
+}
+
+// SecurityOptions 描述系统级入口安全开关。
+message SecurityOptions {
+  bool disable_ping = 1;
+  bool scan_protection_enabled = 2;
+  uint32 scan_burst = 3;
+  uint32 scan_window_seconds = 4;
+  FirewallBackend backend_preference = 5;
+  string last_apply_message = 6;
+  string panel_access_path = 7;
+  string panel_listen_addr = 8;
+  bool two_factor_required = 9;
+}
+
+// ListFirewallRulesRequest 表示防火墙规则列表请求。
+message ListFirewallRulesRequest {}
+
+// ListFirewallRulesResponse 返回防火墙规则与全局安全开关。
+message ListFirewallRulesResponse {
+  Response status = 1;
+  repeated FirewallRule rules = 2;
+  SecurityOptions options = 3;
+}
+
+// UpsertFirewallRuleRequest 表示创建或更新规则请求。
+message UpsertFirewallRuleRequest {
+  FirewallRule rule = 1;
+}
+
+// UpsertFirewallRuleResponse 返回保存后的规则。
+message UpsertFirewallRuleResponse {
+  Response status = 1;
+  FirewallRule rule = 2;
+}
+
+// DeleteFirewallRuleRequest 表示删除规则请求。
+message DeleteFirewallRuleRequest {
+  string id = 1;
+}
+
+// DeleteFirewallRuleResponse 返回删除结果。
+message DeleteFirewallRuleResponse {
+  Response status = 1;
+}
+
+// SetFirewallRuleEnabledRequest 表示启用或停用规则请求。
+message SetFirewallRuleEnabledRequest {
+  string id = 1;
+  bool enabled = 2;
+}
+
+// SetFirewallRuleEnabledResponse 返回启停结果。
+message SetFirewallRuleEnabledResponse {
+  Response status = 1;
+  FirewallRule rule = 2;
+}
+
+// UpdateSecurityOptionsRequest 表示更新安全开关请求。
+message UpdateSecurityOptionsRequest {
+  SecurityOptions options = 1;
+}
+
+// UpdateSecurityOptionsResponse 返回更新后的安全开关。
+message UpdateSecurityOptionsResponse {
+  Response status = 1;
+  SecurityOptions options = 2;
+}
+
+// ExportFirewallRulesRequest 表示导出规则备份请求。
+message ExportFirewallRulesRequest {}
+
+// ExportFirewallRulesResponse 返回规则备份 JSON。
+message ExportFirewallRulesResponse {
+  Response status = 1;
+  string backup_json = 2;
+}
+
+// ImportFirewallRulesRequest 表示导入规则备份请求。
+message ImportFirewallRulesRequest {
+  string backup_json = 1;
+  bool replace_existing = 2;
+}
+
+// ImportFirewallRulesResponse 返回导入结果。
+message ImportFirewallRulesResponse {
+  Response status = 1;
+  repeated FirewallRule rules = 2;
+  SecurityOptions options = 3;
+}
+
+// SecurityService 提供系统防火墙和入口安全管理能力。
+service SecurityService {
+  rpc ListFirewallRules(ListFirewallRulesRequest) returns (ListFirewallRulesResponse);
+  rpc UpsertFirewallRule(UpsertFirewallRuleRequest) returns (UpsertFirewallRuleResponse);
+  rpc DeleteFirewallRule(DeleteFirewallRuleRequest) returns (DeleteFirewallRuleResponse);
+  rpc SetFirewallRuleEnabled(SetFirewallRuleEnabledRequest) returns (SetFirewallRuleEnabledResponse);
+  rpc UpdateSecurityOptions(UpdateSecurityOptionsRequest) returns (UpdateSecurityOptionsResponse);
+  rpc ExportFirewallRules(ExportFirewallRulesRequest) returns (ExportFirewallRulesResponse);
+  rpc ImportFirewallRules(ImportFirewallRulesRequest) returns (ImportFirewallRulesResponse);
+}

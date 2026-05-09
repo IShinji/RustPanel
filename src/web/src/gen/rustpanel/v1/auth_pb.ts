@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/auth.proto.
  */
 export const file_rustpanel_v1_auth: GenFile = /*@__PURE__*/
-  fileDesc("ChdydXN0cGFuZWwvdjEvYXV0aC5wcm90bxIMcnVzdHBhbmVsLnYxIjIKDExvZ2luUmVxdWVzdBIQCgh1c2VybmFtZRgBIAEoCRIQCghwYXNzd29yZBgCIAEoCSJ4Cg1Mb2dpblJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIUCgxhY2Nlc3NfdG9rZW4YAiABKAkSFQoNcmVmcmVzaF90b2tlbhgDIAEoCRISCgpleHBpcmVzX2F0GAQgASgEIg8KDUxvZ291dFJlcXVlc3QiOAoOTG9nb3V0UmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlIiwKE1Rva2VuUmVmcmVzaFJlcXVlc3QSFQoNcmVmcmVzaF90b2tlbhgBIAEoCSJoChRUb2tlblJlZnJlc2hSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USFAoMYWNjZXNzX3Rva2VuGAIgASgJEhIKCmV4cGlyZXNfYXQYAyABKAQy6wEKC0F1dGhTZXJ2aWNlEkAKBUxvZ2luEhoucnVzdHBhbmVsLnYxLkxvZ2luUmVxdWVzdBobLnJ1c3RwYW5lbC52MS5Mb2dpblJlc3BvbnNlEkMKBkxvZ291dBIbLnJ1c3RwYW5lbC52MS5Mb2dvdXRSZXF1ZXN0GhwucnVzdHBhbmVsLnYxLkxvZ291dFJlc3BvbnNlElUKDFRva2VuUmVmcmVzaBIhLnJ1c3RwYW5lbC52MS5Ub2tlblJlZnJlc2hSZXF1ZXN0GiIucnVzdHBhbmVsLnYxLlRva2VuUmVmcmVzaFJlc3BvbnNlYgZwcm90bzM", [file_rustpanel_v1_common]);
+  fileDesc("ChdydXN0cGFuZWwvdjEvYXV0aC5wcm90bxIMcnVzdHBhbmVsLnYxIkUKDExvZ2luUmVxdWVzdBIQCgh1c2VybmFtZRgBIAEoCRIQCghwYXNzd29yZBgCIAEoCRIRCgl0b3RwX2NvZGUYAyABKAkilQEKDUxvZ2luUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEhQKDGFjY2Vzc190b2tlbhgCIAEoCRIVCg1yZWZyZXNoX3Rva2VuGAMgASgJEhIKCmV4cGlyZXNfYXQYBCABKAQSGwoTcmVxdWlyZXNfdHdvX2ZhY3RvchgFIAEoCCIPCg1Mb2dvdXRSZXF1ZXN0IjgKDkxvZ291dFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIsChNUb2tlblJlZnJlc2hSZXF1ZXN0EhUKDXJlZnJlc2hfdG9rZW4YASABKAkiaAoUVG9rZW5SZWZyZXNoUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEhQKDGFjY2Vzc190b2tlbhgCIAEoCRISCgpleHBpcmVzX2F0GAMgASgEMusBCgtBdXRoU2VydmljZRJACgVMb2dpbhIaLnJ1c3RwYW5lbC52MS5Mb2dpblJlcXVlc3QaGy5ydXN0cGFuZWwudjEuTG9naW5SZXNwb25zZRJDCgZMb2dvdXQSGy5ydXN0cGFuZWwudjEuTG9nb3V0UmVxdWVzdBocLnJ1c3RwYW5lbC52MS5Mb2dvdXRSZXNwb25zZRJVCgxUb2tlblJlZnJlc2gSIS5ydXN0cGFuZWwudjEuVG9rZW5SZWZyZXNoUmVxdWVzdBoiLnJ1c3RwYW5lbC52MS5Ub2tlblJlZnJlc2hSZXNwb25zZWIGcHJvdG8z", [file_rustpanel_v1_common]);
 
 /**
  * LoginRequest 表示登录请求。
@@ -29,6 +29,11 @@ export type LoginRequest = Message<"rustpanel.v1.LoginRequest"> & {
    * @generated from field: string password = 2;
    */
   password: string;
+
+  /**
+   * @generated from field: string totp_code = 3;
+   */
+  totpCode: string;
 };
 
 /**
@@ -63,6 +68,11 @@ export type LoginResponse = Message<"rustpanel.v1.LoginResponse"> & {
    * @generated from field: uint64 expires_at = 4;
    */
   expiresAt: bigint;
+
+  /**
+   * @generated from field: bool requires_two_factor = 5;
+   */
+  requiresTwoFactor: boolean;
 };
 
 /**
