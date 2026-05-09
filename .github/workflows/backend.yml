@@ -25,6 +25,7 @@ jobs:
         with:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
+      - run: rustup component add rustfmt clippy
       - run: ./scripts/verify-all.sh
 
   build-backend-image:
