@@ -9,9 +9,16 @@ name = "rustpanel-backend"
 path = "src/main.rs"
 
 [dependencies]
+axum = "0.7"
+http-body-util = "0.1"
 prost = "0.13"
 prost-types = "0.13"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal"] }
 tonic = "0.12"
+tower = { version = "0.5", features = ["make", "util"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [build-dependencies]
 protoc-bin-vendored = "3"

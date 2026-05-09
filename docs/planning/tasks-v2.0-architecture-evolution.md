@@ -27,12 +27,12 @@
 - [x] **P1-01-5** 配置前端 `buf generate` 脚本，将 `.proto` 编译为 React/TypeScript 可用的 gRPC-web (或 connect-web) 客户端代码。
 
 ### P1-02 后端核心架构 (Axum + Tonic)
-- [ ] **P1-02-1** 初始化 Cargo 后端 Workspace (`cargo init`)，整理工作区目录。
-- [ ] **P1-02-2** 引入核心依赖库：`tokio`, `tonic`, `axum`, `serde`, `tower` 等。
-- [ ] **P1-02-3** 集成 `tracing` 与 `tracing-subscriber`，实现后端集中式、结构化日志记录。
-- [ ] **P1-02-4** 实现 `system.proto` 的 Server Trait（即编写 `HealthCheck` 的具体 Rust 逻辑）。
-- [ ] **P1-02-5** 建立 `Axum` HTTP Router，作为兜底路由和未来的 HTTP 扩展入口。
-- [ ] **P1-02-6** 利用 `tower::make::Shared` 实现 gRPC (Tonic) 和 HTTP (Axum) 在同一端口的请求多路复用 (Multiplexing)。
+- [x] **P1-02-1** 初始化 Cargo 后端 Workspace (`cargo init`)，整理工作区目录。
+- [x] **P1-02-2** 引入核心依赖库：`tokio`, `tonic`, `axum`, `serde`, `tower` 等。
+- [x] **P1-02-3** 集成 `tracing` 与 `tracing-subscriber`，实现后端集中式、结构化日志记录。
+- [x] **P1-02-4** 实现 `system.proto` 的 Server Trait（即编写 `HealthCheck` 的具体 Rust 逻辑）。
+- [x] **P1-02-5** 建立 `Axum` HTTP Router，作为兜底路由和未来的 HTTP 扩展入口。
+- [x] **P1-02-6** 利用 `tower::make::Shared` 实现 gRPC (Tonic) 和 HTTP (Axum) 在同一端口的请求多路复用 (Multiplexing)。
 
 ### P1-03 鉴权与安全
 - [ ] **P1-03-1** 定义 `auth.proto`：包含 Login, Logout, TokenRefresh 等接口。
