@@ -12,7 +12,7 @@ use tonic::{Request, Response as GrpcResponse, Status};
 use uuid::Uuid;
 
 use crate::{
-    ok_response,
+    audit, ok_response,
     proto::rustpanel::v1::{
         security_service_server::SecurityService, DeleteFirewallRuleRequest,
         DeleteFirewallRuleResponse, DeleteWafRuleRequest, DeleteWafRuleResponse,
@@ -220,6 +220,13 @@ impl SecurityService for SecurityServiceImpl {
         state.options = StoredSecurityOptions::from_proto(options);
         apply_options(&mut state.options).await?;
         self.store.save(&state).await?;
+        let _ = audit::append_audit_event(
+            "security",
+            "update_options",
+            "updated security options",
+            "grpc",
+        )
+        .await;
 
         Ok(GrpcResponse::new(UpdateSecurityOptionsResponse {
             status: Some(ok_response("security options updated")),
@@ -307,6 +314,8 @@ impl SecurityService for SecurityServiceImpl {
         state.waf_settings = StoredWafSettings::from_proto(settings);
         apply_waf_config(&mut state.waf_settings, &state.waf_rules).await?;
         self.store.save(&state).await?;
+        let _ = audit::append_audit_event("security", "update_waf", "updated WAF settings", "grpc")
+            .await;
 
         Ok(GrpcResponse::new(UpdateWafSettingsResponse {
             status: Some(ok_response("waf settings updated")),
@@ -424,6 +433,8 @@ impl SecurityService for SecurityServiceImpl {
         state.ssh_settings = StoredSshSettings::from_proto(settings);
         apply_ssh_config(&mut state.ssh_settings).await?;
         self.store.save(&state).await?;
+        let _ = audit::append_audit_event("security", "update_ssh", "updated SSH settings", "grpc")
+            .await;
 
         Ok(GrpcResponse::new(UpdateSshSettingsResponse {
             status: Some(ok_response("ssh settings updated")),

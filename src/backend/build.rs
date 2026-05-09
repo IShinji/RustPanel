@@ -5,6 +5,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let proto_files = [
         "../../proto/rustpanel/v1/appstore.proto",
         "../../proto/rustpanel/v1/auth.proto",
+        "../../proto/rustpanel/v1/audit.proto",
+        "../../proto/rustpanel/v1/cluster.proto",
         "../../proto/rustpanel/v1/common.proto",
         "../../proto/rustpanel/v1/cron.proto",
         "../../proto/rustpanel/v1/db.proto",

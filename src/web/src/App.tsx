@@ -46,6 +46,8 @@ import {
 } from "recharts";
 
 import { AppTemplate, InstalledApp } from "./gen/rustpanel/v1/appstore_pb";
+import { AuditEvent } from "./gen/rustpanel/v1/audit_pb";
+import { ClusterNode, DistributionRecord } from "./gen/rustpanel/v1/cluster_pb";
 import { CronRunState, CronTask, CronTaskState } from "./gen/rustpanel/v1/cron_pb";
 import { ComposeProject, ContainerItem, ImageItem } from "./gen/rustpanel/v1/docker_pb";
 import { ArchiveFormat, FileItem, FileKind, RecycleBinItem, SearchMatch } from "./gen/rustpanel/v1/fs_pb";
@@ -70,7 +72,7 @@ import { formatBytes, formatDuration, formatPercent, safeError } from "./lib/for
 import { useMonitorStore } from "./store/monitor";
 
 type Clients = ReturnType<typeof createRpcClients>;
-type TabId = "dashboard" | "security" | "terminal" | "files" | "docker" | "sites" | "database" | "cron";
+type TabId = "dashboard" | "security" | "terminal" | "files" | "docker" | "sites" | "database" | "cron" | "cluster";
 type MonitorRange = "1h" | "24h" | "7d" | "custom";
 type ChartPoint = {
   time: string;
@@ -98,6 +100,16 @@ type ImageRollbackForm = {
 type ComposeForm = {
   name: string;
   composeYaml: string;
+};
+type ClusterPairForm = {
+  name: string;
+  endpoint: string;
+  pairingSecret: string;
+};
+type DistributionForm = {
+  path: string;
+  content: string;
+  targetNodeId: string;
 };
 type FirewallForm = {
   id: string;
@@ -190,6 +202,16 @@ const defaultComposeForm: ComposeForm = {
     restart: unless-stopped
 `
 };
+const defaultClusterPairForm: ClusterPairForm = {
+  name: "node-1",
+  endpoint: "local",
+  pairingSecret: "rustpanel"
+};
+const defaultDistributionForm: DistributionForm = {
+  path: "/tmp/rustpanel-distributed.conf",
+  content: "managed_by=rustpanel\n",
+  targetNodeId: ""
+};
 const defaultFirewallForm: FirewallForm = {
   id: "",
   name: "SSH 管理",
@@ -257,7 +279,8 @@ const tabs: Array<{ id: TabId; label: string; icon: typeof Activity }> = [
   { id: "docker", label: "容器", icon: Boxes },
   { id: "sites", label: "站点", icon: Globe },
   { id: "database", label: "数据库", icon: Database },
-  { id: "cron", label: "计划任务", icon: Clock }
+  { id: "cron", label: "计划任务", icon: Clock },
+  { id: "cluster", label: "集群/审计", icon: ShieldAlert }
 ];
 
 export default function App() {
@@ -298,6 +321,7 @@ export default function App() {
         {active === "sites" && <SitesSsl clients={clients} />}
         {active === "database" && <DatabasePanel clients={clients} />}
         {active === "cron" && <CronPanel clients={clients} />}
+        {active === "cluster" && <ClusterAudit clients={clients} />}
       </main>
     </div>
   );
@@ -2071,6 +2095,194 @@ function CronPanel({ clients }: { clients: Clients }) {
       <div className="panel log-panel">
         <div className="panel-title"><FileText size={18} /><span>执行日志</span></div>
         <pre>{log}</pre>
+      </div>
+    </section>
+  );
+}
+
+function ClusterAudit({ clients }: { clients: Clients }) {
+  const [nodes, setNodes] = useState<ClusterNode[]>([]);
+  const [records, setRecords] = useState<DistributionRecord[]>([]);
+  const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [pairForm, setPairForm] = useState<ClusterPairForm>(defaultClusterPairForm);
+  const [distributionForm, setDistributionForm] = useState<DistributionForm>(defaultDistributionForm);
+  const [nodeSecrets, setNodeSecrets] = useState<Record<string, string>>({});
+  const [auditQuery, setAuditQuery] = useState("");
+  const [analysis, setAnalysis] = useState("");
+  const [status, setStatus] = useState("");
+
+  const load = async () => {
+    try {
+      const [nodeResponse, recordResponse, auditResponse] = await Promise.all([
+        clients.cluster.listClusterNodes({}),
+        clients.cluster.listDistributionRecords({ limit: 100 }),
+        clients.audit.listAuditEvents({ query: auditQuery, limit: 100 })
+      ]);
+      setNodes(nodeResponse.nodes);
+      setRecords(recordResponse.records);
+      setEvents(auditResponse.events);
+      setStatus("");
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const pairNode = async () => {
+    try {
+      const response = await clients.cluster.pairClusterNode(pairForm);
+      if (response.node) {
+        setNodeSecrets((current) => ({ ...current, [response.node!.id]: response.nodeSecret }));
+      }
+      setStatus(response.node ? `节点密钥 ${response.nodeSecret}` : "节点已接入");
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const sendHeartbeat = async (node: ClusterNode) => {
+    try {
+      const nodeSecret = nodeSecrets[node.id];
+      if (!nodeSecret) {
+        setStatus("当前会话没有该节点密钥，请重新接入后发送心跳");
+        return;
+      }
+      await clients.cluster.heartbeatClusterNode({
+        nodeId: node.id,
+        nodeSecret,
+        loadAverage: 0
+      });
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const distributeFile = async () => {
+    try {
+      await clients.cluster.distributeFile({
+        targetNodeIds: distributionForm.targetNodeId ? [distributionForm.targetNodeId] : [],
+        path: distributionForm.path,
+        content: new TextEncoder().encode(distributionForm.content),
+        mode: 0o644
+      });
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const analyzeAudit = async () => {
+    try {
+      const response = await clients.audit.analyzeAuditEvents({ query: auditQuery, limit: 200 });
+      setAnalysis([response.summary, ...response.riskFindings].join("\n"));
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const clearAudit = async () => {
+    try {
+      await clients.audit.clearAuditEvents({});
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  return (
+    <section className="page-grid">
+      <header className="section-header full-span">
+        <div>
+          <h1>集群与审计</h1>
+          <p>{status || `${nodes.length} 个节点 · ${events.length} 条审计事件`}</p>
+        </div>
+        <IconButton label="刷新" icon={RefreshCw} onClick={() => void load()} />
+      </header>
+
+      <div className="panel">
+        <div className="panel-title"><Server size={18} /><span>节点接入</span></div>
+        <Input label="节点名" value={pairForm.name} onChange={(name) => setPairForm({ ...pairForm, name })} />
+        <Input label="Endpoint" value={pairForm.endpoint} onChange={(endpoint) => setPairForm({ ...pairForm, endpoint })} />
+        <Input label="配对密钥" value={pairForm.pairingSecret} onChange={(pairingSecret) => setPairForm({ ...pairForm, pairingSecret })} />
+        <button onClick={() => void pairNode()} type="button"><ShieldCheck size={15} />接入</button>
+      </div>
+
+      <div className="panel wide-panel">
+        <div className="panel-title"><Server size={18} /><span>节点列表</span></div>
+        <div className="table-list">
+          {nodes.map((node) => (
+            <div className="table-row" key={node.id}>
+              <div>
+                <strong>{node.name}</strong>
+                <small>{node.endpoint} · heartbeat {new Date(Number(node.lastHeartbeatSeconds) * 1000).toLocaleString()}</small>
+              </div>
+              <StatusPill label={node.status || "unknown"} tone={node.status === "online" ? "good" : "muted"} />
+              <IconButton label="心跳" icon={Activity} onClick={() => void sendHeartbeat(node)} />
+            </div>
+          ))}
+          {!nodes.length && <div className="empty-state">暂无节点</div>}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-title"><Upload size={18} /><span>统一分发</span></div>
+        <Input label="目标节点 ID" value={distributionForm.targetNodeId} onChange={(targetNodeId) => setDistributionForm({ ...distributionForm, targetNodeId })} />
+        <Input label="目标路径" value={distributionForm.path} onChange={(path) => setDistributionForm({ ...distributionForm, path })} />
+        <textarea
+          className="pem-input code-input"
+          value={distributionForm.content}
+          onChange={(event) => setDistributionForm({ ...distributionForm, content: event.target.value })}
+        />
+        <button onClick={() => void distributeFile()} type="button"><FileUp size={15} />分发</button>
+      </div>
+
+      <div className="panel wide-panel">
+        <div className="panel-title"><FileText size={18} /><span>分发记录</span></div>
+        <div className="table-list">
+          {records.map((record) => (
+            <div className="table-row" key={record.id}>
+              <div>
+                <strong>{record.path}</strong>
+                <small>{record.nodeId} · {record.message}</small>
+              </div>
+              <StatusPill label={record.status} tone={record.status === "delivered" ? "good" : "muted"} />
+            </div>
+          ))}
+          {!records.length && <div className="empty-state">暂无分发记录</div>}
+        </div>
+      </div>
+
+      <div className="panel full-span">
+        <div className="panel-title"><ShieldAlert size={18} /><span>操作黑匣子</span></div>
+        <div className="toolbar backup-actions">
+          <Input label="关键词" value={auditQuery} onChange={setAuditQuery} />
+          <button onClick={() => void load()} type="button"><RefreshCw size={15} />检索</button>
+          <button onClick={() => void analyzeAudit()} type="button"><Activity size={15} />AI 分析</button>
+          <button onClick={() => void clearAudit()} type="button"><Trash2 size={15} />清空</button>
+        </div>
+        <div className="table-list">
+          {events.map((event) => (
+            <div className="table-row audit-row" key={event.id}>
+              <div>
+                <strong>{event.module} · {event.action}</strong>
+                <small>{event.description} · {event.sourceIp} · {new Date(Number(event.timestampSeconds) * 1000).toLocaleString()}</small>
+              </div>
+              <StatusPill label={event.level || "info"} tone={event.level === "warning" ? "danger" : "muted"} />
+            </div>
+          ))}
+          {!events.length && <div className="empty-state">暂无审计事件</div>}
+        </div>
+      </div>
+
+      <div className="panel full-span">
+        <div className="panel-title"><ShieldCheck size={18} /><span>日志风险分析</span></div>
+        <pre className="report-output">{analysis || "暂无分析结果"}</pre>
       </div>
     </section>
   );

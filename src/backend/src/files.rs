@@ -22,7 +22,7 @@ use walkdir::WalkDir;
 use zip::{write::SimpleFileOptions, ZipWriter};
 
 use crate::{
-    ok_response,
+    audit, ok_response,
     proto::rustpanel::v1::{
         file_system_service_server::FileSystemService, ArchiveFormat, ArchiveTaskState,
         ChmodRequest, ChmodResponse, ChownRequest, ChownResponse, CreateArchiveRequest,
@@ -504,7 +504,11 @@ impl FileManager {
             .open(self.audit_path())
             .await
             .map_err(io_status)?;
-        file.write_all(line.as_bytes()).await.map_err(io_status)
+        file.write_all(line.as_bytes()).await.map_err(io_status)?;
+        let _ =
+            audit::append_audit_event("files", action, format!("file {action}: {path}"), "grpc")
+                .await;
+        Ok(())
     }
 
     async fn recycle_items_stored(&self) -> Result<Vec<StoredRecycleItem>, Status> {

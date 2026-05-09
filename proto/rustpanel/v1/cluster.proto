@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// ClusterNode 描述一个集群节点。
+message ClusterNode {
+  string id = 1;
+  string name = 2;
+  string endpoint = 3;
+  string status = 4;
+  uint64 last_heartbeat_seconds = 5;
+  uint64 created_at_seconds = 6;
+}
+
+// DistributionRecord 描述一次文件或配置分发。
+message DistributionRecord {
+  string id = 1;
+  string node_id = 2;
+  string path = 3;
+  string status = 4;
+  string message = 5;
+  uint64 created_at_seconds = 6;
+}
+
+// PairClusterNodeRequest 表示节点接入配对请求。
+message PairClusterNodeRequest {
+  string name = 1;
+  string endpoint = 2;
+  string pairing_secret = 3;
+}
+
+// PairClusterNodeResponse 返回节点配对结果。
+message PairClusterNodeResponse {
+  Response status = 1;
+  ClusterNode node = 2;
+  string node_secret = 3;
+}
+
+// HeartbeatClusterNodeRequest 表示节点心跳请求。
+message HeartbeatClusterNodeRequest {
+  string node_id = 1;
+  string node_secret = 2;
+  double load_average = 3;
+}
+
+// HeartbeatClusterNodeResponse 返回节点心跳结果。
+message HeartbeatClusterNodeResponse {
+  Response status = 1;
+  ClusterNode node = 2;
+}
+
+// ListClusterNodesRequest 表示节点列表请求。
+message ListClusterNodesRequest {}
+
+// ListClusterNodesResponse 返回节点列表。
+message ListClusterNodesResponse {
+  Response status = 1;
+  repeated ClusterNode nodes = 2;
+}
+
+// DistributeFileRequest 表示统一分发文件或配置请求。
+message DistributeFileRequest {
+  repeated string target_node_ids = 1;
+  string path = 2;
+  bytes content = 3;
+  uint32 mode = 4;
+}
+
+// DistributeFileResponse 返回统一分发结果。
+message DistributeFileResponse {
+  Response status = 1;
+  repeated DistributionRecord records = 2;
+}
+
+// ListDistributionRecordsRequest 表示分发记录列表请求。
+message ListDistributionRecordsRequest {
+  uint32 limit = 1;
+}
+
+// ListDistributionRecordsResponse 返回分发记录列表。
+message ListDistributionRecordsResponse {
+  Response status = 1;
+  repeated DistributionRecord records = 2;
+}
+
+// ClusterService 提供多节点接入和统一分发能力。
+service ClusterService {
+  rpc PairClusterNode(PairClusterNodeRequest) returns (PairClusterNodeResponse);
+  rpc HeartbeatClusterNode(HeartbeatClusterNodeRequest) returns (HeartbeatClusterNodeResponse);
+  rpc ListClusterNodes(ListClusterNodesRequest) returns (ListClusterNodesResponse);
+  rpc DistributeFile(DistributeFileRequest) returns (DistributeFileResponse);
+  rpc ListDistributionRecords(ListDistributionRecordsRequest) returns (ListDistributionRecordsResponse);
+}

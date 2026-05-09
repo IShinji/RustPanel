@@ -27,8 +27,10 @@ use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 pub mod appstore;
+pub mod audit;
 pub mod auth;
 pub mod cli;
+pub mod cluster;
 pub mod cron;
 pub mod database;
 pub mod docker;
@@ -50,7 +52,9 @@ pub mod proto {
 
 use proto::rustpanel::v1::{
     app_store_service_server::AppStoreServiceServer,
+    audit_service_server::AuditServiceServer,
     auth_service_server::AuthServiceServer,
+    cluster_service_server::ClusterServiceServer,
     cron_service_server::CronServiceServer,
     database_service_server::DatabaseServiceServer,
     docker_service_server::DockerServiceServer,
@@ -198,6 +202,8 @@ fn multiplex_service_with_auth(
         .accept_http1(true)
         .layer(tonic_web::GrpcWebLayer::new())
         .add_service(AuthServiceServer::new(auth_service))
+        .add_service(AuditServiceServer::new(audit::AuditServiceImpl))
+        .add_service(ClusterServiceServer::new(cluster::ClusterServiceImpl))
         .add_service(SystemServiceServer::new(SystemServiceImpl))
         .add_service(MonitorServiceServer::new(monitor_service))
         .add_service(SecurityServiceServer::new(

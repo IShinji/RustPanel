@@ -15,7 +15,7 @@ use tonic::{
 };
 
 use crate::{
-    error_response, ok_response,
+    audit, error_response, ok_response,
     proto::rustpanel::v1::{
         auth_service_server::AuthService, LoginRequest, LoginResponse, LogoutRequest,
         LogoutResponse, TokenRefreshRequest, TokenRefreshResponse,
@@ -227,6 +227,13 @@ impl AuthService for AuthServiceImpl {
             .credentials
             .matches(&request.username, &request.password)
         {
+            let _ = audit::append_audit_event(
+                "auth",
+                "login_failed",
+                format!("login failed for {}", request.username),
+                "grpc",
+            )
+            .await;
             return Err(Status::unauthenticated("invalid username or password"));
         }
 
@@ -244,6 +251,13 @@ impl AuthService for AuthServiceImpl {
                     unix_now().map_err(auth_status)?,
                 )
             {
+                let _ = audit::append_audit_event(
+                    "auth",
+                    "login_failed_2fa",
+                    format!("two factor required for {}", request.username),
+                    "grpc",
+                )
+                .await;
                 return Ok(GrpcResponse::new(LoginResponse {
                     status: Some(error_response(401, "two factor code required")),
                     access_token: String::new(),
@@ -262,6 +276,13 @@ impl AuthService for AuthServiceImpl {
             .authority
             .issue(format!("{REFRESH_SUBJECT_PREFIX}{}", request.username))
             .map_err(auth_status)?;
+        let _ = audit::append_audit_event(
+            "auth",
+            "login_success",
+            format!("login succeeded for {}", request.username),
+            "grpc",
+        )
+        .await;
 
         Ok(GrpcResponse::new(LoginResponse {
             status: Some(ok_response("login ok")),
@@ -276,6 +297,7 @@ impl AuthService for AuthServiceImpl {
         &self,
         _request: Request<LogoutRequest>,
     ) -> Result<GrpcResponse<LogoutResponse>, Status> {
+        let _ = audit::append_audit_event("auth", "logout", "panel logout", "grpc").await;
         Ok(GrpcResponse::new(LogoutResponse {
             status: Some(ok_response("logout ok")),
         }))
