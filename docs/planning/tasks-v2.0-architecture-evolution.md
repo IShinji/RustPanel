@@ -40,10 +40,10 @@
 - [x] **P1-03-3** 编写 `tonic::Interceptor`，对受保护的 gRPC 路由自动校验请求头中的 Authorization Bearer Token，无效则拦截。
 
 ### P1-04 静态资源内嵌与守护进程 (Daemon)
-- [ ] **P1-04-1** 配置 `rust-embed`，映射到前端编译后的 `web/dist` 目录。
-- [ ] **P1-04-2** 编写 Axum Fallback Route，使其可以响应 `rust-embed` 的静态文件请求（支持 SPA 的 History Router）。
-- [ ] **P1-04-3** 引入 `clap` 库，设计命令行启动参数（如 `--port`, `--daemon`, `--setup`）。
-- [ ] **P1-04-4** 实现系统级别的守护进程化逻辑（POSIX Daemonize 或提供一键生成 Systemd service 配置的指令）。
+- [x] **P1-04-1** 配置 `rust-embed`，映射到前端编译后的 `web/dist` 目录。
+- [x] **P1-04-2** 编写 Axum Fallback Route，使其可以响应 `rust-embed` 的静态文件请求（支持 SPA 的 History Router）。
+- [x] **P1-04-3** 引入 `clap` 库，设计命令行启动参数（如 `--port`, `--daemon`, `--setup`）。
+- [x] **P1-04-4** 实现系统级别的守护进程化逻辑（POSIX Daemonize 或提供一键生成 Systemd service 配置的指令）。
 
 ---
 

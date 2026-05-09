@@ -10,10 +10,14 @@ path = "src/main.rs"
 
 [dependencies]
 axum = "0.7"
+clap = { version = "4", features = ["derive", "env"] }
+daemonize = "0.5"
 http-body-util = "0.1"
 jsonwebtoken = "9"
+mime_guess = "2"
 prost = "0.13"
 prost-types = "0.13"
+rust-embed = "8"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal"] }
 tonic = "0.12"

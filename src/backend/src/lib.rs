@@ -4,7 +4,7 @@ use axum::{
     body::Body,
     extract::Request,
     http::{header::CONTENT_TYPE, HeaderValue, Response as HttpResponse, StatusCode},
-    response::IntoResponse,
+    response::{IntoResponse, Response as AxumResponse},
     routing::get,
     Json, Router,
 };
@@ -17,7 +17,9 @@ use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 pub mod auth;
+pub mod cli;
 
+mod assets;
 pub mod proto {
     pub mod rustpanel {
         pub mod v1 {
@@ -98,7 +100,7 @@ pub async fn serve(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + S
 pub fn http_router() -> Router {
     Router::new()
         .route("/healthz", get(http_health_check))
-        .fallback(http_fallback)
+        .fallback(static_fallback)
 }
 
 fn multiplex_service() -> impl tower::Service<
@@ -170,15 +172,8 @@ async fn http_health_check() -> impl IntoResponse {
     })
 }
 
-async fn http_fallback() -> impl IntoResponse {
-    (
-        StatusCode::NOT_FOUND,
-        Json(HttpStatus {
-            status: "not_found",
-            service: "rustpanel-backend",
-            version: env!("CARGO_PKG_VERSION"),
-        }),
-    )
+async fn static_fallback(request: Request) -> AxumResponse {
+    assets::static_response(request.uri().path()).into_response()
 }
 
 fn internal_error_response(message: String) -> HttpResponse<Body> {
