@@ -1,22 +1,29 @@
-# RustPanel
+# Vibe Coding Project Template
 
-RustPanel 是一个基于 Rust 后端、GHCR 镜像和 Docker Compose 部署的项目仓库。
+这个模板用于快速启动新的 AI 协作项目。复制到新仓库后，替换所有 `{{...}}` 占位符，并根据项目实际模块删除不需要的部分。
 
-## 常用命令
+## 使用步骤
 
-```bash
-./scripts/verify-all.sh
-bun run scripts:build
-bash deploy/update.sh
-```
+1. 复制模板内容到新仓库根目录。
+2. 全局替换占位符：
+   - `{{PROJECT_NAME}}`: 项目显示名，例如 SuperSpider。
+   - `{{PROJECT_SLUG}}`: 小写短名，例如 superspider。
+   - `{{BACKEND_BINARY}}`: Rust 后端二进制名。
+   - `{{GHCR_IMAGE}}`: GHCR 镜像名，例如 `ghcr.io/<owner>/<project>-backend`。
+   - `{{API_PORT}}`: 宿主机 API 端口。
+   - `{{DEPLOY_DIR}}`: VPS 部署目录。
+   - `{{PRODUCT_DOMAIN}}`: 生产域名。
+3. 执行 `git config core.hooksPath .githooks`。
+4. 配置 GitHub secrets / variables。
+5. 第一次提交前运行 `./scripts/verify-all.sh --all`。
 
-## 部署约定
+## 包含内容
 
-- 默认后端镜像：`ghcr.io/ishinji/rustpanel-backend`
-- 默认 Compose 项目名：`rustpanel`
-- 默认 API 端口：`18080`
-- 默认 VPS 目录：`/www/wwwroot/rustpanel`
-
-## GitHub Runner
-
-本机 self-hosted runner 配置在 `deploy/github-runner/`，使用 `rustpanel-runner` 项目专属 label，并复用个人多项目 runner 的共享 Rust/Docker 缓存 volume。
+- Agent 协作规范：`AGENTS.md`、`CLAUDE.md`、`GEMINI.md`
+- 角色文件：`docs/roles/*.md`，包含 15 个专家角色和角色切换入口
+- 流程模板：直接请求、任务清单执行、Planning Loop、Review Pipeline
+- 版本、审查和规划模板
+- GitHub Actions CI/CD 模板
+- GHCR + Docker Compose + VPS updater 模板
+- 根目录 TypeScript 自动化脚本编译链路
+- 版本自动 patch bump、CI 状态检查、workflow guard、GHCR 清理
