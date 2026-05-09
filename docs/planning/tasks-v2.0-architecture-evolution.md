@@ -35,9 +35,9 @@
 - [x] **P1-02-6** 利用 `tower::make::Shared` 实现 gRPC (Tonic) 和 HTTP (Axum) 在同一端口的请求多路复用 (Multiplexing)。
 
 ### P1-03 鉴权与安全
-- [ ] **P1-03-1** 定义 `auth.proto`：包含 Login, Logout, TokenRefresh 等接口。
-- [ ] **P1-03-2** 引入 `jsonwebtoken`，在 Rust 侧实现强安全的 JWT 签发与解析逻辑。
-- [ ] **P1-03-3** 编写 `tonic::Interceptor`，对受保护的 gRPC 路由自动校验请求头中的 Authorization Bearer Token，无效则拦截。
+- [x] **P1-03-1** 定义 `auth.proto`：包含 Login, Logout, TokenRefresh 等接口。
+- [x] **P1-03-2** 引入 `jsonwebtoken`，在 Rust 侧实现强安全的 JWT 签发与解析逻辑。
+- [x] **P1-03-3** 编写 `tonic::Interceptor`，对受保护的 gRPC 路由自动校验请求头中的 Authorization Bearer Token，无效则拦截。
 
 ### P1-04 静态资源内嵌与守护进程 (Daemon)
 - [ ] **P1-04-1** 配置 `rust-embed`，映射到前端编译后的 `web/dist` 目录。

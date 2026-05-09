@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// LoginRequest 表示登录请求。
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+// LoginResponse 返回登录后的访问令牌。
+message LoginResponse {
+  Response status = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  uint64 expires_at = 4;
+}
+
+// LogoutRequest 表示登出请求。
+message LogoutRequest {}
+
+// LogoutResponse 返回登出结果。
+message LogoutResponse {
+  Response status = 1;
+}
+
+// TokenRefreshRequest 表示刷新访问令牌请求。
+message TokenRefreshRequest {
+  string refresh_token = 1;
+}
+
+// TokenRefreshResponse 返回刷新的访问令牌。
+message TokenRefreshResponse {
+  Response status = 1;
+  string access_token = 2;
+  uint64 expires_at = 3;
+}
+
+// AuthService 提供认证会话管理能力。
+service AuthService {
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc TokenRefresh(TokenRefreshRequest) returns (TokenRefreshResponse);
+}

@@ -16,6 +16,8 @@ use tower::{make::Shared, service_fn, ServiceExt};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+pub mod auth;
+
 pub mod proto {
     pub mod rustpanel {
         pub mod v1 {
