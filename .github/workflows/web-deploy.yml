@@ -28,7 +28,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-      - uses: oven-sh/setup-bun@v2
+      - name: Verify runner Bun
+        run: bun --revision
       - run: bun install --frozen-lockfile
       - run: bun lint
       - run: bun test

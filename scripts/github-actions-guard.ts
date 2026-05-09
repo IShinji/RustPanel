@@ -18,6 +18,12 @@ if (fs.existsSync(workflowsDir)) {
     if (/setup-node@v[1-5]/.test(content)) {
       issues.push(`${fileName}: setup-node must support Node 24`)
     }
+    if (content.includes('oven-sh/setup-bun@')) {
+      issues.push(`${fileName}: self-hosted workflows must use the preinstalled runner Bun instead of oven-sh/setup-bun`)
+    }
+    if (content.includes('bun ') && !content.includes('bun --revision')) {
+      issues.push(`${fileName}: workflow must verify the preinstalled runner Bun before using bun commands`)
+    }
     if (/node\s+scripts\/[^\s]+\.cjs/.test(content)) {
       issues.push(`${fileName}: run compiled TypeScript scripts from dist/node-scripts, not scripts/*.cjs`)
     }

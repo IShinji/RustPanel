@@ -32,7 +32,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-      - uses: oven-sh/setup-bun@v2
+      - name: Verify runner Bun
+        run: bun --revision
       - run: rustup component add rustfmt clippy
       - run: ./scripts/verify-all.sh
 
@@ -59,8 +60,9 @@ jobs:
         if: steps.backend-crate.outputs.exists == 'true'
         with:
           node-version: '24'
-      - uses: oven-sh/setup-bun@v2
+      - name: Verify runner Bun
         if: steps.backend-crate.outputs.exists == 'true'
+        run: bun --revision
       - name: Build root TypeScript scripts
         if: steps.backend-crate.outputs.exists == 'true'
         run: bun install --frozen-lockfile && bun run scripts:build
@@ -186,7 +188,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-      - uses: oven-sh/setup-bun@v2
+      - name: Verify runner Bun
+        run: bun --revision
       - name: Build release scripts
         run: bun install --frozen-lockfile && bun run scripts:build
       - name: Publish micro binary release

@@ -70,6 +70,8 @@ github-runner-tool
 github-runner-buildkit
 ```
 
+Runner 镜像已在 `/usr/local/bun/bin` 预装 Bun，workflow 直接执行 `bun --revision` 校验后复用本地二进制，不再在 self-hosted runner 上调用 `oven-sh/setup-bun` 下载同版本 Bun。
+
 RustPanel 专属数据：
 
 ```text
