@@ -1,5 +1,6 @@
 use std::{
     io::{Read, Write},
+    path::Path,
     pin::Pin,
     sync::{Arc, Mutex},
     thread,
@@ -80,6 +81,12 @@ pub struct TerminalSession {
 
 impl TerminalSession {
     fn spawn() -> Result<(Self, ReceiverStream<Result<OpenTerminalResponse, Status>>), Status> {
+        Self::spawn_with_cwd(None)
+    }
+
+    fn spawn_with_cwd(
+        cwd: Option<&Path>,
+    ) -> Result<(Self, ReceiverStream<Result<OpenTerminalResponse, Status>>), Status> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -90,7 +97,10 @@ impl TerminalSession {
             })
             .map_err(|error| Status::internal(error.to_string()))?;
         let shell = default_shell();
-        let command = CommandBuilder::new(shell);
+        let mut command = CommandBuilder::new(shell);
+        if let Some(cwd) = cwd {
+            command.cwd(cwd);
+        }
         let mut child = pair
             .slave
             .spawn_command(command)
@@ -190,7 +200,13 @@ impl TerminalSession {
 }
 
 pub fn spawn_web_terminal() -> Result<(TerminalSession, ReceiverStream<Vec<u8>>), Status> {
-    let (session, output) = TerminalSession::spawn()?;
+    spawn_web_terminal_with_cwd(None)
+}
+
+pub fn spawn_web_terminal_with_cwd(
+    cwd: Option<&Path>,
+) -> Result<(TerminalSession, ReceiverStream<Vec<u8>>), Status> {
+    let (session, output) = TerminalSession::spawn_with_cwd(cwd)?;
     let (sender, receiver) = mpsc::channel(TERMINAL_CHANNEL_SIZE);
 
     tokio::spawn(async move {

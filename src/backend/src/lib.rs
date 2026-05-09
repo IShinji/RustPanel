@@ -3,7 +3,7 @@
 use std::{convert::Infallible, env, net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{
-    body::Body,
+    body::{Body, Bytes},
     extract::{
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
         Multipart, Query, Request, State,
@@ -157,6 +157,7 @@ fn http_router_with_state(state: HttpState) -> Router {
         .route("/api/monitor/status", get(http_monitor_status))
         .route("/api/monitor/watch", get(http_monitor_watch))
         .route("/api/fs/upload", post(http_file_upload))
+        .route("/api/fs/upload/chunk", post(http_file_upload_chunk))
         .route("/api/fs/download", get(http_file_download))
         .route("/api/terminal/ws", get(http_terminal_ws))
         .fallback(static_fallback)
@@ -350,6 +351,64 @@ async fn http_file_upload(
     Ok(Json(UploadResponse { saved }))
 }
 
+#[derive(Debug, Deserialize)]
+struct ChunkUploadQuery {
+    path: String,
+    upload_id: String,
+    chunk_index: u32,
+    total_chunks: u32,
+    file_name: String,
+}
+
+async fn http_file_upload_chunk(
+    State(state): State<HttpState>,
+    Query(query): Query<ChunkUploadQuery>,
+    body: Bytes,
+) -> Result<impl IntoResponse, HttpError> {
+    if query.total_chunks == 0 || query.chunk_index >= query.total_chunks {
+        return Err(HttpError::bad_request("invalid chunk index"));
+    }
+    let chunk_root = std::env::temp_dir()
+        .join("rustpanel-upload-chunks")
+        .join(sanitize_upload_name(&query.upload_id));
+    tokio::fs::create_dir_all(&chunk_root)
+        .await
+        .map_err(HttpError::internal)?;
+    tokio::fs::write(chunk_root.join(query.chunk_index.to_string()), body)
+        .await
+        .map_err(HttpError::internal)?;
+
+    if query.chunk_index + 1 < query.total_chunks {
+        return Ok(Json(UploadResponse { saved: Vec::new() }));
+    }
+
+    let target_path = state
+        .files
+        .resolve_for_write(&format!(
+            "{}/{}",
+            query.path.trim_end_matches('/'),
+            sanitize_upload_name(&query.file_name)
+        ))
+        .map_err(HttpError::from_status)?;
+    let mut target = tokio::fs::File::create(&target_path)
+        .await
+        .map_err(HttpError::internal)?;
+    for index in 0..query.total_chunks {
+        let chunk = tokio::fs::read(chunk_root.join(index.to_string()))
+            .await
+            .map_err(HttpError::internal)?;
+        target
+            .write_all(&chunk)
+            .await
+            .map_err(HttpError::internal)?;
+    }
+    let _ = tokio::fs::remove_dir_all(chunk_root).await;
+
+    Ok(Json(UploadResponse {
+        saved: vec![state.files.public_path(&target_path)],
+    }))
+}
+
 async fn http_file_download(
     State(state): State<HttpState>,
     Query(query): Query<FilePathQuery>,
@@ -379,12 +438,25 @@ async fn http_file_download(
     Ok(response)
 }
 
-async fn http_terminal_ws(upgrade: WebSocketUpgrade) -> impl IntoResponse {
-    upgrade.on_upgrade(handle_terminal_socket)
+#[derive(Debug, Deserialize)]
+struct TerminalQuery {
+    cwd: Option<String>,
 }
 
-async fn handle_terminal_socket(socket: WebSocket) {
-    let Ok((session, mut output)) = terminal::spawn_web_terminal() else {
+async fn http_terminal_ws(
+    State(state): State<HttpState>,
+    Query(query): Query<TerminalQuery>,
+    upgrade: WebSocketUpgrade,
+) -> impl IntoResponse {
+    let cwd = query
+        .cwd
+        .as_deref()
+        .and_then(|path| state.files.resolve_existing(path).ok());
+    upgrade.on_upgrade(move |socket| handle_terminal_socket(socket, cwd))
+}
+
+async fn handle_terminal_socket(socket: WebSocket, cwd: Option<std::path::PathBuf>) {
+    let Ok((session, mut output)) = terminal::spawn_web_terminal_with_cwd(cwd.as_deref()) else {
         return;
     };
     let (mut sender, mut receiver) = socket.split();

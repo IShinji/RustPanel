@@ -48,7 +48,7 @@ import {
 import { AppTemplate } from "./gen/rustpanel/v1/appstore_pb";
 import { CronRunState, CronTask, CronTaskState } from "./gen/rustpanel/v1/cron_pb";
 import { ContainerItem } from "./gen/rustpanel/v1/docker_pb";
-import { ArchiveFormat, FileItem, FileKind } from "./gen/rustpanel/v1/fs_pb";
+import { ArchiveFormat, FileItem, FileKind, RecycleBinItem, SearchMatch } from "./gen/rustpanel/v1/fs_pb";
 import { SystemStatus } from "./gen/rustpanel/v1/monitor_pb";
 import {
   FirewallAction,
@@ -203,6 +203,7 @@ const tabs: Array<{ id: TabId; label: string; icon: typeof Activity }> = [
 
 export default function App() {
   const [active, setActive] = useState<TabId>("dashboard");
+  const [terminalCwd, setTerminalCwd] = useState("/");
 
   return (
     <div className="app-shell">
@@ -232,8 +233,8 @@ export default function App() {
       <main className="workspace">
         {active === "dashboard" && <Dashboard clients={clients} />}
         {active === "security" && <SecurityPanel clients={clients} />}
-        {active === "terminal" && <TerminalPanel />}
-        {active === "files" && <FileManager clients={clients} />}
+        {active === "terminal" && <TerminalPanel cwd={terminalCwd} />}
+        {active === "files" && <FileManager clients={clients} openTerminal={(cwd) => { setTerminalCwd(cwd); setActive("terminal"); }} />}
         {active === "docker" && <DockerApps clients={clients} />}
         {active === "sites" && <SitesSsl clients={clients} />}
         {active === "database" && <DatabasePanel clients={clients} />}
@@ -895,7 +896,7 @@ function SecurityPanel({ clients }: { clients: Clients }) {
   );
 }
 
-function TerminalPanel() {
+function TerminalPanel({ cwd }: { cwd: string }) {
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -915,7 +916,7 @@ function TerminalPanel() {
     fit.fit();
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${protocol}//${window.location.host}/api/terminal/ws`);
+    const socket = new WebSocket(`${protocol}//${window.location.host}/api/terminal/ws?cwd=${encodeURIComponent(cwd)}`);
     socket.binaryType = "arraybuffer";
     socketRef.current = socket;
     socket.onmessage = (event) => {
@@ -939,14 +940,14 @@ function TerminalPanel() {
       socket.close();
       terminal.dispose();
     };
-  }, []);
+  }, [cwd]);
 
   return (
     <section className="page-grid terminal-layout">
       <header className="section-header full-span">
         <div>
           <h1>Web 终端</h1>
-          <p>PTY 会话 · Zsh/Bash 自动检测</p>
+          <p>{cwd} · PTY 会话</p>
         </div>
       </header>
       <div className="terminal-surface full-span" ref={terminalRef} />
@@ -954,18 +955,23 @@ function TerminalPanel() {
   );
 }
 
-function FileManager({ clients }: { clients: Clients }) {
+function FileManager({ clients, openTerminal }: { clients: Clients; openTerminal: (cwd: string) => void }) {
   const [path, setPath] = useState("/");
   const [items, setItems] = useState<FileItem[]>([]);
   const [selected, setSelected] = useState<FileItem | undefined>();
   const [editorValue, setEditorValue] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; item: FileItem } | undefined>();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchMatch[]>([]);
+  const [recycleItems, setRecycleItems] = useState<RecycleBinItem[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const load = async (nextPath = path) => {
     const response = await clients.files.listDirectory({ path: nextPath, recursive: false });
+    const recycle = await clients.files.listRecycleBin({});
     setPath(nextPath);
     setItems(response.items);
+    setRecycleItems(recycle.items);
   };
 
   useEffect(() => {
@@ -990,20 +996,52 @@ function FileManager({ clients }: { clients: Clients }) {
 
   const upload = async (files: FileList | null) => {
     if (!files?.length) return;
-    const form = new FormData();
     for (const file of files) {
-      form.append("file", file);
+      if (file.size > 5 * 1024 * 1024) {
+        await uploadInChunks(file);
+      } else {
+        const form = new FormData();
+        form.append("file", file);
+        await fetch(`/api/fs/upload?path=${encodeURIComponent(path)}`, {
+          method: "POST",
+          body: form
+        });
+      }
     }
-    await fetch(`/api/fs/upload?path=${encodeURIComponent(path)}`, {
-      method: "POST",
-      body: form
-    });
     await load(path);
+  };
+
+  const uploadInChunks = async (file: File) => {
+    const chunkSize = 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / chunkSize);
+    const uploadId = `${Date.now()}-${file.name}`;
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+      const chunk = file.slice(chunkIndex * chunkSize, Math.min(file.size, (chunkIndex + 1) * chunkSize));
+      await fetch(`/api/fs/upload/chunk?path=${encodeURIComponent(path)}&upload_id=${encodeURIComponent(uploadId)}&chunk_index=${chunkIndex}&total_chunks=${totalChunks}&file_name=${encodeURIComponent(file.name)}`, {
+        method: "POST",
+        body: chunk
+      });
+    }
   };
 
   const deleteItem = async (item: FileItem) => {
     await clients.files.deletePath({ path: item.path, recursive: item.kind === FileKind.DIRECTORY });
     setMenu(undefined);
+    await load(path);
+  };
+
+  const search = async () => {
+    const response = await clients.files.searchFiles({
+      rootPath: path,
+      query: searchQuery,
+      regex: true,
+      maxResults: 100
+    });
+    setSearchResults(response.matches);
+  };
+
+  const restoreRecycleItem = async (item: RecycleBinItem) => {
+    await clients.files.restoreRecycleItem({ id: item.id });
     await load(path);
   };
 
@@ -1028,11 +1066,21 @@ function FileManager({ clients }: { clients: Clients }) {
           <IconButton label="刷新" icon={RefreshCw} onClick={() => void load(path)} />
           <IconButton label="新建目录" icon={FolderPlus} onClick={() => void clients.files.createDirectory({ path: `${path.replace(/\/$/, "")}/new-folder` }).then(() => load(path))} />
           <IconButton label="上传" icon={Upload} onClick={() => inputRef.current?.click()} />
+          <IconButton label="终端" icon={TerminalSquare} onClick={() => openTerminal(path)} />
+          <input className="toolbar-input" onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索" value={searchQuery} />
+          <IconButton label="搜索" icon={FileText} onClick={() => void search()} />
           <input hidden multiple onChange={(event) => void upload(event.target.files)} ref={inputRef} type="file" />
         </div>
       </header>
 
-      <div className="panel file-list">
+      <div
+        className="panel file-list"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          void upload(event.dataTransfer.files);
+        }}
+      >
         <button className="breadcrumb" onClick={() => void load(parentPath(path))} type="button">
           ../
         </button>
@@ -1073,11 +1121,42 @@ function FileManager({ clients }: { clients: Clients }) {
         </div>
         <Editor
           height="520px"
-          language="plaintext"
+          language={languageForPath(selected?.name ?? "")}
           onChange={(value) => setEditorValue(value ?? "")}
           options={{ minimap: { enabled: false }, fontSize: 13 }}
           value={editorValue}
         />
+      </div>
+
+      <div className="panel full-span">
+        <div className="panel-title"><Trash2 size={18} /><span>回收站</span></div>
+        <div className="table-list">
+          {recycleItems.slice(0, 8).map((item) => (
+            <div className="table-row" key={item.id}>
+              <div>
+                <strong>{item.originalPath}</strong>
+                <small>{item.recyclePath}</small>
+              </div>
+              <IconButton label="还原" icon={RotateCw} onClick={() => void restoreRecycleItem(item)} />
+            </div>
+          ))}
+          {!recycleItems.length && <div className="empty-state">回收站为空</div>}
+        </div>
+      </div>
+
+      <div className="panel full-span">
+        <div className="panel-title"><FileText size={18} /><span>全文检索</span></div>
+        <div className="table-list">
+          {searchResults.map((match) => (
+            <div className="table-row" key={`${match.path}-${match.lineNumber}`}>
+              <div>
+                <strong>{match.path}:{match.lineNumber}</strong>
+                <small>{match.line}</small>
+              </div>
+            </div>
+          ))}
+          {!searchResults.length && <div className="empty-state">暂无结果</div>}
+        </div>
       </div>
 
       {menu && (
@@ -1676,6 +1755,23 @@ function sshAlgorithmLabel(algorithm: SshKeyAlgorithm): string {
   if (algorithm === SshKeyAlgorithm.ED25519) return "Ed25519";
   if (algorithm === SshKeyAlgorithm.RSA) return "RSA";
   return "-";
+}
+
+function languageForPath(name: string): string {
+  const extension = name.split(".").pop()?.toLowerCase();
+  if (extension === "ts" || extension === "tsx") return "typescript";
+  if (extension === "js" || extension === "jsx") return "javascript";
+  if (extension === "rs") return "rust";
+  if (extension === "go") return "go";
+  if (extension === "py") return "python";
+  if (extension === "php") return "php";
+  if (extension === "json") return "json";
+  if (extension === "css") return "css";
+  if (extension === "html") return "html";
+  if (extension === "sql") return "sql";
+  if (extension === "md") return "markdown";
+  if (extension === "yml" || extension === "yaml") return "yaml";
+  return "plaintext";
 }
 
 function parentPath(path: string): string {

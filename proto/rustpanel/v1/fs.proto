@@ -77,10 +77,46 @@ message MovePathResponse {
 message DeletePathRequest {
   string path = 1;
   bool recursive = 2;
+  bool permanent = 3;
 }
 
 // DeletePathResponse 返回删除路径结果。
 message DeletePathResponse {
+  Response status = 1;
+}
+
+// RecycleBinItem 描述回收站项目。
+message RecycleBinItem {
+  string id = 1;
+  string original_path = 2;
+  string recycle_path = 3;
+  uint64 deleted_at_seconds = 4;
+}
+
+// ListRecycleBinRequest 表示回收站列表请求。
+message ListRecycleBinRequest {}
+
+// ListRecycleBinResponse 返回回收站项目。
+message ListRecycleBinResponse {
+  Response status = 1;
+  repeated RecycleBinItem items = 2;
+}
+
+// RestoreRecycleItemRequest 表示还原回收站项目请求。
+message RestoreRecycleItemRequest {
+  string id = 1;
+}
+
+// RestoreRecycleItemResponse 返回还原结果。
+message RestoreRecycleItemResponse {
+  Response status = 1;
+}
+
+// EmptyRecycleBinRequest 表示清空回收站请求。
+message EmptyRecycleBinRequest {}
+
+// EmptyRecycleBinResponse 返回清空结果。
+message EmptyRecycleBinResponse {
   Response status = 1;
 }
 
@@ -129,6 +165,27 @@ message SaveFileResponse {
   Response status = 1;
 }
 
+// SearchFilesRequest 表示目录级全文检索请求。
+message SearchFilesRequest {
+  string root_path = 1;
+  string query = 2;
+  bool regex = 3;
+  uint32 max_results = 4;
+}
+
+// SearchMatch 描述一次文件内容命中。
+message SearchMatch {
+  string path = 1;
+  uint32 line_number = 2;
+  string line = 3;
+}
+
+// SearchFilesResponse 返回全文检索结果。
+message SearchFilesResponse {
+  Response status = 1;
+  repeated SearchMatch matches = 2;
+}
+
 // CreateArchiveRequest 表示归档任务创建请求。
 message CreateArchiveRequest {
   repeated string source_paths = 1;
@@ -162,10 +219,14 @@ service FileSystemService {
   rpc CreateDirectory(CreateDirectoryRequest) returns (CreateDirectoryResponse);
   rpc MovePath(MovePathRequest) returns (MovePathResponse);
   rpc DeletePath(DeletePathRequest) returns (DeletePathResponse);
+  rpc ListRecycleBin(ListRecycleBinRequest) returns (ListRecycleBinResponse);
+  rpc RestoreRecycleItem(RestoreRecycleItemRequest) returns (RestoreRecycleItemResponse);
+  rpc EmptyRecycleBin(EmptyRecycleBinRequest) returns (EmptyRecycleBinResponse);
   rpc Chmod(ChmodRequest) returns (ChmodResponse);
   rpc Chown(ChownRequest) returns (ChownResponse);
   rpc ReadFile(ReadFileRequest) returns (ReadFileResponse);
   rpc SaveFile(SaveFileRequest) returns (SaveFileResponse);
+  rpc SearchFiles(SearchFilesRequest) returns (SearchFilesResponse);
   rpc CreateArchive(CreateArchiveRequest) returns (CreateArchiveResponse);
   rpc WatchArchiveProgress(WatchArchiveProgressRequest) returns (stream WatchArchiveProgressResponse);
 }

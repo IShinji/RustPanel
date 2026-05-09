@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/fs.proto.
  */
 export const file_rustpanel_v1_fs: GenFile = /*@__PURE__*/
-  fileDesc("ChVydXN0cGFuZWwvdjEvZnMucHJvdG8SDHJ1c3RwYW5lbC52MSKwAQoIRmlsZUl0ZW0SDAoEcGF0aBgBIAEoCRIMCgRuYW1lGAIgASgJEiQKBGtpbmQYAyABKA4yFi5ydXN0cGFuZWwudjEuRmlsZUtpbmQSEgoKc2l6ZV9ieXRlcxgEIAEoBBITCgtwZXJtaXNzaW9ucxgFIAEoDRINCgVvd25lchgGIAEoCRINCgVncm91cBgHIAEoCRIbChNtb2RpZmllZF9hdF9zZWNvbmRzGAggASgEIjcKFExpc3REaXJlY3RvcnlSZXF1ZXN0EgwKBHBhdGgYASABKAkSEQoJcmVjdXJzaXZlGAIgASgIImYKFUxpc3REaXJlY3RvcnlSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USJQoFaXRlbXMYAiADKAsyFi5ydXN0cGFuZWwudjEuRmlsZUl0ZW0iJgoWQ3JlYXRlRGlyZWN0b3J5UmVxdWVzdBIMCgRwYXRoGAEgASgJIkEKF0NyZWF0ZURpcmVjdG9yeVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSI7Cg9Nb3ZlUGF0aFJlcXVlc3QSEwoLc291cmNlX3BhdGgYASABKAkSEwoLdGFyZ2V0X3BhdGgYAiABKAkiOgoQTW92ZVBhdGhSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiNAoRRGVsZXRlUGF0aFJlcXVlc3QSDAoEcGF0aBgBIAEoCRIRCglyZWN1cnNpdmUYAiABKAgiPAoSRGVsZXRlUGF0aFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIqCgxDaG1vZFJlcXVlc3QSDAoEcGF0aBgBIAEoCRIMCgRtb2RlGAIgASgNIjcKDUNobW9kUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlIjoKDENob3duUmVxdWVzdBIMCgRwYXRoGAEgASgJEg0KBW93bmVyGAIgASgJEg0KBWdyb3VwGAMgASgJIjcKDUNob3duUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlIh8KD1JlYWRGaWxlUmVxdWVzdBIMCgRwYXRoGAEgASgJIksKEFJlYWRGaWxlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEg8KB2NvbnRlbnQYAiABKAwiMAoPU2F2ZUZpbGVSZXF1ZXN0EgwKBHBhdGgYASABKAkSDwoHY29udGVudBgCIAEoDCI6ChBTYXZlRmlsZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSJvChRDcmVhdGVBcmNoaXZlUmVxdWVzdBIUCgxzb3VyY2VfcGF0aHMYASADKAkSFAoMYXJjaGl2ZV9wYXRoGAIgASgJEisKBmZvcm1hdBgDIAEoDjIbLnJ1c3RwYW5lbC52MS5BcmNoaXZlRm9ybWF0IlAKFUNyZWF0ZUFyY2hpdmVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USDwoHdGFza19pZBgCIAEoCSIuChtXYXRjaEFyY2hpdmVQcm9ncmVzc1JlcXVlc3QSDwoHdGFza19pZBgBIAEoCSKoAQocV2F0Y2hBcmNoaXZlUHJvZ3Jlc3NSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USDwoHdGFza19pZBgCIAEoCRItCgVzdGF0ZRgDIAEoDjIeLnJ1c3RwYW5lbC52MS5BcmNoaXZlVGFza1N0YXRlEg8KB3BlcmNlbnQYBCABKA0SDwoHbWVzc2FnZRgFIAEoCSp+CghGaWxlS2luZBIZChVGSUxFX0tJTkRfVU5TUEVDSUZJRUQQABISCg5GSUxFX0tJTkRfRklMRRABEhcKE0ZJTEVfS0lORF9ESVJFQ1RPUlkQAhIVChFGSUxFX0tJTkRfU1lNTElOSxADEhMKD0ZJTEVfS0lORF9PVEhFUhAEKmIKDUFyY2hpdmVGb3JtYXQSHgoaQVJDSElWRV9GT1JNQVRfVU5TUEVDSUZJRUQQABIWChJBUkNISVZFX0ZPUk1BVF9aSVAQARIZChVBUkNISVZFX0ZPUk1BVF9UQVJfR1oQAiqXAQoQQXJjaGl2ZVRhc2tTdGF0ZRIiCh5BUkNISVZFX1RBU0tfU1RBVEVfVU5TUEVDSUZJRUQQABIeChpBUkNISVZFX1RBU0tfU1RBVEVfUlVOTklORxABEiAKHEFSQ0hJVkVfVEFTS19TVEFURV9TVUNDRUVERUQQAhIdChlBUkNISVZFX1RBU0tfU1RBVEVfRkFJTEVEEAMyzgYKEUZpbGVTeXN0ZW1TZXJ2aWNlElgKDUxpc3REaXJlY3RvcnkSIi5ydXN0cGFuZWwudjEuTGlzdERpcmVjdG9yeVJlcXVlc3QaIy5ydXN0cGFuZWwudjEuTGlzdERpcmVjdG9yeVJlc3BvbnNlEl4KD0NyZWF0ZURpcmVjdG9yeRIkLnJ1c3RwYW5lbC52MS5DcmVhdGVEaXJlY3RvcnlSZXF1ZXN0GiUucnVzdHBhbmVsLnYxLkNyZWF0ZURpcmVjdG9yeVJlc3BvbnNlEkkKCE1vdmVQYXRoEh0ucnVzdHBhbmVsLnYxLk1vdmVQYXRoUmVxdWVzdBoeLnJ1c3RwYW5lbC52MS5Nb3ZlUGF0aFJlc3BvbnNlEk8KCkRlbGV0ZVBhdGgSHy5ydXN0cGFuZWwudjEuRGVsZXRlUGF0aFJlcXVlc3QaIC5ydXN0cGFuZWwudjEuRGVsZXRlUGF0aFJlc3BvbnNlEkAKBUNobW9kEhoucnVzdHBhbmVsLnYxLkNobW9kUmVxdWVzdBobLnJ1c3RwYW5lbC52MS5DaG1vZFJlc3BvbnNlEkAKBUNob3duEhoucnVzdHBhbmVsLnYxLkNob3duUmVxdWVzdBobLnJ1c3RwYW5lbC52MS5DaG93blJlc3BvbnNlEkkKCFJlYWRGaWxlEh0ucnVzdHBhbmVsLnYxLlJlYWRGaWxlUmVxdWVzdBoeLnJ1c3RwYW5lbC52MS5SZWFkRmlsZVJlc3BvbnNlEkkKCFNhdmVGaWxlEh0ucnVzdHBhbmVsLnYxLlNhdmVGaWxlUmVxdWVzdBoeLnJ1c3RwYW5lbC52MS5TYXZlRmlsZVJlc3BvbnNlElgKDUNyZWF0ZUFyY2hpdmUSIi5ydXN0cGFuZWwudjEuQ3JlYXRlQXJjaGl2ZVJlcXVlc3QaIy5ydXN0cGFuZWwudjEuQ3JlYXRlQXJjaGl2ZVJlc3BvbnNlEm8KFFdhdGNoQXJjaGl2ZVByb2dyZXNzEikucnVzdHBhbmVsLnYxLldhdGNoQXJjaGl2ZVByb2dyZXNzUmVxdWVzdBoqLnJ1c3RwYW5lbC52MS5XYXRjaEFyY2hpdmVQcm9ncmVzc1Jlc3BvbnNlMAFiBnByb3RvMw", [file_rustpanel_v1_common]);
+  fileDesc("ChVydXN0cGFuZWwvdjEvZnMucHJvdG8SDHJ1c3RwYW5lbC52MSKwAQoIRmlsZUl0ZW0SDAoEcGF0aBgBIAEoCRIMCgRuYW1lGAIgASgJEiQKBGtpbmQYAyABKA4yFi5ydXN0cGFuZWwudjEuRmlsZUtpbmQSEgoKc2l6ZV9ieXRlcxgEIAEoBBITCgtwZXJtaXNzaW9ucxgFIAEoDRINCgVvd25lchgGIAEoCRINCgVncm91cBgHIAEoCRIbChNtb2RpZmllZF9hdF9zZWNvbmRzGAggASgEIjcKFExpc3REaXJlY3RvcnlSZXF1ZXN0EgwKBHBhdGgYASABKAkSEQoJcmVjdXJzaXZlGAIgASgIImYKFUxpc3REaXJlY3RvcnlSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USJQoFaXRlbXMYAiADKAsyFi5ydXN0cGFuZWwudjEuRmlsZUl0ZW0iJgoWQ3JlYXRlRGlyZWN0b3J5UmVxdWVzdBIMCgRwYXRoGAEgASgJIkEKF0NyZWF0ZURpcmVjdG9yeVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSI7Cg9Nb3ZlUGF0aFJlcXVlc3QSEwoLc291cmNlX3BhdGgYASABKAkSEwoLdGFyZ2V0X3BhdGgYAiABKAkiOgoQTW92ZVBhdGhSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiRwoRRGVsZXRlUGF0aFJlcXVlc3QSDAoEcGF0aBgBIAEoCRIRCglyZWN1cnNpdmUYAiABKAgSEQoJcGVybWFuZW50GAMgASgIIjwKEkRlbGV0ZVBhdGhSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiZQoOUmVjeWNsZUJpbkl0ZW0SCgoCaWQYASABKAkSFQoNb3JpZ2luYWxfcGF0aBgCIAEoCRIUCgxyZWN5Y2xlX3BhdGgYAyABKAkSGgoSZGVsZXRlZF9hdF9zZWNvbmRzGAQgASgEIhcKFUxpc3RSZWN5Y2xlQmluUmVxdWVzdCJtChZMaXN0UmVjeWNsZUJpblJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIrCgVpdGVtcxgCIAMoCzIcLnJ1c3RwYW5lbC52MS5SZWN5Y2xlQmluSXRlbSInChlSZXN0b3JlUmVjeWNsZUl0ZW1SZXF1ZXN0EgoKAmlkGAEgASgJIkQKGlJlc3RvcmVSZWN5Y2xlSXRlbVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIYChZFbXB0eVJlY3ljbGVCaW5SZXF1ZXN0IkEKF0VtcHR5UmVjeWNsZUJpblJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIqCgxDaG1vZFJlcXVlc3QSDAoEcGF0aBgBIAEoCRIMCgRtb2RlGAIgASgNIjcKDUNobW9kUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlIjoKDENob3duUmVxdWVzdBIMCgRwYXRoGAEgASgJEg0KBW93bmVyGAIgASgJEg0KBWdyb3VwGAMgASgJIjcKDUNob3duUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlIh8KD1JlYWRGaWxlUmVxdWVzdBIMCgRwYXRoGAEgASgJIksKEFJlYWRGaWxlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEg8KB2NvbnRlbnQYAiABKAwiMAoPU2F2ZUZpbGVSZXF1ZXN0EgwKBHBhdGgYASABKAkSDwoHY29udGVudBgCIAEoDCI6ChBTYXZlRmlsZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSJaChJTZWFyY2hGaWxlc1JlcXVlc3QSEQoJcm9vdF9wYXRoGAEgASgJEg0KBXF1ZXJ5GAIgASgJEg0KBXJlZ2V4GAMgASgIEhMKC21heF9yZXN1bHRzGAQgASgNIj4KC1NlYXJjaE1hdGNoEgwKBHBhdGgYASABKAkSEwoLbGluZV9udW1iZXIYAiABKA0SDAoEbGluZRgDIAEoCSJpChNTZWFyY2hGaWxlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIqCgdtYXRjaGVzGAIgAygLMhkucnVzdHBhbmVsLnYxLlNlYXJjaE1hdGNoIm8KFENyZWF0ZUFyY2hpdmVSZXF1ZXN0EhQKDHNvdXJjZV9wYXRocxgBIAMoCRIUCgxhcmNoaXZlX3BhdGgYAiABKAkSKwoGZm9ybWF0GAMgASgOMhsucnVzdHBhbmVsLnYxLkFyY2hpdmVGb3JtYXQiUAoVQ3JlYXRlQXJjaGl2ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIPCgd0YXNrX2lkGAIgASgJIi4KG1dhdGNoQXJjaGl2ZVByb2dyZXNzUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJIqgBChxXYXRjaEFyY2hpdmVQcm9ncmVzc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIPCgd0YXNrX2lkGAIgASgJEi0KBXN0YXRlGAMgASgOMh4ucnVzdHBhbmVsLnYxLkFyY2hpdmVUYXNrU3RhdGUSDwoHcGVyY2VudBgEIAEoDRIPCgdtZXNzYWdlGAUgASgJKn4KCEZpbGVLaW5kEhkKFUZJTEVfS0lORF9VTlNQRUNJRklFRBAAEhIKDkZJTEVfS0lORF9GSUxFEAESFwoTRklMRV9LSU5EX0RJUkVDVE9SWRACEhUKEUZJTEVfS0lORF9TWU1MSU5LEAMSEwoPRklMRV9LSU5EX09USEVSEAQqYgoNQXJjaGl2ZUZvcm1hdBIeChpBUkNISVZFX0ZPUk1BVF9VTlNQRUNJRklFRBAAEhYKEkFSQ0hJVkVfRk9STUFUX1pJUBABEhkKFUFSQ0hJVkVfRk9STUFUX1RBUl9HWhACKpcBChBBcmNoaXZlVGFza1N0YXRlEiIKHkFSQ0hJVkVfVEFTS19TVEFURV9VTlNQRUNJRklFRBAAEh4KGkFSQ0hJVkVfVEFTS19TVEFURV9SVU5OSU5HEAESIAocQVJDSElWRV9UQVNLX1NUQVRFX1NVQ0NFRURFRBACEh0KGUFSQ0hJVkVfVEFTS19TVEFURV9GQUlMRUQQAzLICQoRRmlsZVN5c3RlbVNlcnZpY2USWAoNTGlzdERpcmVjdG9yeRIiLnJ1c3RwYW5lbC52MS5MaXN0RGlyZWN0b3J5UmVxdWVzdBojLnJ1c3RwYW5lbC52MS5MaXN0RGlyZWN0b3J5UmVzcG9uc2USXgoPQ3JlYXRlRGlyZWN0b3J5EiQucnVzdHBhbmVsLnYxLkNyZWF0ZURpcmVjdG9yeVJlcXVlc3QaJS5ydXN0cGFuZWwudjEuQ3JlYXRlRGlyZWN0b3J5UmVzcG9uc2USSQoITW92ZVBhdGgSHS5ydXN0cGFuZWwudjEuTW92ZVBhdGhSZXF1ZXN0Gh4ucnVzdHBhbmVsLnYxLk1vdmVQYXRoUmVzcG9uc2USTwoKRGVsZXRlUGF0aBIfLnJ1c3RwYW5lbC52MS5EZWxldGVQYXRoUmVxdWVzdBogLnJ1c3RwYW5lbC52MS5EZWxldGVQYXRoUmVzcG9uc2USWwoOTGlzdFJlY3ljbGVCaW4SIy5ydXN0cGFuZWwudjEuTGlzdFJlY3ljbGVCaW5SZXF1ZXN0GiQucnVzdHBhbmVsLnYxLkxpc3RSZWN5Y2xlQmluUmVzcG9uc2USZwoSUmVzdG9yZVJlY3ljbGVJdGVtEicucnVzdHBhbmVsLnYxLlJlc3RvcmVSZWN5Y2xlSXRlbVJlcXVlc3QaKC5ydXN0cGFuZWwudjEuUmVzdG9yZVJlY3ljbGVJdGVtUmVzcG9uc2USXgoPRW1wdHlSZWN5Y2xlQmluEiQucnVzdHBhbmVsLnYxLkVtcHR5UmVjeWNsZUJpblJlcXVlc3QaJS5ydXN0cGFuZWwudjEuRW1wdHlSZWN5Y2xlQmluUmVzcG9uc2USQAoFQ2htb2QSGi5ydXN0cGFuZWwudjEuQ2htb2RSZXF1ZXN0GhsucnVzdHBhbmVsLnYxLkNobW9kUmVzcG9uc2USQAoFQ2hvd24SGi5ydXN0cGFuZWwudjEuQ2hvd25SZXF1ZXN0GhsucnVzdHBhbmVsLnYxLkNob3duUmVzcG9uc2USSQoIUmVhZEZpbGUSHS5ydXN0cGFuZWwudjEuUmVhZEZpbGVSZXF1ZXN0Gh4ucnVzdHBhbmVsLnYxLlJlYWRGaWxlUmVzcG9uc2USSQoIU2F2ZUZpbGUSHS5ydXN0cGFuZWwudjEuU2F2ZUZpbGVSZXF1ZXN0Gh4ucnVzdHBhbmVsLnYxLlNhdmVGaWxlUmVzcG9uc2USUgoLU2VhcmNoRmlsZXMSIC5ydXN0cGFuZWwudjEuU2VhcmNoRmlsZXNSZXF1ZXN0GiEucnVzdHBhbmVsLnYxLlNlYXJjaEZpbGVzUmVzcG9uc2USWAoNQ3JlYXRlQXJjaGl2ZRIiLnJ1c3RwYW5lbC52MS5DcmVhdGVBcmNoaXZlUmVxdWVzdBojLnJ1c3RwYW5lbC52MS5DcmVhdGVBcmNoaXZlUmVzcG9uc2USbwoUV2F0Y2hBcmNoaXZlUHJvZ3Jlc3MSKS5ydXN0cGFuZWwudjEuV2F0Y2hBcmNoaXZlUHJvZ3Jlc3NSZXF1ZXN0GioucnVzdHBhbmVsLnYxLldhdGNoQXJjaGl2ZVByb2dyZXNzUmVzcG9uc2UwAWIGcHJvdG8z", [file_rustpanel_v1_common]);
 
 /**
  * FileItem 描述单个文件系统项目。
@@ -212,6 +212,11 @@ export type DeletePathRequest = Message<"rustpanel.v1.DeletePathRequest"> & {
    * @generated from field: bool recursive = 2;
    */
   recursive: boolean;
+
+  /**
+   * @generated from field: bool permanent = 3;
+   */
+  permanent: boolean;
 };
 
 /**
@@ -241,6 +246,151 @@ export const DeletePathResponseSchema: GenMessage<DeletePathResponse> = /*@__PUR
   messageDesc(file_rustpanel_v1_fs, 8);
 
 /**
+ * RecycleBinItem 描述回收站项目。
+ *
+ * @generated from message rustpanel.v1.RecycleBinItem
+ */
+export type RecycleBinItem = Message<"rustpanel.v1.RecycleBinItem"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string original_path = 2;
+   */
+  originalPath: string;
+
+  /**
+   * @generated from field: string recycle_path = 3;
+   */
+  recyclePath: string;
+
+  /**
+   * @generated from field: uint64 deleted_at_seconds = 4;
+   */
+  deletedAtSeconds: bigint;
+};
+
+/**
+ * Describes the message rustpanel.v1.RecycleBinItem.
+ * Use `create(RecycleBinItemSchema)` to create a new message.
+ */
+export const RecycleBinItemSchema: GenMessage<RecycleBinItem> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_fs, 9);
+
+/**
+ * ListRecycleBinRequest 表示回收站列表请求。
+ *
+ * @generated from message rustpanel.v1.ListRecycleBinRequest
+ */
+export type ListRecycleBinRequest = Message<"rustpanel.v1.ListRecycleBinRequest"> & {
+};
+
+/**
+ * Describes the message rustpanel.v1.ListRecycleBinRequest.
+ * Use `create(ListRecycleBinRequestSchema)` to create a new message.
+ */
+export const ListRecycleBinRequestSchema: GenMessage<ListRecycleBinRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_fs, 10);
+
+/**
+ * ListRecycleBinResponse 返回回收站项目。
+ *
+ * @generated from message rustpanel.v1.ListRecycleBinResponse
+ */
+export type ListRecycleBinResponse = Message<"rustpanel.v1.ListRecycleBinResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.RecycleBinItem items = 2;
+   */
+  items: RecycleBinItem[];
+};
+
+/**
+ * Describes the message rustpanel.v1.ListRecycleBinResponse.
+ * Use `create(ListRecycleBinResponseSchema)` to create a new message.
+ */
+export const ListRecycleBinResponseSchema: GenMessage<ListRecycleBinResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_fs, 11);
+
+/**
+ * RestoreRecycleItemRequest 表示还原回收站项目请求。
+ *
+ * @generated from message rustpanel.v1.RestoreRecycleItemRequest
+ */
+export type RestoreRecycleItemRequest = Message<"rustpanel.v1.RestoreRecycleItemRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.RestoreRecycleItemRequest.
+ * Use `create(RestoreRecycleItemRequestSchema)` to create a new message.
+ */
+export const RestoreRecycleItemRequestSchema: GenMessage<RestoreRecycleItemRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_fs, 12);
+
+/**
+ * RestoreRecycleItemResponse 返回还原结果。
+ *
+ * @generated from message rustpanel.v1.RestoreRecycleItemResponse
+ */
+export type RestoreRecycleItemResponse = Message<"rustpanel.v1.RestoreRecycleItemResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.RestoreRecycleItemResponse.
+ * Use `create(RestoreRecycleItemResponseSchema)` to create a new message.
+ */
+export const RestoreRecycleItemResponseSchema: GenMessage<RestoreRecycleItemResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_fs, 13);
+
+/**
+ * EmptyRecycleBinRequest 表示清空回收站请求。
+ *
+ * @generated from message rustpanel.v1.EmptyRecycleBinRequest
+ */
+export type EmptyRecycleBinRequest = Message<"rustpanel.v1.EmptyRecycleBinRequest"> & {
+};
+
+/**
+ * Describes the message rustpanel.v1.EmptyRecycleBinRequest.
+ * Use `create(EmptyRecycleBinRequestSchema)` to create a new message.
+ */
+export const EmptyRecycleBinRequestSchema: GenMessage<EmptyRecycleBinRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_fs, 14);
+
+/**
+ * EmptyRecycleBinResponse 返回清空结果。
+ *
+ * @generated from message rustpanel.v1.EmptyRecycleBinResponse
+ */
+export type EmptyRecycleBinResponse = Message<"rustpanel.v1.EmptyRecycleBinResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.EmptyRecycleBinResponse.
+ * Use `create(EmptyRecycleBinResponseSchema)` to create a new message.
+ */
+export const EmptyRecycleBinResponseSchema: GenMessage<EmptyRecycleBinResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_fs, 15);
+
+/**
  * ChmodRequest 表示权限修改请求。
  *
  * @generated from message rustpanel.v1.ChmodRequest
@@ -262,7 +412,7 @@ export type ChmodRequest = Message<"rustpanel.v1.ChmodRequest"> & {
  * Use `create(ChmodRequestSchema)` to create a new message.
  */
 export const ChmodRequestSchema: GenMessage<ChmodRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 9);
+  messageDesc(file_rustpanel_v1_fs, 16);
 
 /**
  * ChmodResponse 返回权限修改结果。
@@ -281,7 +431,7 @@ export type ChmodResponse = Message<"rustpanel.v1.ChmodResponse"> & {
  * Use `create(ChmodResponseSchema)` to create a new message.
  */
 export const ChmodResponseSchema: GenMessage<ChmodResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 10);
+  messageDesc(file_rustpanel_v1_fs, 17);
 
 /**
  * ChownRequest 表示拥有者修改请求。
@@ -310,7 +460,7 @@ export type ChownRequest = Message<"rustpanel.v1.ChownRequest"> & {
  * Use `create(ChownRequestSchema)` to create a new message.
  */
 export const ChownRequestSchema: GenMessage<ChownRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 11);
+  messageDesc(file_rustpanel_v1_fs, 18);
 
 /**
  * ChownResponse 返回拥有者修改结果。
@@ -329,7 +479,7 @@ export type ChownResponse = Message<"rustpanel.v1.ChownResponse"> & {
  * Use `create(ChownResponseSchema)` to create a new message.
  */
 export const ChownResponseSchema: GenMessage<ChownResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 12);
+  messageDesc(file_rustpanel_v1_fs, 19);
 
 /**
  * ReadFileRequest 表示读取文件请求。
@@ -348,7 +498,7 @@ export type ReadFileRequest = Message<"rustpanel.v1.ReadFileRequest"> & {
  * Use `create(ReadFileRequestSchema)` to create a new message.
  */
 export const ReadFileRequestSchema: GenMessage<ReadFileRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 13);
+  messageDesc(file_rustpanel_v1_fs, 20);
 
 /**
  * ReadFileResponse 返回文件内容。
@@ -372,7 +522,7 @@ export type ReadFileResponse = Message<"rustpanel.v1.ReadFileResponse"> & {
  * Use `create(ReadFileResponseSchema)` to create a new message.
  */
 export const ReadFileResponseSchema: GenMessage<ReadFileResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 14);
+  messageDesc(file_rustpanel_v1_fs, 21);
 
 /**
  * SaveFileRequest 表示保存文件请求。
@@ -396,7 +546,7 @@ export type SaveFileRequest = Message<"rustpanel.v1.SaveFileRequest"> & {
  * Use `create(SaveFileRequestSchema)` to create a new message.
  */
 export const SaveFileRequestSchema: GenMessage<SaveFileRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 15);
+  messageDesc(file_rustpanel_v1_fs, 22);
 
 /**
  * SaveFileResponse 返回保存文件结果。
@@ -415,7 +565,94 @@ export type SaveFileResponse = Message<"rustpanel.v1.SaveFileResponse"> & {
  * Use `create(SaveFileResponseSchema)` to create a new message.
  */
 export const SaveFileResponseSchema: GenMessage<SaveFileResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 16);
+  messageDesc(file_rustpanel_v1_fs, 23);
+
+/**
+ * SearchFilesRequest 表示目录级全文检索请求。
+ *
+ * @generated from message rustpanel.v1.SearchFilesRequest
+ */
+export type SearchFilesRequest = Message<"rustpanel.v1.SearchFilesRequest"> & {
+  /**
+   * @generated from field: string root_path = 1;
+   */
+  rootPath: string;
+
+  /**
+   * @generated from field: string query = 2;
+   */
+  query: string;
+
+  /**
+   * @generated from field: bool regex = 3;
+   */
+  regex: boolean;
+
+  /**
+   * @generated from field: uint32 max_results = 4;
+   */
+  maxResults: number;
+};
+
+/**
+ * Describes the message rustpanel.v1.SearchFilesRequest.
+ * Use `create(SearchFilesRequestSchema)` to create a new message.
+ */
+export const SearchFilesRequestSchema: GenMessage<SearchFilesRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_fs, 24);
+
+/**
+ * SearchMatch 描述一次文件内容命中。
+ *
+ * @generated from message rustpanel.v1.SearchMatch
+ */
+export type SearchMatch = Message<"rustpanel.v1.SearchMatch"> & {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path: string;
+
+  /**
+   * @generated from field: uint32 line_number = 2;
+   */
+  lineNumber: number;
+
+  /**
+   * @generated from field: string line = 3;
+   */
+  line: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.SearchMatch.
+ * Use `create(SearchMatchSchema)` to create a new message.
+ */
+export const SearchMatchSchema: GenMessage<SearchMatch> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_fs, 25);
+
+/**
+ * SearchFilesResponse 返回全文检索结果。
+ *
+ * @generated from message rustpanel.v1.SearchFilesResponse
+ */
+export type SearchFilesResponse = Message<"rustpanel.v1.SearchFilesResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.SearchMatch matches = 2;
+   */
+  matches: SearchMatch[];
+};
+
+/**
+ * Describes the message rustpanel.v1.SearchFilesResponse.
+ * Use `create(SearchFilesResponseSchema)` to create a new message.
+ */
+export const SearchFilesResponseSchema: GenMessage<SearchFilesResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_fs, 26);
 
 /**
  * CreateArchiveRequest 表示归档任务创建请求。
@@ -444,7 +681,7 @@ export type CreateArchiveRequest = Message<"rustpanel.v1.CreateArchiveRequest"> 
  * Use `create(CreateArchiveRequestSchema)` to create a new message.
  */
 export const CreateArchiveRequestSchema: GenMessage<CreateArchiveRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 17);
+  messageDesc(file_rustpanel_v1_fs, 27);
 
 /**
  * CreateArchiveResponse 返回归档任务创建结果。
@@ -468,7 +705,7 @@ export type CreateArchiveResponse = Message<"rustpanel.v1.CreateArchiveResponse"
  * Use `create(CreateArchiveResponseSchema)` to create a new message.
  */
 export const CreateArchiveResponseSchema: GenMessage<CreateArchiveResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 18);
+  messageDesc(file_rustpanel_v1_fs, 28);
 
 /**
  * WatchArchiveProgressRequest 表示归档进度订阅请求。
@@ -487,7 +724,7 @@ export type WatchArchiveProgressRequest = Message<"rustpanel.v1.WatchArchiveProg
  * Use `create(WatchArchiveProgressRequestSchema)` to create a new message.
  */
 export const WatchArchiveProgressRequestSchema: GenMessage<WatchArchiveProgressRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 19);
+  messageDesc(file_rustpanel_v1_fs, 29);
 
 /**
  * WatchArchiveProgressResponse 返回归档进度事件。
@@ -526,7 +763,7 @@ export type WatchArchiveProgressResponse = Message<"rustpanel.v1.WatchArchivePro
  * Use `create(WatchArchiveProgressResponseSchema)` to create a new message.
  */
 export const WatchArchiveProgressResponseSchema: GenMessage<WatchArchiveProgressResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_fs, 20);
+  messageDesc(file_rustpanel_v1_fs, 30);
 
 /**
  * FileKind 描述文件系统项目类型。
@@ -666,6 +903,30 @@ export const FileSystemService: GenService<{
     output: typeof DeletePathResponseSchema;
   },
   /**
+   * @generated from rpc rustpanel.v1.FileSystemService.ListRecycleBin
+   */
+  listRecycleBin: {
+    methodKind: "unary";
+    input: typeof ListRecycleBinRequestSchema;
+    output: typeof ListRecycleBinResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.FileSystemService.RestoreRecycleItem
+   */
+  restoreRecycleItem: {
+    methodKind: "unary";
+    input: typeof RestoreRecycleItemRequestSchema;
+    output: typeof RestoreRecycleItemResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.FileSystemService.EmptyRecycleBin
+   */
+  emptyRecycleBin: {
+    methodKind: "unary";
+    input: typeof EmptyRecycleBinRequestSchema;
+    output: typeof EmptyRecycleBinResponseSchema;
+  },
+  /**
    * @generated from rpc rustpanel.v1.FileSystemService.Chmod
    */
   chmod: {
@@ -696,6 +957,14 @@ export const FileSystemService: GenService<{
     methodKind: "unary";
     input: typeof SaveFileRequestSchema;
     output: typeof SaveFileResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.FileSystemService.SearchFiles
+   */
+  searchFiles: {
+    methodKind: "unary";
+    input: typeof SearchFilesRequestSchema;
+    output: typeof SearchFilesResponseSchema;
   },
   /**
    * @generated from rpc rustpanel.v1.FileSystemService.CreateArchive

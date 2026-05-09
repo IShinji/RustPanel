@@ -203,6 +203,14 @@ button {
   background: #d7e2e5;
 }
 
+.toolbar-input {
+  border: 1px solid #ccd7da;
+  border-radius: 6px;
+  height: 34px;
+  min-width: 160px;
+  padding: 0 10px;
+}
+
 .file-list {
   display: grid;
   gap: 4px;

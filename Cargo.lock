@@ -2384,6 +2384,7 @@ dependencies = [
  "prost",
  "prost-types",
  "protoc-bin-vendored",
+ "regex",
  "rust-embed",
  "serde",
  "serde_json",
