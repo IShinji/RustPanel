@@ -35,6 +35,16 @@ enum FirewallBackend {
   FIREWALL_BACKEND_IPTABLES = 3;
 }
 
+// WafRuleKind 描述 WAF 规则类别。
+enum WafRuleKind {
+  WAF_RULE_KIND_UNSPECIFIED = 0;
+  WAF_RULE_KIND_CC = 1;
+  WAF_RULE_KIND_SQL_INJECTION = 2;
+  WAF_RULE_KIND_XSS = 3;
+  WAF_RULE_KIND_KEYWORD = 4;
+  WAF_RULE_KIND_SCANNER = 5;
+}
+
 // FirewallRule 描述一条可视化防火墙规则。
 message FirewallRule {
   string id = 1;
@@ -63,6 +73,46 @@ message SecurityOptions {
   string panel_access_path = 7;
   string panel_listen_addr = 8;
   bool two_factor_required = 9;
+}
+
+// WafSettings 描述 Nginx 层 WAF 总体开关。
+message WafSettings {
+  bool enabled = 1;
+  bool cc_protection_enabled = 2;
+  bool captcha_challenge_enabled = 3;
+  uint32 requests_per_minute = 4;
+  uint32 burst = 5;
+  uint32 block_duration_seconds = 6;
+  string nginx_config_path = 7;
+  string challenge_page_path = 8;
+  string last_apply_message = 9;
+}
+
+// WafRule 描述一条 Nginx 层 WAF 匹配规则。
+message WafRule {
+  string id = 1;
+  string name = 2;
+  WafRuleKind kind = 3;
+  string pattern = 4;
+  bool enabled = 5;
+  string scope_domain = 6;
+  string comment = 7;
+  uint64 created_at_seconds = 8;
+  uint64 updated_at_seconds = 9;
+}
+
+// WafAttackEvent 描述一次 WAF 拦截事件。
+message WafAttackEvent {
+  string id = 1;
+  string source_ip = 2;
+  string country_code = 3;
+  string country_name = 4;
+  string rule_id = 5;
+  string rule_name = 6;
+  WafRuleKind kind = 7;
+  string path = 8;
+  string user_agent = 9;
+  uint64 occurred_at_seconds = 10;
 }
 
 // ListFirewallRulesRequest 表示防火墙规则列表请求。
@@ -141,6 +191,59 @@ message ImportFirewallRulesResponse {
   SecurityOptions options = 3;
 }
 
+// GetWafSettingsRequest 表示读取 WAF 配置请求。
+message GetWafSettingsRequest {}
+
+// GetWafSettingsResponse 返回 WAF 配置。
+message GetWafSettingsResponse {
+  Response status = 1;
+  WafSettings settings = 2;
+  repeated WafRule rules = 3;
+}
+
+// UpdateWafSettingsRequest 表示更新 WAF 配置请求。
+message UpdateWafSettingsRequest {
+  WafSettings settings = 1;
+}
+
+// UpdateWafSettingsResponse 返回更新后的 WAF 配置。
+message UpdateWafSettingsResponse {
+  Response status = 1;
+  WafSettings settings = 2;
+}
+
+// UpsertWafRuleRequest 表示创建或更新 WAF 规则请求。
+message UpsertWafRuleRequest {
+  WafRule rule = 1;
+}
+
+// UpsertWafRuleResponse 返回保存后的 WAF 规则。
+message UpsertWafRuleResponse {
+  Response status = 1;
+  WafRule rule = 2;
+}
+
+// DeleteWafRuleRequest 表示删除 WAF 规则请求。
+message DeleteWafRuleRequest {
+  string id = 1;
+}
+
+// DeleteWafRuleResponse 返回删除结果。
+message DeleteWafRuleResponse {
+  Response status = 1;
+}
+
+// ListWafAttackEventsRequest 表示查询 WAF 攻击事件请求。
+message ListWafAttackEventsRequest {
+  uint32 limit = 1;
+}
+
+// ListWafAttackEventsResponse 返回 WAF 事件和聚合视图。
+message ListWafAttackEventsResponse {
+  Response status = 1;
+  repeated WafAttackEvent events = 2;
+}
+
 // SecurityService 提供系统防火墙和入口安全管理能力。
 service SecurityService {
   rpc ListFirewallRules(ListFirewallRulesRequest) returns (ListFirewallRulesResponse);
@@ -150,4 +253,9 @@ service SecurityService {
   rpc UpdateSecurityOptions(UpdateSecurityOptionsRequest) returns (UpdateSecurityOptionsResponse);
   rpc ExportFirewallRules(ExportFirewallRulesRequest) returns (ExportFirewallRulesResponse);
   rpc ImportFirewallRules(ImportFirewallRulesRequest) returns (ImportFirewallRulesResponse);
+  rpc GetWafSettings(GetWafSettingsRequest) returns (GetWafSettingsResponse);
+  rpc UpdateWafSettings(UpdateWafSettingsRequest) returns (UpdateWafSettingsResponse);
+  rpc UpsertWafRule(UpsertWafRuleRequest) returns (UpsertWafRuleResponse);
+  rpc DeleteWafRule(DeleteWafRuleRequest) returns (DeleteWafRuleResponse);
+  rpc ListWafAttackEvents(ListWafAttackEventsRequest) returns (ListWafAttackEventsResponse);
 }

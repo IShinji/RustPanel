@@ -55,7 +55,10 @@ import {
   FirewallBackend,
   FirewallDirection,
   FirewallProtocol,
-  FirewallRule
+  FirewallRule,
+  WafAttackEvent,
+  WafRule,
+  WafRuleKind
 } from "./gen/rustpanel/v1/security_pb";
 import { SiteItem } from "./gen/rustpanel/v1/site_pb";
 import { createRpcClients } from "./lib/rpc";
@@ -88,6 +91,26 @@ type SecurityOptionsForm = {
   panelListenAddr: string;
   twoFactorRequired: boolean;
 };
+type WafSettingsForm = {
+  enabled: boolean;
+  ccProtectionEnabled: boolean;
+  captchaChallengeEnabled: boolean;
+  requestsPerMinute: number;
+  burst: number;
+  blockDurationSeconds: number;
+  nginxConfigPath: string;
+  challengePagePath: string;
+  lastApplyMessage: string;
+};
+type WafRuleForm = {
+  id: string;
+  name: string;
+  kind: WafRuleKind;
+  pattern: string;
+  enabled: boolean;
+  scopeDomain: string;
+  comment: string;
+};
 
 const clients = createRpcClients();
 const defaultFirewallForm: FirewallForm = {
@@ -113,6 +136,26 @@ const defaultSecurityOptions: SecurityOptionsForm = {
   panelAccessPath: "/",
   panelListenAddr: "",
   twoFactorRequired: false
+};
+const defaultWafSettings: WafSettingsForm = {
+  enabled: false,
+  ccProtectionEnabled: true,
+  captchaChallengeEnabled: true,
+  requestsPerMinute: 120,
+  burst: 30,
+  blockDurationSeconds: 600,
+  nginxConfigPath: "",
+  challengePagePath: "",
+  lastApplyMessage: ""
+};
+const defaultWafRuleForm: WafRuleForm = {
+  id: "",
+  name: "自定义关键词",
+  kind: WafRuleKind.KEYWORD,
+  pattern: "(badbot|malicious)",
+  enabled: true,
+  scopeDomain: "",
+  comment: ""
 };
 
 const tabs: Array<{ id: TabId; label: string; icon: typeof Activity }> = [
@@ -279,16 +322,29 @@ function SecurityPanel({ clients }: { clients: Clients }) {
   const [rules, setRules] = useState<FirewallRule[]>([]);
   const [ruleForm, setRuleForm] = useState<FirewallForm>(defaultFirewallForm);
   const [options, setOptions] = useState<SecurityOptionsForm>(defaultSecurityOptions);
+  const [wafSettings, setWafSettings] = useState<WafSettingsForm>(defaultWafSettings);
+  const [wafRules, setWafRules] = useState<WafRule[]>([]);
+  const [wafRuleForm, setWafRuleForm] = useState<WafRuleForm>(defaultWafRuleForm);
+  const [wafEvents, setWafEvents] = useState<WafAttackEvent[]>([]);
   const [backupJson, setBackupJson] = useState("");
   const [status, setStatus] = useState("");
 
   const load = async () => {
     try {
-      const response = await clients.security.listFirewallRules({});
-      setRules(response.rules);
-      if (response.options) {
-        setOptions({ ...defaultSecurityOptions, ...response.options });
+      const [firewallResponse, wafResponse, wafEventResponse] = await Promise.all([
+        clients.security.listFirewallRules({}),
+        clients.security.getWafSettings({}),
+        clients.security.listWafAttackEvents({ limit: 100 })
+      ]);
+      setRules(firewallResponse.rules);
+      if (firewallResponse.options) {
+        setOptions({ ...defaultSecurityOptions, ...firewallResponse.options });
       }
+      if (wafResponse.settings) {
+        setWafSettings({ ...defaultWafSettings, ...wafResponse.settings });
+      }
+      setWafRules(wafResponse.rules);
+      setWafEvents(wafEventResponse.events);
       setStatus("");
     } catch (err) {
       setStatus(safeError(err));
@@ -397,6 +453,82 @@ function SecurityPanel({ clients }: { clients: Clients }) {
       setStatus(safeError(err));
     }
   };
+
+  const saveWafSettings = async () => {
+    try {
+      const response = await clients.security.updateWafSettings({ settings: wafSettings });
+      if (response.settings) {
+        setWafSettings({ ...defaultWafSettings, ...response.settings });
+        setStatus(response.settings.lastApplyMessage || "WAF 配置已保存");
+      }
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const saveWafRule = async () => {
+    try {
+      await clients.security.upsertWafRule({
+        rule: {
+          id: wafRuleForm.id,
+          name: wafRuleForm.name,
+          kind: wafRuleForm.kind,
+          pattern: wafRuleForm.pattern,
+          enabled: wafRuleForm.enabled,
+          scopeDomain: wafRuleForm.scopeDomain,
+          comment: wafRuleForm.comment,
+          createdAtSeconds: 0n,
+          updatedAtSeconds: 0n
+        }
+      });
+      setWafRuleForm(defaultWafRuleForm);
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const editWafRule = (rule: WafRule) => {
+    setWafRuleForm({
+      id: rule.id,
+      name: rule.name,
+      kind: rule.kind,
+      pattern: rule.pattern,
+      enabled: rule.enabled,
+      scopeDomain: rule.scopeDomain,
+      comment: rule.comment
+    });
+  };
+
+  const deleteWafRule = async (rule: WafRule) => {
+    try {
+      await clients.security.deleteWafRule({ id: rule.id });
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const wafIpRanking = wafEvents.reduce<Array<{ ip: string; count: number; country: string }>>((ranking, event) => {
+    const existing = ranking.find((item) => item.ip === event.sourceIp);
+    if (existing) {
+      existing.count += 1;
+      return ranking;
+    }
+    ranking.push({ ip: event.sourceIp || "-", count: 1, country: event.countryName || event.countryCode || "-" });
+    return ranking;
+  }, []).sort((left, right) => right.count - left.count);
+
+  const wafCountryRanking = wafEvents.reduce<Array<{ code: string; name: string; count: number }>>((ranking, event) => {
+    const code = event.countryCode || "UN";
+    const existing = ranking.find((item) => item.code === code);
+    if (existing) {
+      existing.count += 1;
+      return ranking;
+    }
+    ranking.push({ code, name: event.countryName || code, count: 1 });
+    return ranking;
+  }, []).sort((left, right) => right.count - left.count);
 
   return (
     <section className="page-grid security-layout">
@@ -521,6 +653,97 @@ function SecurityPanel({ clients }: { clients: Clients }) {
             </div>
           ))}
           {!rules.length && <div className="empty-state">暂无规则</div>}
+        </div>
+      </div>
+
+      <div className="panel waf-settings">
+        <div className="panel-title"><ShieldAlert size={18} /><span>WAF 防护</span></div>
+        <ToggleRow label="WAF 总开关" checked={wafSettings.enabled} onChange={(enabled) => setWafSettings({ ...wafSettings, enabled })} />
+        <ToggleRow
+          label="抗 CC"
+          checked={wafSettings.ccProtectionEnabled}
+          onChange={(ccProtectionEnabled) => setWafSettings({ ...wafSettings, ccProtectionEnabled })}
+        />
+        <ToggleRow
+          label="验证码挑战"
+          checked={wafSettings.captchaChallengeEnabled}
+          onChange={(captchaChallengeEnabled) => setWafSettings({ ...wafSettings, captchaChallengeEnabled })}
+        />
+        <NumberInput label="每分钟请求" value={wafSettings.requestsPerMinute} onChange={(requestsPerMinute) => setWafSettings({ ...wafSettings, requestsPerMinute })} />
+        <NumberInput label="突发请求" value={wafSettings.burst} onChange={(burst) => setWafSettings({ ...wafSettings, burst })} />
+        <NumberInput
+          label="封禁秒数"
+          value={wafSettings.blockDurationSeconds}
+          onChange={(blockDurationSeconds) => setWafSettings({ ...wafSettings, blockDurationSeconds })}
+        />
+        <Input label="Nginx 片段" value={wafSettings.nginxConfigPath} onChange={(nginxConfigPath) => setWafSettings({ ...wafSettings, nginxConfigPath })} />
+        <Input label="挑战页" value={wafSettings.challengePagePath} onChange={(challengePagePath) => setWafSettings({ ...wafSettings, challengePagePath })} />
+        <button onClick={() => void saveWafSettings()} type="button"><Save size={15} />保存 WAF</button>
+      </div>
+
+      <div className="panel waf-rule-form">
+        <div className="panel-title"><ShieldCheck size={18} /><span>{wafRuleForm.id ? "编辑 WAF 规则" : "新建 WAF 规则"}</span></div>
+        <Input label="名称" value={wafRuleForm.name} onChange={(name) => setWafRuleForm({ ...wafRuleForm, name })} />
+        <SelectRow
+          label="类型"
+          value={wafRuleForm.kind}
+          onChange={(kind) => setWafRuleForm({ ...wafRuleForm, kind: Number(kind) as WafRuleKind })}
+          options={[
+            [WafRuleKind.SQL_INJECTION, "SQL 注入"],
+            [WafRuleKind.XSS, "XSS"],
+            [WafRuleKind.KEYWORD, "关键词"],
+            [WafRuleKind.SCANNER, "扫描器"],
+            [WafRuleKind.CC, "CC"]
+          ]}
+        />
+        <Input label="匹配规则" value={wafRuleForm.pattern} onChange={(pattern) => setWafRuleForm({ ...wafRuleForm, pattern })} />
+        <Input label="站点域名" value={wafRuleForm.scopeDomain} onChange={(scopeDomain) => setWafRuleForm({ ...wafRuleForm, scopeDomain })} />
+        <Input label="备注" value={wafRuleForm.comment} onChange={(comment) => setWafRuleForm({ ...wafRuleForm, comment })} />
+        <ToggleRow label="启用" checked={wafRuleForm.enabled} onChange={(enabled) => setWafRuleForm({ ...wafRuleForm, enabled })} />
+        <button onClick={() => void saveWafRule()} type="button"><Save size={15} />保存规则</button>
+      </div>
+
+      <div className="panel wide-panel waf-rule-list">
+        <div className="panel-title"><Shield size={18} /><span>WAF 规则库</span></div>
+        <div className="table-list">
+          {wafRules.map((rule) => (
+            <div className="table-row firewall-row" key={rule.id}>
+              <div>
+                <strong>{rule.name}</strong>
+                <small>{wafKindLabel(rule.kind)} · {rule.pattern}{rule.scopeDomain ? ` · ${rule.scopeDomain}` : ""}</small>
+              </div>
+              <StatusPill label={rule.enabled ? "启用" : "停用"} tone={rule.enabled ? "good" : "muted"} />
+              <div className="row-actions">
+                <IconButton label="编辑" icon={Copy} onClick={() => editWafRule(rule)} />
+                <IconButton label="删除" icon={Ban} onClick={() => void deleteWafRule(rule)} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel waf-map">
+        <div className="panel-title"><Globe size={18} /><span>攻击来源</span></div>
+        <div className="world-map" aria-label="WAF attack source map">
+          {wafCountryRanking.slice(0, 8).map((country, index) => (
+            <span className={`map-point point-${index + 1}`} key={country.code} title={`${country.name}: ${country.count}`}>
+              {country.code}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel waf-ranking">
+        <div className="panel-title"><ShieldAlert size={18} /><span>攻击 IP 排名</span></div>
+        <div className="table-list">
+          {wafIpRanking.slice(0, 8).map((item) => (
+            <div className="rank-row" key={item.ip}>
+              <strong>{item.ip}</strong>
+              <small>{item.country}</small>
+              <StatusPill label={String(item.count)} tone="danger" />
+            </div>
+          ))}
+          {!wafIpRanking.length && <div className="empty-state">暂无拦截记录</div>}
         </div>
       </div>
 
@@ -1148,6 +1371,15 @@ function firewallActionLabel(action: FirewallAction): string {
 function firewallDirectionLabel(direction: FirewallDirection): string {
   if (direction === FirewallDirection.INBOUND) return "入站";
   if (direction === FirewallDirection.OUTBOUND) return "出站";
+  return "-";
+}
+
+function wafKindLabel(kind: WafRuleKind): string {
+  if (kind === WafRuleKind.CC) return "CC";
+  if (kind === WafRuleKind.SQL_INJECTION) return "SQL 注入";
+  if (kind === WafRuleKind.XSS) return "XSS";
+  if (kind === WafRuleKind.KEYWORD) return "关键词";
+  if (kind === WafRuleKind.SCANNER) return "扫描器";
   return "-";
 }
 

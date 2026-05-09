@@ -15,12 +15,16 @@ use crate::{
     ok_response,
     proto::rustpanel::v1::{
         security_service_server::SecurityService, DeleteFirewallRuleRequest,
-        DeleteFirewallRuleResponse, ExportFirewallRulesRequest, ExportFirewallRulesResponse,
-        FirewallAction, FirewallBackend, FirewallDirection, FirewallProtocol, FirewallRule,
-        ImportFirewallRulesRequest, ImportFirewallRulesResponse, ListFirewallRulesRequest,
-        ListFirewallRulesResponse, SecurityOptions, SetFirewallRuleEnabledRequest,
+        DeleteFirewallRuleResponse, DeleteWafRuleRequest, DeleteWafRuleResponse,
+        ExportFirewallRulesRequest, ExportFirewallRulesResponse, FirewallAction, FirewallBackend,
+        FirewallDirection, FirewallProtocol, FirewallRule, GetWafSettingsRequest,
+        GetWafSettingsResponse, ImportFirewallRulesRequest, ImportFirewallRulesResponse,
+        ListFirewallRulesRequest, ListFirewallRulesResponse, ListWafAttackEventsRequest,
+        ListWafAttackEventsResponse, SecurityOptions, SetFirewallRuleEnabledRequest,
         SetFirewallRuleEnabledResponse, UpdateSecurityOptionsRequest,
-        UpdateSecurityOptionsResponse, UpsertFirewallRuleRequest, UpsertFirewallRuleResponse,
+        UpdateSecurityOptionsResponse, UpdateWafSettingsRequest, UpdateWafSettingsResponse,
+        UpsertFirewallRuleRequest, UpsertFirewallRuleResponse, UpsertWafRuleRequest,
+        UpsertWafRuleResponse, WafAttackEvent, WafRule, WafRuleKind, WafSettings,
     },
 };
 
@@ -29,6 +33,9 @@ const APPLY_ENV: &str = "RUSTPANEL_SECURITY_APPLY";
 const DEFAULT_SCAN_BURST: u32 = 20;
 const DEFAULT_SCAN_WINDOW_SECONDS: u32 = 60;
 const DEFAULT_PANEL_ACCESS_PATH: &str = "/";
+const DEFAULT_WAF_REQUESTS_PER_MINUTE: u32 = 120;
+const DEFAULT_WAF_BURST: u32 = 30;
+const DEFAULT_WAF_BLOCK_SECONDS: u32 = 600;
 
 #[derive(Clone, Debug)]
 pub struct SecurityServiceImpl {
@@ -261,6 +268,123 @@ impl SecurityService for SecurityServiceImpl {
             options: Some(current.options.into_proto()),
         }))
     }
+
+    async fn get_waf_settings(
+        &self,
+        _request: Request<GetWafSettingsRequest>,
+    ) -> Result<GrpcResponse<GetWafSettingsResponse>, Status> {
+        let state = self.store.load().await?;
+
+        Ok(GrpcResponse::new(GetWafSettingsResponse {
+            status: Some(ok_response("ok")),
+            settings: Some(state.waf_settings.into_proto()),
+            rules: state
+                .waf_rules
+                .into_iter()
+                .map(StoredWafRule::into_proto)
+                .collect(),
+        }))
+    }
+
+    async fn update_waf_settings(
+        &self,
+        request: Request<UpdateWafSettingsRequest>,
+    ) -> Result<GrpcResponse<UpdateWafSettingsResponse>, Status> {
+        let settings = request
+            .into_inner()
+            .settings
+            .ok_or_else(|| Status::invalid_argument("waf settings are required"))?;
+        validate_waf_settings(&settings)?;
+
+        let mut state = self.store.load().await?;
+        state.waf_settings = StoredWafSettings::from_proto(settings);
+        apply_waf_config(&mut state.waf_settings, &state.waf_rules).await?;
+        self.store.save(&state).await?;
+
+        Ok(GrpcResponse::new(UpdateWafSettingsResponse {
+            status: Some(ok_response("waf settings updated")),
+            settings: Some(state.waf_settings.into_proto()),
+        }))
+    }
+
+    async fn upsert_waf_rule(
+        &self,
+        request: Request<UpsertWafRuleRequest>,
+    ) -> Result<GrpcResponse<UpsertWafRuleResponse>, Status> {
+        let mut rule = request
+            .into_inner()
+            .rule
+            .ok_or_else(|| Status::invalid_argument("waf rule is required"))?;
+        validate_waf_rule(&rule)?;
+
+        let mut state = self.store.load().await?;
+        let now = current_timestamp();
+        let existing = state
+            .waf_rules
+            .iter()
+            .find(|stored| stored.id == rule.id)
+            .cloned();
+        if rule.id.trim().is_empty() {
+            rule.id = Uuid::new_v4().to_string();
+            rule.created_at_seconds = now;
+        } else if let Some(existing) = &existing {
+            rule.created_at_seconds = existing.created_at_seconds;
+        } else {
+            rule.created_at_seconds = now;
+        }
+        rule.updated_at_seconds = now;
+        let stored = StoredWafRule::from_proto(rule.clone());
+        state.waf_rules.retain(|item| item.id != rule.id);
+        state.waf_rules.push(stored);
+        let mut waf_settings = state.waf_settings.clone();
+        apply_waf_config(&mut waf_settings, &state.waf_rules).await?;
+        state.waf_settings = waf_settings;
+        self.store.save(&state).await?;
+
+        Ok(GrpcResponse::new(UpsertWafRuleResponse {
+            status: Some(ok_response("waf rule saved")),
+            rule: Some(rule),
+        }))
+    }
+
+    async fn delete_waf_rule(
+        &self,
+        request: Request<DeleteWafRuleRequest>,
+    ) -> Result<GrpcResponse<DeleteWafRuleResponse>, Status> {
+        let id = request.into_inner().id;
+        let mut state = self.store.load().await?;
+        let before = state.waf_rules.len();
+        state.waf_rules.retain(|rule| rule.id != id);
+        if state.waf_rules.len() == before {
+            return Err(Status::not_found("waf rule not found"));
+        }
+        let mut waf_settings = state.waf_settings.clone();
+        apply_waf_config(&mut waf_settings, &state.waf_rules).await?;
+        state.waf_settings = waf_settings;
+        self.store.save(&state).await?;
+
+        Ok(GrpcResponse::new(DeleteWafRuleResponse {
+            status: Some(ok_response("waf rule deleted")),
+        }))
+    }
+
+    async fn list_waf_attack_events(
+        &self,
+        request: Request<ListWafAttackEventsRequest>,
+    ) -> Result<GrpcResponse<ListWafAttackEventsResponse>, Status> {
+        let limit = request.into_inner().limit.clamp(1, 500) as usize;
+        let mut events = self.store.load().await?.waf_events;
+        events.sort_by_key(|event| std::cmp::Reverse(event.occurred_at_seconds));
+        events.truncate(limit);
+
+        Ok(GrpcResponse::new(ListWafAttackEventsResponse {
+            status: Some(ok_response("ok")),
+            events: events
+                .into_iter()
+                .map(StoredWafAttackEvent::into_proto)
+                .collect(),
+        }))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -315,6 +439,12 @@ struct StoredSecurityState {
     rules: Vec<StoredFirewallRule>,
     #[serde(default)]
     options: StoredSecurityOptions,
+    #[serde(default)]
+    waf_settings: StoredWafSettings,
+    #[serde(default)]
+    waf_rules: Vec<StoredWafRule>,
+    #[serde(default)]
+    waf_events: Vec<StoredWafAttackEvent>,
 }
 
 impl StoredSecurityState {
@@ -328,6 +458,24 @@ impl StoredSecurityState {
         self.options.panel_access_path =
             normalize_panel_access_path(&self.options.panel_access_path)
                 .unwrap_or_else(|_| DEFAULT_PANEL_ACCESS_PATH.to_owned());
+        if self.waf_settings.requests_per_minute == 0 {
+            self.waf_settings.requests_per_minute = DEFAULT_WAF_REQUESTS_PER_MINUTE;
+        }
+        if self.waf_settings.burst == 0 {
+            self.waf_settings.burst = DEFAULT_WAF_BURST;
+        }
+        if self.waf_settings.block_duration_seconds == 0 {
+            self.waf_settings.block_duration_seconds = DEFAULT_WAF_BLOCK_SECONDS;
+        }
+        if self.waf_settings.nginx_config_path.trim().is_empty() {
+            self.waf_settings.nginx_config_path = default_waf_config_path();
+        }
+        if self.waf_settings.challenge_page_path.trim().is_empty() {
+            self.waf_settings.challenge_page_path = default_waf_challenge_path();
+        }
+        if self.waf_rules.is_empty() {
+            self.waf_rules = default_waf_rules();
+        }
         self
     }
 }
@@ -472,6 +620,175 @@ impl StoredSecurityOptions {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct StoredWafSettings {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    cc_protection_enabled: bool,
+    #[serde(default)]
+    captcha_challenge_enabled: bool,
+    #[serde(default)]
+    requests_per_minute: u32,
+    #[serde(default)]
+    burst: u32,
+    #[serde(default)]
+    block_duration_seconds: u32,
+    #[serde(default)]
+    nginx_config_path: String,
+    #[serde(default)]
+    challenge_page_path: String,
+    #[serde(default)]
+    last_apply_message: String,
+}
+
+impl Default for StoredWafSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cc_protection_enabled: true,
+            captcha_challenge_enabled: true,
+            requests_per_minute: DEFAULT_WAF_REQUESTS_PER_MINUTE,
+            burst: DEFAULT_WAF_BURST,
+            block_duration_seconds: DEFAULT_WAF_BLOCK_SECONDS,
+            nginx_config_path: default_waf_config_path(),
+            challenge_page_path: default_waf_challenge_path(),
+            last_apply_message: "waf config not written yet".to_owned(),
+        }
+    }
+}
+
+impl StoredWafSettings {
+    fn from_proto(settings: WafSettings) -> Self {
+        Self {
+            enabled: settings.enabled,
+            cc_protection_enabled: settings.cc_protection_enabled,
+            captcha_challenge_enabled: settings.captcha_challenge_enabled,
+            requests_per_minute: settings.requests_per_minute,
+            burst: settings.burst,
+            block_duration_seconds: settings.block_duration_seconds,
+            nginx_config_path: if settings.nginx_config_path.trim().is_empty() {
+                default_waf_config_path()
+            } else {
+                settings.nginx_config_path
+            },
+            challenge_page_path: if settings.challenge_page_path.trim().is_empty() {
+                default_waf_challenge_path()
+            } else {
+                settings.challenge_page_path
+            },
+            last_apply_message: settings.last_apply_message,
+        }
+    }
+
+    fn into_proto(self) -> WafSettings {
+        WafSettings {
+            enabled: self.enabled,
+            cc_protection_enabled: self.cc_protection_enabled,
+            captcha_challenge_enabled: self.captcha_challenge_enabled,
+            requests_per_minute: self.requests_per_minute,
+            burst: self.burst,
+            block_duration_seconds: self.block_duration_seconds,
+            nginx_config_path: self.nginx_config_path,
+            challenge_page_path: self.challenge_page_path,
+            last_apply_message: self.last_apply_message,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct StoredWafRule {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    kind: i32,
+    #[serde(default)]
+    pattern: String,
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    scope_domain: String,
+    #[serde(default)]
+    comment: String,
+    #[serde(default)]
+    created_at_seconds: u64,
+    #[serde(default)]
+    updated_at_seconds: u64,
+}
+
+impl StoredWafRule {
+    fn from_proto(rule: WafRule) -> Self {
+        Self {
+            id: rule.id,
+            name: rule.name,
+            kind: rule.kind,
+            pattern: rule.pattern,
+            enabled: rule.enabled,
+            scope_domain: rule.scope_domain,
+            comment: rule.comment,
+            created_at_seconds: rule.created_at_seconds,
+            updated_at_seconds: rule.updated_at_seconds,
+        }
+    }
+
+    fn into_proto(self) -> WafRule {
+        WafRule {
+            id: self.id,
+            name: self.name,
+            kind: self.kind,
+            pattern: self.pattern,
+            enabled: self.enabled,
+            scope_domain: self.scope_domain,
+            comment: self.comment,
+            created_at_seconds: self.created_at_seconds,
+            updated_at_seconds: self.updated_at_seconds,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct StoredWafAttackEvent {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    source_ip: String,
+    #[serde(default)]
+    country_code: String,
+    #[serde(default)]
+    country_name: String,
+    #[serde(default)]
+    rule_id: String,
+    #[serde(default)]
+    rule_name: String,
+    #[serde(default)]
+    kind: i32,
+    #[serde(default)]
+    path: String,
+    #[serde(default)]
+    user_agent: String,
+    #[serde(default)]
+    occurred_at_seconds: u64,
+}
+
+impl StoredWafAttackEvent {
+    fn into_proto(self) -> WafAttackEvent {
+        WafAttackEvent {
+            id: self.id,
+            source_ip: self.source_ip,
+            country_code: self.country_code,
+            country_name: self.country_name,
+            rule_id: self.rule_id,
+            rule_name: self.rule_name,
+            kind: self.kind,
+            path: self.path,
+            user_agent: self.user_agent,
+            occurred_at_seconds: self.occurred_at_seconds,
+        }
+    }
+}
+
 async fn apply_rule_change(
     old_rule: Option<&StoredFirewallRule>,
     new_rule: Option<&StoredFirewallRule>,
@@ -533,6 +850,62 @@ async fn apply_options(options: &mut StoredSecurityOptions) -> Result<(), Status
     Ok(())
 }
 
+async fn apply_waf_config(
+    settings: &mut StoredWafSettings,
+    rules: &[StoredWafRule],
+) -> Result<(), Status> {
+    validate_waf_settings(&settings.clone().into_proto())?;
+    for rule in rules {
+        validate_waf_rule(&rule.clone().into_proto())?;
+    }
+
+    let config_path = PathBuf::from(&settings.nginx_config_path);
+    if let Some(parent) = config_path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+    let challenge_path = PathBuf::from(&settings.challenge_page_path);
+    if let Some(parent) = challenge_path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+
+    tokio::fs::write(&challenge_path, waf_challenge_page())
+        .await
+        .map_err(io_status)?;
+    tokio::fs::write(&config_path, render_waf_nginx_config(settings, rules)?)
+        .await
+        .map_err(io_status)?;
+
+    if settings.enabled && should_apply_system_firewall() {
+        let output = Command::new("nginx")
+            .arg("-t")
+            .output()
+            .await
+            .map_err(io_status)?;
+        if !output.status.success() {
+            return Err(Status::internal(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
+        }
+        let output = Command::new("nginx")
+            .arg("-s")
+            .arg("reload")
+            .output()
+            .await
+            .map_err(io_status)?;
+        if !output.status.success() {
+            return Err(Status::internal(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
+        }
+        settings.last_apply_message = "waf config written and nginx reloaded".to_owned();
+    } else {
+        settings.last_apply_message =
+            format!("waf config written to {}", settings.nginx_config_path);
+    }
+
+    Ok(())
+}
+
 async fn apply_imported_state(
     state: &StoredSecurityState,
     options: &mut StoredSecurityOptions,
@@ -571,6 +944,118 @@ async fn apply_imported_state(
     run_commands(commands).await?;
     options.last_apply_message = format!("imported rules applied via {}", backend_name(backend));
     Ok(())
+}
+
+fn render_waf_nginx_config(
+    settings: &StoredWafSettings,
+    rules: &[StoredWafRule],
+) -> Result<String, Status> {
+    let mut config = String::new();
+    config.push_str("# Generated by RustPanel. Include the zone line in http{} and the remaining lines in server{}.\n");
+    if settings.enabled && settings.cc_protection_enabled {
+        config.push_str(&format!(
+            "limit_req_zone $binary_remote_addr zone=rustpanel_cc:10m rate={}r/m;\n\n",
+            settings.requests_per_minute.max(1)
+        ));
+        config.push_str(&format!(
+            "limit_req zone=rustpanel_cc burst={} nodelay;\n",
+            settings.burst.max(1)
+        ));
+        if settings.captcha_challenge_enabled {
+            config.push_str("error_page 429 = /rustpanel-waf-challenge.html;\n");
+            config.push_str("location = /rustpanel-waf-challenge.html {\n");
+            config.push_str("    default_type text/html;\n");
+            config.push_str(&format!(
+                "    alias {};\n",
+                settings.challenge_page_path.replace('\\', "\\\\")
+            ));
+            config.push_str("}\n");
+        }
+    }
+
+    if settings.enabled {
+        for rule in rules.iter().filter(|rule| rule.enabled) {
+            let kind = waf_rule_kind(rule.kind)?;
+            let target = if kind == WafRuleKind::Cc {
+                "429"
+            } else {
+                "403"
+            };
+            config.push_str(&format!(
+                "if ($request_uri ~* \"{}\") {{ return {}; }} # rustpanel:{}:{}\n",
+                escape_nginx_regex(&rule.pattern),
+                target,
+                waf_kind_name(kind),
+                rule.id
+            ));
+            if matches!(kind, WafRuleKind::SqlInjection | WafRuleKind::Xss) {
+                config.push_str(&format!(
+                    "if ($query_string ~* \"{}\") {{ return {}; }} # rustpanel:{}:{}\n",
+                    escape_nginx_regex(&rule.pattern),
+                    target,
+                    waf_kind_name(kind),
+                    rule.id
+                ));
+            }
+        }
+    }
+
+    Ok(config)
+}
+
+fn waf_challenge_page() -> &'static str {
+    r#"<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>RustPanel WAF</title></head>
+<body>
+<main style="font-family:system-ui;padding:32px;max-width:520px;margin:auto">
+<h1>访问验证</h1>
+<p>请求频率过高，请完成浏览器验证后继续。</p>
+<button onclick="document.cookie='rustpanel_waf_pass=1;path=/;max-age=600';location.reload()">继续访问</button>
+</main>
+</body>
+</html>
+"#
+}
+
+fn default_waf_rules() -> Vec<StoredWafRule> {
+    let now = current_timestamp();
+    [
+        (
+            "preset-sqli",
+            "SQL 注入过滤",
+            WafRuleKind::SqlInjection,
+            "(union(.*)select|select(.*)from|information_schema|sleep\\(|benchmark\\()",
+            "拦截常见 SQL 注入探测",
+        ),
+        (
+            "preset-xss",
+            "XSS 过滤",
+            WafRuleKind::Xss,
+            "(<script|javascript:|onerror=|onload=|document\\.cookie)",
+            "拦截常见脚本注入载荷",
+        ),
+        (
+            "preset-scanner",
+            "扫描器拦截",
+            WafRuleKind::Scanner,
+            "(\\.env|wp-config\\.php|/phpmyadmin|/\\.git/|/vendor/phpunit)",
+            "拦截恶意扫描路径",
+        ),
+    ]
+    .into_iter()
+    .map(|(id, name, kind, pattern, comment)| StoredWafRule {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        kind: kind.into(),
+        pattern: pattern.to_owned(),
+        enabled: true,
+        scope_domain: String::new(),
+        comment: comment.to_owned(),
+        created_at_seconds: now,
+        updated_at_seconds: now,
+    })
+    .collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -889,6 +1374,46 @@ fn validate_options(options: &SecurityOptions) -> Result<(), Status> {
     Ok(())
 }
 
+fn validate_waf_settings(settings: &WafSettings) -> Result<(), Status> {
+    if settings.requests_per_minute == 0 {
+        return Err(Status::invalid_argument(
+            "requests_per_minute must be greater than 0",
+        ));
+    }
+    if settings.burst == 0 {
+        return Err(Status::invalid_argument("burst must be greater than 0"));
+    }
+    if settings.block_duration_seconds == 0 {
+        return Err(Status::invalid_argument(
+            "block_duration_seconds must be greater than 0",
+        ));
+    }
+    if settings.nginx_config_path.trim().is_empty()
+        || settings.challenge_page_path.trim().is_empty()
+    {
+        return Err(Status::invalid_argument(
+            "nginx_config_path and challenge_page_path are required",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_waf_rule(rule: &WafRule) -> Result<(), Status> {
+    if rule.name.trim().is_empty() {
+        return Err(Status::invalid_argument("waf rule name is required"));
+    }
+    let _ = waf_rule_kind(rule.kind)?;
+    if rule.pattern.trim().is_empty() {
+        return Err(Status::invalid_argument("waf rule pattern is required"));
+    }
+    if rule.pattern.contains('"') || rule.pattern.contains('\n') || rule.pattern.contains('\r') {
+        return Err(Status::invalid_argument(
+            "waf rule pattern must not contain quotes or new lines",
+        ));
+    }
+    Ok(())
+}
+
 pub fn normalize_panel_access_path(path: &str) -> Result<String, Status> {
     let path = path.trim();
     if path.is_empty() || path == "/" {
@@ -957,6 +1482,13 @@ fn firewall_backend(value: i32) -> Result<FirewallBackend, Status> {
         .ok_or_else(|| Status::invalid_argument("backend preference is invalid"))
 }
 
+fn waf_rule_kind(value: i32) -> Result<WafRuleKind, Status> {
+    WafRuleKind::try_from(value)
+        .ok()
+        .filter(|kind| *kind != WafRuleKind::Unspecified)
+        .ok_or_else(|| Status::invalid_argument("waf rule kind is required"))
+}
+
 fn backend_preference(options: &StoredSecurityOptions) -> FirewallBackend {
     firewall_backend(options.backend_preference).unwrap_or(FirewallBackend::Unspecified)
 }
@@ -977,6 +1509,21 @@ fn backend_name(backend: FirewallBackend) -> &'static str {
         FirewallBackend::Iptables => "iptables",
         FirewallBackend::Unspecified => "unspecified",
     }
+}
+
+fn waf_kind_name(kind: WafRuleKind) -> &'static str {
+    match kind {
+        WafRuleKind::Cc => "cc",
+        WafRuleKind::SqlInjection => "sql-injection",
+        WafRuleKind::Xss => "xss",
+        WafRuleKind::Keyword => "keyword",
+        WafRuleKind::Scanner => "scanner",
+        WafRuleKind::Unspecified => "unspecified",
+    }
+}
+
+fn escape_nginx_regex(pattern: &str) -> String {
+    pattern.replace('\\', "\\\\")
 }
 
 fn firewall_endpoint(value: &str) -> &str {
@@ -1022,6 +1569,16 @@ fn ip_family(rule: &StoredFirewallRule) -> &'static str {
 
 fn should_apply_system_firewall() -> bool {
     env::var(APPLY_ENV).is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE"))
+}
+
+fn default_waf_config_path() -> String {
+    env::var("RUSTPANEL_WAF_CONFIG_PATH")
+        .unwrap_or_else(|_| format!("{DEFAULT_SECURITY_ROOT}/nginx-waf.conf"))
+}
+
+fn default_waf_challenge_path() -> String {
+    env::var("RUSTPANEL_WAF_CHALLENGE_PATH")
+        .unwrap_or_else(|_| format!("{DEFAULT_SECURITY_ROOT}/waf-challenge.html"))
 }
 
 fn totp_secret_configured() -> bool {
@@ -1137,5 +1694,38 @@ mod tests {
         );
         assert!(normalize_panel_access_path("secure").is_err());
         assert!(normalize_panel_access_path("/bad path").is_err());
+    }
+
+    #[test]
+    fn renders_waf_nginx_config_with_presets() {
+        let settings = StoredWafSettings {
+            enabled: true,
+            cc_protection_enabled: true,
+            captcha_challenge_enabled: true,
+            ..StoredWafSettings::default()
+        };
+        let config = render_waf_nginx_config(&settings, &default_waf_rules()).expect("config");
+
+        assert!(config.contains("limit_req_zone"));
+        assert!(config.contains("rustpanel-waf-challenge.html"));
+        assert!(config.contains("information_schema"));
+        assert!(config.contains("wp-config"));
+    }
+
+    #[test]
+    fn validates_waf_rule_pattern() {
+        let rule = WafRule {
+            id: String::new(),
+            name: "bad".to_owned(),
+            kind: WafRuleKind::Xss.into(),
+            pattern: "\"bad\"".to_owned(),
+            enabled: true,
+            scope_domain: String::new(),
+            comment: String::new(),
+            created_at_seconds: 0,
+            updated_at_seconds: 0,
+        };
+
+        assert!(validate_waf_rule(&rule).is_err());
     }
 }

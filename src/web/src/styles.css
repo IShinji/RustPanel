@@ -306,6 +306,72 @@ button {
   white-space: normal;
 }
 
+.waf-settings,
+.waf-rule-form {
+  align-content: start;
+}
+
+.waf-map,
+.waf-ranking {
+  grid-column: span 2;
+}
+
+.world-map {
+  aspect-ratio: 2 / 1;
+  background:
+    linear-gradient(90deg, transparent 23%, #dfe7e9 23% 24%, transparent 24% 51%, #dfe7e9 51% 52%, transparent 52% 78%, #dfe7e9 78% 79%, transparent 79%),
+    linear-gradient(0deg, transparent 31%, #dfe7e9 31% 32%, transparent 32% 66%, #dfe7e9 66% 67%, transparent 67%),
+    #f7fafb;
+  border: 1px solid #dfe7e9;
+  border-radius: 8px;
+  min-height: 220px;
+  position: relative;
+}
+
+.map-point {
+  align-items: center;
+  background: #ad3d20;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  height: 34px;
+  justify-content: center;
+  position: absolute;
+  width: 34px;
+}
+
+.point-1 { left: 19%; top: 34%; }
+.point-2 { left: 49%; top: 30%; }
+.point-3 { left: 68%; top: 42%; }
+.point-4 { left: 82%; top: 69%; }
+.point-5 { left: 33%; top: 62%; }
+.point-6 { left: 58%; top: 58%; }
+.point-7 { left: 73%; top: 23%; }
+.point-8 { left: 12%; top: 62%; }
+
+.rank-row {
+  align-items: center;
+  border-bottom: 1px solid #e8eef0;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(80px, auto) auto;
+  min-height: 42px;
+}
+
+.rank-row:last-child {
+  border-bottom: 0;
+}
+
+.rank-row strong,
+.rank-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .backup-panel textarea {
   border: 1px solid #ccd7da;
   border-radius: 6px;
