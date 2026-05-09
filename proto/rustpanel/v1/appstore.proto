@@ -4,6 +4,13 @@ package rustpanel.v1;
 
 import "rustpanel/v1/common.proto";
 
+// AppVersion 描述模板支持的一个运行环境版本。
+message AppVersion {
+  string version = 1;
+  string image = 2;
+  bool recommended = 3;
+}
+
 // AppTemplate 描述一个可部署应用模板。
 message AppTemplate {
   string slug = 1;
@@ -11,6 +18,21 @@ message AppTemplate {
   string description = 3;
   string image = 4;
   repeated string default_ports = 5;
+  repeated AppVersion versions = 6;
+  string default_version = 7;
+  string runtime_kind = 8;
+}
+
+// InstalledApp 描述已安装应用。
+message InstalledApp {
+  string app_name = 1;
+  string slug = 2;
+  string version = 3;
+  string image = 4;
+  string compose_path = 5;
+  string state = 6;
+  int64 installed_at_seconds = 7;
+  int64 updated_at_seconds = 8;
 }
 
 // ListAppTemplatesRequest 表示应用模板列表请求。
@@ -26,6 +48,7 @@ message ListAppTemplatesResponse {
 message DeployAppRequest {
   string slug = 1;
   string app_name = 2;
+  string version = 3;
 }
 
 // DeployAppResponse 返回应用部署结果。
@@ -33,10 +56,46 @@ message DeployAppResponse {
   Response status = 1;
   string compose_path = 2;
   string compose_yaml = 3;
+  InstalledApp app = 4;
+}
+
+// ListInstalledAppsRequest 表示已安装应用列表请求。
+message ListInstalledAppsRequest {}
+
+// ListInstalledAppsResponse 返回已安装应用列表。
+message ListInstalledAppsResponse {
+  Response status = 1;
+  repeated InstalledApp apps = 2;
+}
+
+// UninstallAppRequest 表示应用卸载请求。
+message UninstallAppRequest {
+  string app_name = 1;
+}
+
+// UninstallAppResponse 返回应用卸载结果。
+message UninstallAppResponse {
+  Response status = 1;
+}
+
+// UpdateAppRequest 表示应用版本更新请求。
+message UpdateAppRequest {
+  string app_name = 1;
+  string version = 2;
+}
+
+// UpdateAppResponse 返回应用版本更新结果。
+message UpdateAppResponse {
+  Response status = 1;
+  InstalledApp app = 2;
+  string compose_yaml = 3;
 }
 
 // AppStoreService 提供 Docker-first 应用市场能力。
 service AppStoreService {
   rpc ListAppTemplates(ListAppTemplatesRequest) returns (ListAppTemplatesResponse);
   rpc DeployApp(DeployAppRequest) returns (DeployAppResponse);
+  rpc ListInstalledApps(ListInstalledAppsRequest) returns (ListInstalledAppsResponse);
+  rpc UninstallApp(UninstallAppRequest) returns (UninstallAppResponse);
+  rpc UpdateApp(UpdateAppRequest) returns (UpdateAppResponse);
 }

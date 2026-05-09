@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/docker.proto.
  */
 export const file_rustpanel_v1_docker: GenFile = /*@__PURE__*/
-  fileDesc("ChlydXN0cGFuZWwvdjEvZG9ja2VyLnByb3RvEgxydXN0cGFuZWwudjEiVAoNQ29udGFpbmVyUG9ydBIKCgJpcBgBIAEoCRIUCgxwcml2YXRlX3BvcnQYAiABKA0SEwoLcHVibGljX3BvcnQYAyABKA0SDAoEdHlwZRgEIAEoCSKkAQoNQ29udGFpbmVySXRlbRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg0KBWltYWdlGAMgASgJEg0KBXN0YXRlGAQgASgJEhMKC3N0YXR1c190ZXh0GAUgASgJEioKBXBvcnRzGAYgAygLMhsucnVzdHBhbmVsLnYxLkNvbnRhaW5lclBvcnQSGgoSY3JlYXRlZF9hdF9zZWNvbmRzGAcgASgDIiQKFUxpc3RDb250YWluZXJzUmVxdWVzdBILCgNhbGwYASABKAgicQoWTGlzdENvbnRhaW5lcnNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLwoKY29udGFpbmVycxgCIAMoCzIbLnJ1c3RwYW5lbC52MS5Db250YWluZXJJdGVtIi0KFVN0YXJ0Q29udGFpbmVyUmVxdWVzdBIUCgxjb250YWluZXJfaWQYASABKAkiQAoWU3RhcnRDb250YWluZXJSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiLAoUU3RvcENvbnRhaW5lclJlcXVlc3QSFAoMY29udGFpbmVyX2lkGAEgASgJIj8KFVN0b3BDb250YWluZXJSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiLwoXUmVzdGFydENvbnRhaW5lclJlcXVlc3QSFAoMY29udGFpbmVyX2lkGAEgASgJIkIKGFJlc3RhcnRDb250YWluZXJSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiLgoWUmVtb3ZlQ29udGFpbmVyUmVxdWVzdBIUCgxjb250YWluZXJfaWQYASABKAkiQQoXUmVtb3ZlQ29udGFpbmVyUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlIi0KFVBhdXNlQ29udGFpbmVyUmVxdWVzdBIUCgxjb250YWluZXJfaWQYASABKAkiQAoWUGF1c2VDb250YWluZXJSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiLgoQUHVsbEltYWdlUmVxdWVzdBINCgVpbWFnZRgBIAEoCRILCgN0YWcYAiABKAkiOwoRUHVsbEltYWdlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlIkUKGVdhdGNoQ29udGFpbmVyTG9nc1JlcXVlc3QSFAoMY29udGFpbmVyX2lkGAEgASgJEhIKCnRhaWxfbGluZXMYAiABKA0iUgoaV2F0Y2hDb250YWluZXJMb2dzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEgwKBGxpbmUYAiABKAky/AUKDURvY2tlclNlcnZpY2USWwoOTGlzdENvbnRhaW5lcnMSIy5ydXN0cGFuZWwudjEuTGlzdENvbnRhaW5lcnNSZXF1ZXN0GiQucnVzdHBhbmVsLnYxLkxpc3RDb250YWluZXJzUmVzcG9uc2USWwoOU3RhcnRDb250YWluZXISIy5ydXN0cGFuZWwudjEuU3RhcnRDb250YWluZXJSZXF1ZXN0GiQucnVzdHBhbmVsLnYxLlN0YXJ0Q29udGFpbmVyUmVzcG9uc2USWAoNU3RvcENvbnRhaW5lchIiLnJ1c3RwYW5lbC52MS5TdG9wQ29udGFpbmVyUmVxdWVzdBojLnJ1c3RwYW5lbC52MS5TdG9wQ29udGFpbmVyUmVzcG9uc2USYQoQUmVzdGFydENvbnRhaW5lchIlLnJ1c3RwYW5lbC52MS5SZXN0YXJ0Q29udGFpbmVyUmVxdWVzdBomLnJ1c3RwYW5lbC52MS5SZXN0YXJ0Q29udGFpbmVyUmVzcG9uc2USXgoPUmVtb3ZlQ29udGFpbmVyEiQucnVzdHBhbmVsLnYxLlJlbW92ZUNvbnRhaW5lclJlcXVlc3QaJS5ydXN0cGFuZWwudjEuUmVtb3ZlQ29udGFpbmVyUmVzcG9uc2USWwoOUGF1c2VDb250YWluZXISIy5ydXN0cGFuZWwudjEuUGF1c2VDb250YWluZXJSZXF1ZXN0GiQucnVzdHBhbmVsLnYxLlBhdXNlQ29udGFpbmVyUmVzcG9uc2USTAoJUHVsbEltYWdlEh4ucnVzdHBhbmVsLnYxLlB1bGxJbWFnZVJlcXVlc3QaHy5ydXN0cGFuZWwudjEuUHVsbEltYWdlUmVzcG9uc2USaQoSV2F0Y2hDb250YWluZXJMb2dzEicucnVzdHBhbmVsLnYxLldhdGNoQ29udGFpbmVyTG9nc1JlcXVlc3QaKC5ydXN0cGFuZWwudjEuV2F0Y2hDb250YWluZXJMb2dzUmVzcG9uc2UwAWIGcHJvdG8z", [file_rustpanel_v1_common]);
+  fileDesc("ChlydXN0cGFuZWwvdjEvZG9ja2VyLnByb3RvEgxydXN0cGFuZWwudjEiVAoNQ29udGFpbmVyUG9ydBIKCgJpcBgBIAEoCRIUCgxwcml2YXRlX3BvcnQYAiABKA0SEwoLcHVibGljX3BvcnQYAyABKA0SDAoEdHlwZRgEIAEoCSLZAQoNQ29udGFpbmVySXRlbRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg0KBWltYWdlGAMgASgJEg0KBXN0YXRlGAQgASgJEhMKC3N0YXR1c190ZXh0GAUgASgJEioKBXBvcnRzGAYgAygLMhsucnVzdHBhbmVsLnYxLkNvbnRhaW5lclBvcnQSGgoSY3JlYXRlZF9hdF9zZWNvbmRzGAcgASgDEhcKD2NwdV9saW1pdF9jb3JlcxgIIAEoARIaChJtZW1vcnlfbGltaXRfYnl0ZXMYCSABKAQibgoJSW1hZ2VJdGVtEgoKAmlkGAEgASgJEhEKCXJlcG9fdGFncxgCIAMoCRIaChJjcmVhdGVkX2F0X3NlY29uZHMYAyABKAMSEgoKc2l6ZV9ieXRlcxgEIAEoAxISCgpjb250YWluZXJzGAUgASgDIpIBCg5Db21wb3NlUHJvamVjdBIMCgRuYW1lGAEgASgJEhQKDGNvbXBvc2VfcGF0aBgCIAEoCRIUCgxjb21wb3NlX3lhbWwYAyABKAkSFQoNc2VydmljZV9uYW1lcxgEIAMoCRITCgtzdGF0dXNfdGV4dBgFIAEoCRIaChJ1cGRhdGVkX2F0X3NlY29uZHMYBiABKAMiJAoVTGlzdENvbnRhaW5lcnNSZXF1ZXN0EgsKA2FsbBgBIAEoCCJxChZMaXN0Q29udGFpbmVyc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIvCgpjb250YWluZXJzGAIgAygLMhsucnVzdHBhbmVsLnYxLkNvbnRhaW5lckl0ZW0iLQoVU3RhcnRDb250YWluZXJSZXF1ZXN0EhQKDGNvbnRhaW5lcl9pZBgBIAEoCSJAChZTdGFydENvbnRhaW5lclJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIsChRTdG9wQ29udGFpbmVyUmVxdWVzdBIUCgxjb250YWluZXJfaWQYASABKAkiPwoVU3RvcENvbnRhaW5lclJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIvChdSZXN0YXJ0Q29udGFpbmVyUmVxdWVzdBIUCgxjb250YWluZXJfaWQYASABKAkiQgoYUmVzdGFydENvbnRhaW5lclJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIuChZSZW1vdmVDb250YWluZXJSZXF1ZXN0EhQKDGNvbnRhaW5lcl9pZBgBIAEoCSJBChdSZW1vdmVDb250YWluZXJSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiLQoVUGF1c2VDb250YWluZXJSZXF1ZXN0EhQKDGNvbnRhaW5lcl9pZBgBIAEoCSJAChZQYXVzZUNvbnRhaW5lclJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIuChBQdWxsSW1hZ2VSZXF1ZXN0Eg0KBWltYWdlGAEgASgJEgsKA3RhZxgCIAEoCSI7ChFQdWxsSW1hZ2VSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiMwoVV2F0Y2hJbWFnZVB1bGxSZXF1ZXN0Eg0KBWltYWdlGAEgASgJEgsKA3RhZxgCIAEoCSKzAQoWV2F0Y2hJbWFnZVB1bGxSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USEAoIaW1hZ2VfaWQYAiABKAkSEwoLc3RhdHVzX3RleHQYAyABKAkSEAoIcHJvZ3Jlc3MYBCABKAkSFQoNY3VycmVudF9ieXRlcxgFIAEoBBITCgt0b3RhbF9ieXRlcxgGIAEoBBIMCgRkb25lGAcgASgIIiAKEUxpc3RJbWFnZXNSZXF1ZXN0EgsKA2FsbBgBIAEoCCJlChJMaXN0SW1hZ2VzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEicKBmltYWdlcxgCIAMoCzIXLnJ1c3RwYW5lbC52MS5JbWFnZUl0ZW0iaQocU2V0Q29udGFpbmVyUmVzb3VyY2VzUmVxdWVzdBIUCgxjb250YWluZXJfaWQYASABKAkSFwoPY3B1X2xpbWl0X2NvcmVzGAIgASgBEhoKEm1lbW9yeV9saW1pdF9ieXRlcxgDIAEoBCJ3Ch1TZXRDb250YWluZXJSZXNvdXJjZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLgoJY29udGFpbmVyGAIgASgLMhsucnVzdHBhbmVsLnYxLkNvbnRhaW5lckl0ZW0ieAobUHJ1bmVEb2NrZXJSZXNvdXJjZXNSZXF1ZXN0Eg4KBmltYWdlcxgBIAEoCBISCgpjb250YWluZXJzGAIgASgIEg8KB3ZvbHVtZXMYAyABKAgSEAoIbmV0d29ya3MYBCABKAgSEgoKYWxsX2ltYWdlcxgFIAEoCCKNAQocUHJ1bmVEb2NrZXJSZXNvdXJjZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USFQoNZGVsZXRlZF9jb3VudBgCIAEoDRIdChVzcGFjZV9yZWNsYWltZWRfYnl0ZXMYAyABKAQSDwoHc3VtbWFyeRgEIAEoCSJeChdSb2xsYmFja0ltYWdlVGFnUmVxdWVzdBIUCgxzb3VyY2VfaW1hZ2UYASABKAkSGQoRdGFyZ2V0X3JlcG9zaXRvcnkYAiABKAkSEgoKdGFyZ2V0X3RhZxgDIAEoCSJCChhSb2xsYmFja0ltYWdlVGFnUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlIhwKGkxpc3RDb21wb3NlUHJvamVjdHNSZXF1ZXN0InUKG0xpc3RDb21wb3NlUHJvamVjdHNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLgoIcHJvamVjdHMYAiADKAsyHC5ydXN0cGFuZWwudjEuQ29tcG9zZVByb2plY3QiQQobVXBzZXJ0Q29tcG9zZVByb2plY3RSZXF1ZXN0EgwKBG5hbWUYASABKAkSFAoMY29tcG9zZV95YW1sGAIgASgJInUKHFVwc2VydENvbXBvc2VQcm9qZWN0UmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEi0KB3Byb2plY3QYAiABKAsyHC5ydXN0cGFuZWwudjEuQ29tcG9zZVByb2plY3QiKwobRGVwbG95Q29tcG9zZVByb2plY3RSZXF1ZXN0EgwKBG5hbWUYASABKAkidQocRGVwbG95Q29tcG9zZVByb2plY3RSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLQoHcHJvamVjdBgCIAEoCzIcLnJ1c3RwYW5lbC52MS5Db21wb3NlUHJvamVjdCJBChtSZW1vdmVDb21wb3NlUHJvamVjdFJlcXVlc3QSDAoEbmFtZRgBIAEoCRIUCgxkZWxldGVfZmlsZXMYAiABKAgiRgocUmVtb3ZlQ29tcG9zZVByb2plY3RSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiRQoZV2F0Y2hDb250YWluZXJMb2dzUmVxdWVzdBIUCgxjb250YWluZXJfaWQYASABKAkSEgoKdGFpbF9saW5lcxgCIAEoDSJSChpXYXRjaENvbnRhaW5lckxvZ3NSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USDAoEbGluZRgCIAEoCTKpDQoNRG9ja2VyU2VydmljZRJbCg5MaXN0Q29udGFpbmVycxIjLnJ1c3RwYW5lbC52MS5MaXN0Q29udGFpbmVyc1JlcXVlc3QaJC5ydXN0cGFuZWwudjEuTGlzdENvbnRhaW5lcnNSZXNwb25zZRJbCg5TdGFydENvbnRhaW5lchIjLnJ1c3RwYW5lbC52MS5TdGFydENvbnRhaW5lclJlcXVlc3QaJC5ydXN0cGFuZWwudjEuU3RhcnRDb250YWluZXJSZXNwb25zZRJYCg1TdG9wQ29udGFpbmVyEiIucnVzdHBhbmVsLnYxLlN0b3BDb250YWluZXJSZXF1ZXN0GiMucnVzdHBhbmVsLnYxLlN0b3BDb250YWluZXJSZXNwb25zZRJhChBSZXN0YXJ0Q29udGFpbmVyEiUucnVzdHBhbmVsLnYxLlJlc3RhcnRDb250YWluZXJSZXF1ZXN0GiYucnVzdHBhbmVsLnYxLlJlc3RhcnRDb250YWluZXJSZXNwb25zZRJeCg9SZW1vdmVDb250YWluZXISJC5ydXN0cGFuZWwudjEuUmVtb3ZlQ29udGFpbmVyUmVxdWVzdBolLnJ1c3RwYW5lbC52MS5SZW1vdmVDb250YWluZXJSZXNwb25zZRJbCg5QYXVzZUNvbnRhaW5lchIjLnJ1c3RwYW5lbC52MS5QYXVzZUNvbnRhaW5lclJlcXVlc3QaJC5ydXN0cGFuZWwudjEuUGF1c2VDb250YWluZXJSZXNwb25zZRJMCglQdWxsSW1hZ2USHi5ydXN0cGFuZWwudjEuUHVsbEltYWdlUmVxdWVzdBofLnJ1c3RwYW5lbC52MS5QdWxsSW1hZ2VSZXNwb25zZRJdCg5XYXRjaEltYWdlUHVsbBIjLnJ1c3RwYW5lbC52MS5XYXRjaEltYWdlUHVsbFJlcXVlc3QaJC5ydXN0cGFuZWwudjEuV2F0Y2hJbWFnZVB1bGxSZXNwb25zZTABEk8KCkxpc3RJbWFnZXMSHy5ydXN0cGFuZWwudjEuTGlzdEltYWdlc1JlcXVlc3QaIC5ydXN0cGFuZWwudjEuTGlzdEltYWdlc1Jlc3BvbnNlEnAKFVNldENvbnRhaW5lclJlc291cmNlcxIqLnJ1c3RwYW5lbC52MS5TZXRDb250YWluZXJSZXNvdXJjZXNSZXF1ZXN0GisucnVzdHBhbmVsLnYxLlNldENvbnRhaW5lclJlc291cmNlc1Jlc3BvbnNlEm0KFFBydW5lRG9ja2VyUmVzb3VyY2VzEikucnVzdHBhbmVsLnYxLlBydW5lRG9ja2VyUmVzb3VyY2VzUmVxdWVzdBoqLnJ1c3RwYW5lbC52MS5QcnVuZURvY2tlclJlc291cmNlc1Jlc3BvbnNlEmEKEFJvbGxiYWNrSW1hZ2VUYWcSJS5ydXN0cGFuZWwudjEuUm9sbGJhY2tJbWFnZVRhZ1JlcXVlc3QaJi5ydXN0cGFuZWwudjEuUm9sbGJhY2tJbWFnZVRhZ1Jlc3BvbnNlEmoKE0xpc3RDb21wb3NlUHJvamVjdHMSKC5ydXN0cGFuZWwudjEuTGlzdENvbXBvc2VQcm9qZWN0c1JlcXVlc3QaKS5ydXN0cGFuZWwudjEuTGlzdENvbXBvc2VQcm9qZWN0c1Jlc3BvbnNlEm0KFFVwc2VydENvbXBvc2VQcm9qZWN0EikucnVzdHBhbmVsLnYxLlVwc2VydENvbXBvc2VQcm9qZWN0UmVxdWVzdBoqLnJ1c3RwYW5lbC52MS5VcHNlcnRDb21wb3NlUHJvamVjdFJlc3BvbnNlEm0KFERlcGxveUNvbXBvc2VQcm9qZWN0EikucnVzdHBhbmVsLnYxLkRlcGxveUNvbXBvc2VQcm9qZWN0UmVxdWVzdBoqLnJ1c3RwYW5lbC52MS5EZXBsb3lDb21wb3NlUHJvamVjdFJlc3BvbnNlEm0KFFJlbW92ZUNvbXBvc2VQcm9qZWN0EikucnVzdHBhbmVsLnYxLlJlbW92ZUNvbXBvc2VQcm9qZWN0UmVxdWVzdBoqLnJ1c3RwYW5lbC52MS5SZW1vdmVDb21wb3NlUHJvamVjdFJlc3BvbnNlEmkKEldhdGNoQ29udGFpbmVyTG9ncxInLnJ1c3RwYW5lbC52MS5XYXRjaENvbnRhaW5lckxvZ3NSZXF1ZXN0GigucnVzdHBhbmVsLnYxLldhdGNoQ29udGFpbmVyTG9nc1Jlc3BvbnNlMAFiBnByb3RvMw", [file_rustpanel_v1_common]);
 
 /**
  * ContainerPort 描述容器端口映射。
@@ -88,6 +88,16 @@ export type ContainerItem = Message<"rustpanel.v1.ContainerItem"> & {
    * @generated from field: int64 created_at_seconds = 7;
    */
   createdAtSeconds: bigint;
+
+  /**
+   * @generated from field: double cpu_limit_cores = 8;
+   */
+  cpuLimitCores: number;
+
+  /**
+   * @generated from field: uint64 memory_limit_bytes = 9;
+   */
+  memoryLimitBytes: bigint;
 };
 
 /**
@@ -96,6 +106,89 @@ export type ContainerItem = Message<"rustpanel.v1.ContainerItem"> & {
  */
 export const ContainerItemSchema: GenMessage<ContainerItem> = /*@__PURE__*/
   messageDesc(file_rustpanel_v1_docker, 1);
+
+/**
+ * ImageItem 描述本地镜像。
+ *
+ * @generated from message rustpanel.v1.ImageItem
+ */
+export type ImageItem = Message<"rustpanel.v1.ImageItem"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: repeated string repo_tags = 2;
+   */
+  repoTags: string[];
+
+  /**
+   * @generated from field: int64 created_at_seconds = 3;
+   */
+  createdAtSeconds: bigint;
+
+  /**
+   * @generated from field: int64 size_bytes = 4;
+   */
+  sizeBytes: bigint;
+
+  /**
+   * @generated from field: int64 containers = 5;
+   */
+  containers: bigint;
+};
+
+/**
+ * Describes the message rustpanel.v1.ImageItem.
+ * Use `create(ImageItemSchema)` to create a new message.
+ */
+export const ImageItemSchema: GenMessage<ImageItem> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 2);
+
+/**
+ * ComposeProject 描述一个 Docker Compose 项目。
+ *
+ * @generated from message rustpanel.v1.ComposeProject
+ */
+export type ComposeProject = Message<"rustpanel.v1.ComposeProject"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string compose_path = 2;
+   */
+  composePath: string;
+
+  /**
+   * @generated from field: string compose_yaml = 3;
+   */
+  composeYaml: string;
+
+  /**
+   * @generated from field: repeated string service_names = 4;
+   */
+  serviceNames: string[];
+
+  /**
+   * @generated from field: string status_text = 5;
+   */
+  statusText: string;
+
+  /**
+   * @generated from field: int64 updated_at_seconds = 6;
+   */
+  updatedAtSeconds: bigint;
+};
+
+/**
+ * Describes the message rustpanel.v1.ComposeProject.
+ * Use `create(ComposeProjectSchema)` to create a new message.
+ */
+export const ComposeProjectSchema: GenMessage<ComposeProject> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 3);
 
 /**
  * ListContainersRequest 表示容器列表请求。
@@ -114,7 +207,7 @@ export type ListContainersRequest = Message<"rustpanel.v1.ListContainersRequest"
  * Use `create(ListContainersRequestSchema)` to create a new message.
  */
 export const ListContainersRequestSchema: GenMessage<ListContainersRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 2);
+  messageDesc(file_rustpanel_v1_docker, 4);
 
 /**
  * ListContainersResponse 返回容器列表。
@@ -138,7 +231,7 @@ export type ListContainersResponse = Message<"rustpanel.v1.ListContainersRespons
  * Use `create(ListContainersResponseSchema)` to create a new message.
  */
 export const ListContainersResponseSchema: GenMessage<ListContainersResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 3);
+  messageDesc(file_rustpanel_v1_docker, 5);
 
 /**
  * StartContainerRequest 表示启动容器请求。
@@ -157,7 +250,7 @@ export type StartContainerRequest = Message<"rustpanel.v1.StartContainerRequest"
  * Use `create(StartContainerRequestSchema)` to create a new message.
  */
 export const StartContainerRequestSchema: GenMessage<StartContainerRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 4);
+  messageDesc(file_rustpanel_v1_docker, 6);
 
 /**
  * StartContainerResponse 返回启动容器结果。
@@ -176,7 +269,7 @@ export type StartContainerResponse = Message<"rustpanel.v1.StartContainerRespons
  * Use `create(StartContainerResponseSchema)` to create a new message.
  */
 export const StartContainerResponseSchema: GenMessage<StartContainerResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 5);
+  messageDesc(file_rustpanel_v1_docker, 7);
 
 /**
  * StopContainerRequest 表示停止容器请求。
@@ -195,7 +288,7 @@ export type StopContainerRequest = Message<"rustpanel.v1.StopContainerRequest"> 
  * Use `create(StopContainerRequestSchema)` to create a new message.
  */
 export const StopContainerRequestSchema: GenMessage<StopContainerRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 6);
+  messageDesc(file_rustpanel_v1_docker, 8);
 
 /**
  * StopContainerResponse 返回停止容器结果。
@@ -214,7 +307,7 @@ export type StopContainerResponse = Message<"rustpanel.v1.StopContainerResponse"
  * Use `create(StopContainerResponseSchema)` to create a new message.
  */
 export const StopContainerResponseSchema: GenMessage<StopContainerResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 7);
+  messageDesc(file_rustpanel_v1_docker, 9);
 
 /**
  * RestartContainerRequest 表示重启容器请求。
@@ -233,7 +326,7 @@ export type RestartContainerRequest = Message<"rustpanel.v1.RestartContainerRequ
  * Use `create(RestartContainerRequestSchema)` to create a new message.
  */
 export const RestartContainerRequestSchema: GenMessage<RestartContainerRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 8);
+  messageDesc(file_rustpanel_v1_docker, 10);
 
 /**
  * RestartContainerResponse 返回重启容器结果。
@@ -252,7 +345,7 @@ export type RestartContainerResponse = Message<"rustpanel.v1.RestartContainerRes
  * Use `create(RestartContainerResponseSchema)` to create a new message.
  */
 export const RestartContainerResponseSchema: GenMessage<RestartContainerResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 9);
+  messageDesc(file_rustpanel_v1_docker, 11);
 
 /**
  * RemoveContainerRequest 表示删除容器请求。
@@ -271,7 +364,7 @@ export type RemoveContainerRequest = Message<"rustpanel.v1.RemoveContainerReques
  * Use `create(RemoveContainerRequestSchema)` to create a new message.
  */
 export const RemoveContainerRequestSchema: GenMessage<RemoveContainerRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 10);
+  messageDesc(file_rustpanel_v1_docker, 12);
 
 /**
  * RemoveContainerResponse 返回删除容器结果。
@@ -290,7 +383,7 @@ export type RemoveContainerResponse = Message<"rustpanel.v1.RemoveContainerRespo
  * Use `create(RemoveContainerResponseSchema)` to create a new message.
  */
 export const RemoveContainerResponseSchema: GenMessage<RemoveContainerResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 11);
+  messageDesc(file_rustpanel_v1_docker, 13);
 
 /**
  * PauseContainerRequest 表示暂停容器请求。
@@ -309,7 +402,7 @@ export type PauseContainerRequest = Message<"rustpanel.v1.PauseContainerRequest"
  * Use `create(PauseContainerRequestSchema)` to create a new message.
  */
 export const PauseContainerRequestSchema: GenMessage<PauseContainerRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 12);
+  messageDesc(file_rustpanel_v1_docker, 14);
 
 /**
  * PauseContainerResponse 返回暂停容器结果。
@@ -328,7 +421,7 @@ export type PauseContainerResponse = Message<"rustpanel.v1.PauseContainerRespons
  * Use `create(PauseContainerResponseSchema)` to create a new message.
  */
 export const PauseContainerResponseSchema: GenMessage<PauseContainerResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 13);
+  messageDesc(file_rustpanel_v1_docker, 15);
 
 /**
  * PullImageRequest 表示镜像拉取请求。
@@ -352,7 +445,7 @@ export type PullImageRequest = Message<"rustpanel.v1.PullImageRequest"> & {
  * Use `create(PullImageRequestSchema)` to create a new message.
  */
 export const PullImageRequestSchema: GenMessage<PullImageRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 14);
+  messageDesc(file_rustpanel_v1_docker, 16);
 
 /**
  * PullImageResponse 返回镜像拉取结果。
@@ -371,7 +464,470 @@ export type PullImageResponse = Message<"rustpanel.v1.PullImageResponse"> & {
  * Use `create(PullImageResponseSchema)` to create a new message.
  */
 export const PullImageResponseSchema: GenMessage<PullImageResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 15);
+  messageDesc(file_rustpanel_v1_docker, 17);
+
+/**
+ * WatchImagePullRequest 表示镜像拉取进度订阅请求。
+ *
+ * @generated from message rustpanel.v1.WatchImagePullRequest
+ */
+export type WatchImagePullRequest = Message<"rustpanel.v1.WatchImagePullRequest"> & {
+  /**
+   * @generated from field: string image = 1;
+   */
+  image: string;
+
+  /**
+   * @generated from field: string tag = 2;
+   */
+  tag: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.WatchImagePullRequest.
+ * Use `create(WatchImagePullRequestSchema)` to create a new message.
+ */
+export const WatchImagePullRequestSchema: GenMessage<WatchImagePullRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 18);
+
+/**
+ * WatchImagePullResponse 返回镜像拉取进度事件。
+ *
+ * @generated from message rustpanel.v1.WatchImagePullResponse
+ */
+export type WatchImagePullResponse = Message<"rustpanel.v1.WatchImagePullResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: string image_id = 2;
+   */
+  imageId: string;
+
+  /**
+   * @generated from field: string status_text = 3;
+   */
+  statusText: string;
+
+  /**
+   * @generated from field: string progress = 4;
+   */
+  progress: string;
+
+  /**
+   * @generated from field: uint64 current_bytes = 5;
+   */
+  currentBytes: bigint;
+
+  /**
+   * @generated from field: uint64 total_bytes = 6;
+   */
+  totalBytes: bigint;
+
+  /**
+   * @generated from field: bool done = 7;
+   */
+  done: boolean;
+};
+
+/**
+ * Describes the message rustpanel.v1.WatchImagePullResponse.
+ * Use `create(WatchImagePullResponseSchema)` to create a new message.
+ */
+export const WatchImagePullResponseSchema: GenMessage<WatchImagePullResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 19);
+
+/**
+ * ListImagesRequest 表示本地镜像列表请求。
+ *
+ * @generated from message rustpanel.v1.ListImagesRequest
+ */
+export type ListImagesRequest = Message<"rustpanel.v1.ListImagesRequest"> & {
+  /**
+   * @generated from field: bool all = 1;
+   */
+  all: boolean;
+};
+
+/**
+ * Describes the message rustpanel.v1.ListImagesRequest.
+ * Use `create(ListImagesRequestSchema)` to create a new message.
+ */
+export const ListImagesRequestSchema: GenMessage<ListImagesRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 20);
+
+/**
+ * ListImagesResponse 返回本地镜像列表。
+ *
+ * @generated from message rustpanel.v1.ListImagesResponse
+ */
+export type ListImagesResponse = Message<"rustpanel.v1.ListImagesResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.ImageItem images = 2;
+   */
+  images: ImageItem[];
+};
+
+/**
+ * Describes the message rustpanel.v1.ListImagesResponse.
+ * Use `create(ListImagesResponseSchema)` to create a new message.
+ */
+export const ListImagesResponseSchema: GenMessage<ListImagesResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 21);
+
+/**
+ * SetContainerResourcesRequest 表示容器资源配额更新请求。
+ *
+ * @generated from message rustpanel.v1.SetContainerResourcesRequest
+ */
+export type SetContainerResourcesRequest = Message<"rustpanel.v1.SetContainerResourcesRequest"> & {
+  /**
+   * @generated from field: string container_id = 1;
+   */
+  containerId: string;
+
+  /**
+   * @generated from field: double cpu_limit_cores = 2;
+   */
+  cpuLimitCores: number;
+
+  /**
+   * @generated from field: uint64 memory_limit_bytes = 3;
+   */
+  memoryLimitBytes: bigint;
+};
+
+/**
+ * Describes the message rustpanel.v1.SetContainerResourcesRequest.
+ * Use `create(SetContainerResourcesRequestSchema)` to create a new message.
+ */
+export const SetContainerResourcesRequestSchema: GenMessage<SetContainerResourcesRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 22);
+
+/**
+ * SetContainerResourcesResponse 返回资源配额更新结果。
+ *
+ * @generated from message rustpanel.v1.SetContainerResourcesResponse
+ */
+export type SetContainerResourcesResponse = Message<"rustpanel.v1.SetContainerResourcesResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.ContainerItem container = 2;
+   */
+  container?: ContainerItem | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.SetContainerResourcesResponse.
+ * Use `create(SetContainerResourcesResponseSchema)` to create a new message.
+ */
+export const SetContainerResourcesResponseSchema: GenMessage<SetContainerResourcesResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 23);
+
+/**
+ * PruneDockerResourcesRequest 表示冗余 Docker 资源清理请求。
+ *
+ * @generated from message rustpanel.v1.PruneDockerResourcesRequest
+ */
+export type PruneDockerResourcesRequest = Message<"rustpanel.v1.PruneDockerResourcesRequest"> & {
+  /**
+   * @generated from field: bool images = 1;
+   */
+  images: boolean;
+
+  /**
+   * @generated from field: bool containers = 2;
+   */
+  containers: boolean;
+
+  /**
+   * @generated from field: bool volumes = 3;
+   */
+  volumes: boolean;
+
+  /**
+   * @generated from field: bool networks = 4;
+   */
+  networks: boolean;
+
+  /**
+   * @generated from field: bool all_images = 5;
+   */
+  allImages: boolean;
+};
+
+/**
+ * Describes the message rustpanel.v1.PruneDockerResourcesRequest.
+ * Use `create(PruneDockerResourcesRequestSchema)` to create a new message.
+ */
+export const PruneDockerResourcesRequestSchema: GenMessage<PruneDockerResourcesRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 24);
+
+/**
+ * PruneDockerResourcesResponse 返回清理结果。
+ *
+ * @generated from message rustpanel.v1.PruneDockerResourcesResponse
+ */
+export type PruneDockerResourcesResponse = Message<"rustpanel.v1.PruneDockerResourcesResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: uint32 deleted_count = 2;
+   */
+  deletedCount: number;
+
+  /**
+   * @generated from field: uint64 space_reclaimed_bytes = 3;
+   */
+  spaceReclaimedBytes: bigint;
+
+  /**
+   * @generated from field: string summary = 4;
+   */
+  summary: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.PruneDockerResourcesResponse.
+ * Use `create(PruneDockerResourcesResponseSchema)` to create a new message.
+ */
+export const PruneDockerResourcesResponseSchema: GenMessage<PruneDockerResourcesResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 25);
+
+/**
+ * RollbackImageTagRequest 表示镜像版本回滚请求。
+ *
+ * @generated from message rustpanel.v1.RollbackImageTagRequest
+ */
+export type RollbackImageTagRequest = Message<"rustpanel.v1.RollbackImageTagRequest"> & {
+  /**
+   * @generated from field: string source_image = 1;
+   */
+  sourceImage: string;
+
+  /**
+   * @generated from field: string target_repository = 2;
+   */
+  targetRepository: string;
+
+  /**
+   * @generated from field: string target_tag = 3;
+   */
+  targetTag: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.RollbackImageTagRequest.
+ * Use `create(RollbackImageTagRequestSchema)` to create a new message.
+ */
+export const RollbackImageTagRequestSchema: GenMessage<RollbackImageTagRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 26);
+
+/**
+ * RollbackImageTagResponse 返回镜像版本回滚结果。
+ *
+ * @generated from message rustpanel.v1.RollbackImageTagResponse
+ */
+export type RollbackImageTagResponse = Message<"rustpanel.v1.RollbackImageTagResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.RollbackImageTagResponse.
+ * Use `create(RollbackImageTagResponseSchema)` to create a new message.
+ */
+export const RollbackImageTagResponseSchema: GenMessage<RollbackImageTagResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 27);
+
+/**
+ * ListComposeProjectsRequest 表示 Compose 项目列表请求。
+ *
+ * @generated from message rustpanel.v1.ListComposeProjectsRequest
+ */
+export type ListComposeProjectsRequest = Message<"rustpanel.v1.ListComposeProjectsRequest"> & {
+};
+
+/**
+ * Describes the message rustpanel.v1.ListComposeProjectsRequest.
+ * Use `create(ListComposeProjectsRequestSchema)` to create a new message.
+ */
+export const ListComposeProjectsRequestSchema: GenMessage<ListComposeProjectsRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 28);
+
+/**
+ * ListComposeProjectsResponse 返回 Compose 项目列表。
+ *
+ * @generated from message rustpanel.v1.ListComposeProjectsResponse
+ */
+export type ListComposeProjectsResponse = Message<"rustpanel.v1.ListComposeProjectsResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.ComposeProject projects = 2;
+   */
+  projects: ComposeProject[];
+};
+
+/**
+ * Describes the message rustpanel.v1.ListComposeProjectsResponse.
+ * Use `create(ListComposeProjectsResponseSchema)` to create a new message.
+ */
+export const ListComposeProjectsResponseSchema: GenMessage<ListComposeProjectsResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 29);
+
+/**
+ * UpsertComposeProjectRequest 表示新增或更新 Compose 项目请求。
+ *
+ * @generated from message rustpanel.v1.UpsertComposeProjectRequest
+ */
+export type UpsertComposeProjectRequest = Message<"rustpanel.v1.UpsertComposeProjectRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string compose_yaml = 2;
+   */
+  composeYaml: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.UpsertComposeProjectRequest.
+ * Use `create(UpsertComposeProjectRequestSchema)` to create a new message.
+ */
+export const UpsertComposeProjectRequestSchema: GenMessage<UpsertComposeProjectRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 30);
+
+/**
+ * UpsertComposeProjectResponse 返回 Compose 项目保存结果。
+ *
+ * @generated from message rustpanel.v1.UpsertComposeProjectResponse
+ */
+export type UpsertComposeProjectResponse = Message<"rustpanel.v1.UpsertComposeProjectResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.ComposeProject project = 2;
+   */
+  project?: ComposeProject | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.UpsertComposeProjectResponse.
+ * Use `create(UpsertComposeProjectResponseSchema)` to create a new message.
+ */
+export const UpsertComposeProjectResponseSchema: GenMessage<UpsertComposeProjectResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 31);
+
+/**
+ * DeployComposeProjectRequest 表示部署 Compose 项目请求。
+ *
+ * @generated from message rustpanel.v1.DeployComposeProjectRequest
+ */
+export type DeployComposeProjectRequest = Message<"rustpanel.v1.DeployComposeProjectRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.DeployComposeProjectRequest.
+ * Use `create(DeployComposeProjectRequestSchema)` to create a new message.
+ */
+export const DeployComposeProjectRequestSchema: GenMessage<DeployComposeProjectRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 32);
+
+/**
+ * DeployComposeProjectResponse 返回 Compose 项目部署结果。
+ *
+ * @generated from message rustpanel.v1.DeployComposeProjectResponse
+ */
+export type DeployComposeProjectResponse = Message<"rustpanel.v1.DeployComposeProjectResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.ComposeProject project = 2;
+   */
+  project?: ComposeProject | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.DeployComposeProjectResponse.
+ * Use `create(DeployComposeProjectResponseSchema)` to create a new message.
+ */
+export const DeployComposeProjectResponseSchema: GenMessage<DeployComposeProjectResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 33);
+
+/**
+ * RemoveComposeProjectRequest 表示移除 Compose 项目请求。
+ *
+ * @generated from message rustpanel.v1.RemoveComposeProjectRequest
+ */
+export type RemoveComposeProjectRequest = Message<"rustpanel.v1.RemoveComposeProjectRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: bool delete_files = 2;
+   */
+  deleteFiles: boolean;
+};
+
+/**
+ * Describes the message rustpanel.v1.RemoveComposeProjectRequest.
+ * Use `create(RemoveComposeProjectRequestSchema)` to create a new message.
+ */
+export const RemoveComposeProjectRequestSchema: GenMessage<RemoveComposeProjectRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 34);
+
+/**
+ * RemoveComposeProjectResponse 返回 Compose 项目移除结果。
+ *
+ * @generated from message rustpanel.v1.RemoveComposeProjectResponse
+ */
+export type RemoveComposeProjectResponse = Message<"rustpanel.v1.RemoveComposeProjectResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.RemoveComposeProjectResponse.
+ * Use `create(RemoveComposeProjectResponseSchema)` to create a new message.
+ */
+export const RemoveComposeProjectResponseSchema: GenMessage<RemoveComposeProjectResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_docker, 35);
 
 /**
  * WatchContainerLogsRequest 表示容器日志订阅请求。
@@ -395,7 +951,7 @@ export type WatchContainerLogsRequest = Message<"rustpanel.v1.WatchContainerLogs
  * Use `create(WatchContainerLogsRequestSchema)` to create a new message.
  */
 export const WatchContainerLogsRequestSchema: GenMessage<WatchContainerLogsRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 16);
+  messageDesc(file_rustpanel_v1_docker, 36);
 
 /**
  * WatchContainerLogsResponse 返回容器日志事件。
@@ -419,7 +975,7 @@ export type WatchContainerLogsResponse = Message<"rustpanel.v1.WatchContainerLog
  * Use `create(WatchContainerLogsResponseSchema)` to create a new message.
  */
 export const WatchContainerLogsResponseSchema: GenMessage<WatchContainerLogsResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_docker, 17);
+  messageDesc(file_rustpanel_v1_docker, 37);
 
 /**
  * DockerService 提供 Docker 引擎管理能力。
@@ -482,6 +1038,78 @@ export const DockerService: GenService<{
     methodKind: "unary";
     input: typeof PullImageRequestSchema;
     output: typeof PullImageResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.DockerService.WatchImagePull
+   */
+  watchImagePull: {
+    methodKind: "server_streaming";
+    input: typeof WatchImagePullRequestSchema;
+    output: typeof WatchImagePullResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.DockerService.ListImages
+   */
+  listImages: {
+    methodKind: "unary";
+    input: typeof ListImagesRequestSchema;
+    output: typeof ListImagesResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.DockerService.SetContainerResources
+   */
+  setContainerResources: {
+    methodKind: "unary";
+    input: typeof SetContainerResourcesRequestSchema;
+    output: typeof SetContainerResourcesResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.DockerService.PruneDockerResources
+   */
+  pruneDockerResources: {
+    methodKind: "unary";
+    input: typeof PruneDockerResourcesRequestSchema;
+    output: typeof PruneDockerResourcesResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.DockerService.RollbackImageTag
+   */
+  rollbackImageTag: {
+    methodKind: "unary";
+    input: typeof RollbackImageTagRequestSchema;
+    output: typeof RollbackImageTagResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.DockerService.ListComposeProjects
+   */
+  listComposeProjects: {
+    methodKind: "unary";
+    input: typeof ListComposeProjectsRequestSchema;
+    output: typeof ListComposeProjectsResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.DockerService.UpsertComposeProject
+   */
+  upsertComposeProject: {
+    methodKind: "unary";
+    input: typeof UpsertComposeProjectRequestSchema;
+    output: typeof UpsertComposeProjectResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.DockerService.DeployComposeProject
+   */
+  deployComposeProject: {
+    methodKind: "unary";
+    input: typeof DeployComposeProjectRequestSchema;
+    output: typeof DeployComposeProjectResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.DockerService.RemoveComposeProject
+   */
+  removeComposeProject: {
+    methodKind: "unary";
+    input: typeof RemoveComposeProjectRequestSchema;
+    output: typeof RemoveComposeProjectResponseSchema;
   },
   /**
    * @generated from rpc rustpanel.v1.DockerService.WatchContainerLogs

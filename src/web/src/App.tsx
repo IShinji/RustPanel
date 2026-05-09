@@ -45,9 +45,9 @@ import {
   YAxis
 } from "recharts";
 
-import { AppTemplate } from "./gen/rustpanel/v1/appstore_pb";
+import { AppTemplate, InstalledApp } from "./gen/rustpanel/v1/appstore_pb";
 import { CronRunState, CronTask, CronTaskState } from "./gen/rustpanel/v1/cron_pb";
-import { ContainerItem } from "./gen/rustpanel/v1/docker_pb";
+import { ComposeProject, ContainerItem, ImageItem } from "./gen/rustpanel/v1/docker_pb";
 import { ArchiveFormat, FileItem, FileKind, RecycleBinItem, SearchMatch } from "./gen/rustpanel/v1/fs_pb";
 import { ProcessResourceSnapshot, SystemStatus } from "./gen/rustpanel/v1/monitor_pb";
 import {
@@ -80,6 +80,24 @@ type ChartPoint = {
 };
 type ChartClickState = {
   activePayload?: Array<{ payload?: ChartPoint }>;
+};
+type DockerQuotaForm = {
+  containerId: string;
+  cpuLimitCores: string;
+  memoryLimitMb: string;
+};
+type ImagePullForm = {
+  image: string;
+  tag: string;
+};
+type ImageRollbackForm = {
+  sourceImage: string;
+  targetRepository: string;
+  targetTag: string;
+};
+type ComposeForm = {
+  name: string;
+  composeYaml: string;
 };
 type FirewallForm = {
   id: string;
@@ -147,6 +165,31 @@ const monitorRanges: Array<{ id: MonitorRange; label: string }> = [
   { id: "7d", label: "7d" },
   { id: "custom", label: "自定义" }
 ];
+const defaultDockerQuotaForm: DockerQuotaForm = {
+  containerId: "",
+  cpuLimitCores: "1",
+  memoryLimitMb: "512"
+};
+const defaultImagePullForm: ImagePullForm = {
+  image: "nginx",
+  tag: "latest"
+};
+const defaultImageRollbackForm: ImageRollbackForm = {
+  sourceImage: "nginx:1.26-alpine",
+  targetRepository: "nginx",
+  targetTag: "stable"
+};
+const defaultComposeForm: ComposeForm = {
+  name: "demo",
+  composeYaml: `services:
+  web:
+    image: nginx:1.27-alpine
+    container_name: rustpanel-demo-web
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+`
+};
 const defaultFirewallForm: FirewallForm = {
   id: "",
   name: "SSH 管理",
@@ -1352,18 +1395,37 @@ function FileManager({ clients, openTerminal }: { clients: Clients; openTerminal
 
 function DockerApps({ clients }: { clients: Clients }) {
   const [containers, setContainers] = useState<ContainerItem[]>([]);
+  const [images, setImages] = useState<ImageItem[]>([]);
+  const [composeProjects, setComposeProjects] = useState<ComposeProject[]>([]);
   const [templates, setTemplates] = useState<AppTemplate[]>([]);
+  const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
+  const [quotaForm, setQuotaForm] = useState<DockerQuotaForm>(defaultDockerQuotaForm);
+  const [pullForm, setPullForm] = useState<ImagePullForm>(defaultImagePullForm);
+  const [rollbackForm, setRollbackForm] = useState<ImageRollbackForm>(defaultImageRollbackForm);
+  const [composeForm, setComposeForm] = useState<ComposeForm>(defaultComposeForm);
+  const [selectedVersions, setSelectedVersions] = useState<Record<string, string>>({});
   const [logLines, setLogLines] = useState<string[]>([]);
+  const [pullLines, setPullLines] = useState<string[]>([]);
   const [error, setError] = useState("");
 
   const load = async () => {
     try {
-      const [containerResponse, templateResponse] = await Promise.all([
+      const [containerResponse, imageResponse, composeResponse, templateResponse, installedResponse] = await Promise.all([
         clients.docker.listContainers({ all: true }),
-        clients.appStore.listAppTemplates({})
+        clients.docker.listImages({ all: true }),
+        clients.docker.listComposeProjects({}),
+        clients.appStore.listAppTemplates({}),
+        clients.appStore.listInstalledApps({})
       ]);
       setContainers(containerResponse.containers);
+      setImages(imageResponse.images);
+      setComposeProjects(composeResponse.projects);
       setTemplates(templateResponse.templates);
+      setInstalledApps(installedResponse.apps);
+      setSelectedVersions((current) => ({
+        ...Object.fromEntries(templateResponse.templates.map((template) => [template.slug, template.defaultVersion])),
+        ...current
+      }));
       setError("");
     } catch (err) {
       setError(safeError(err));
@@ -1384,6 +1446,124 @@ function DockerApps({ clients }: { clients: Clients }) {
     await load();
   };
 
+  const saveQuota = async () => {
+    try {
+      await clients.docker.setContainerResources({
+        containerId: quotaForm.containerId,
+        cpuLimitCores: Number(quotaForm.cpuLimitCores || 0),
+        memoryLimitBytes: BigInt(Math.max(0, Number(quotaForm.memoryLimitMb || 0)) * 1024 * 1024)
+      });
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const pullImage = async () => {
+    setPullLines([]);
+    try {
+      for await (const event of clients.docker.watchImagePull({ image: pullForm.image, tag: pullForm.tag })) {
+        const progress = event.progress ? ` · ${event.progress}` : "";
+        setPullLines((lines) => [...lines.slice(-80), `${event.statusText}${progress}\n`]);
+      }
+      await load();
+    } catch (err) {
+      setPullLines((lines) => [...lines, `${safeError(err)}\n`]);
+    }
+  };
+
+  const pruneResources = async () => {
+    try {
+      const response = await clients.docker.pruneDockerResources({
+        images: true,
+        containers: true,
+        volumes: true,
+        networks: true,
+        allImages: false
+      });
+      setPullLines((lines) => [
+        ...lines,
+        `清理 ${response.deletedCount} 项，释放 ${formatBytes(response.spaceReclaimedBytes)} · ${response.summary}\n`
+      ]);
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const rollbackImage = async () => {
+    try {
+      await clients.docker.rollbackImageTag(rollbackForm);
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const saveCompose = async () => {
+    try {
+      const response = await clients.docker.upsertComposeProject(composeForm);
+      if (response.project) {
+        setComposeForm({ name: response.project.name, composeYaml: response.project.composeYaml });
+      }
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const deployCompose = async (name = composeForm.name) => {
+    try {
+      await clients.docker.deployComposeProject({ name });
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const removeCompose = async (name: string) => {
+    try {
+      await clients.docker.removeComposeProject({ name, deleteFiles: true });
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const deployTemplate = async (template: AppTemplate) => {
+    try {
+      const version = selectedVersions[template.slug] || template.defaultVersion;
+      await clients.appStore.deployApp({
+        slug: template.slug,
+        appName: `${template.slug}-${version}`.replaceAll(".", "-"),
+        version
+      });
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const updateInstalledApp = async (app: InstalledApp) => {
+    try {
+      const template = templates.find((item) => item.slug === app.slug);
+      const version = template?.defaultVersion || app.version;
+      await clients.appStore.updateApp({ appName: app.appName, version });
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const uninstallApp = async (app: InstalledApp) => {
+    try {
+      await clients.appStore.uninstallApp({ appName: app.appName });
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
   const watchLogs = async (container: ContainerItem) => {
     setLogLines([]);
     try {
@@ -1400,7 +1580,7 @@ function DockerApps({ clients }: { clients: Clients }) {
       <header className="section-header full-span">
         <div>
           <h1>容器与应用商店</h1>
-          <p>{error || `${containers.length} 个容器 · ${templates.length} 个模板`}</p>
+          <p>{error || `${containers.length} 个容器 · ${images.length} 个镜像 · ${templates.length} 个模板`}</p>
         </div>
         <IconButton label="刷新" icon={RefreshCw} onClick={() => void load()} />
       </header>
@@ -1412,7 +1592,9 @@ function DockerApps({ clients }: { clients: Clients }) {
             <div className="table-row" key={container.id}>
               <div>
                 <strong>{container.name || container.id.slice(0, 12)}</strong>
-                <small>{container.image} · {container.statusText}</small>
+                <small>
+                  {container.image} · {container.statusText} · CPU {container.cpuLimitCores ? container.cpuLimitCores.toFixed(2) : "不限"} · 内存 {container.memoryLimitBytes ? formatBytes(container.memoryLimitBytes) : "不限"}
+                </small>
               </div>
               <StatusPill label={container.state || "unknown"} tone={container.state === "running" ? "good" : "muted"} />
               <div className="row-actions">
@@ -1428,17 +1610,116 @@ function DockerApps({ clients }: { clients: Clients }) {
       </div>
 
       <div className="panel">
+        <div className="panel-title"><Boxes size={18} /><span>资源配额</span></div>
+        <Input label="容器 ID" value={quotaForm.containerId} onChange={(containerId) => setQuotaForm({ ...quotaForm, containerId })} />
+        <Input label="CPU 核数" value={quotaForm.cpuLimitCores} onChange={(cpuLimitCores) => setQuotaForm({ ...quotaForm, cpuLimitCores })} />
+        <Input label="内存 MB" value={quotaForm.memoryLimitMb} onChange={(memoryLimitMb) => setQuotaForm({ ...quotaForm, memoryLimitMb })} />
+        <button onClick={() => void saveQuota()} type="button"><Save size={15} />应用配额</button>
+      </div>
+
+      <div className="panel wide-panel">
+        <div className="panel-title"><Download size={18} /><span>镜像管理</span></div>
+        <div className="inline-grid">
+          <Input label="镜像" value={pullForm.image} onChange={(image) => setPullForm({ ...pullForm, image })} />
+          <Input label="标签" value={pullForm.tag} onChange={(tag) => setPullForm({ ...pullForm, tag })} />
+        </div>
+        <div className="row-actions backup-actions">
+          <button onClick={() => void pullImage()} type="button"><Download size={15} />拉取</button>
+          <button onClick={() => void pruneResources()} type="button"><Trash2 size={15} />清理残留</button>
+        </div>
+        <div className="inline-grid">
+          <Input label="回滚来源" value={rollbackForm.sourceImage} onChange={(sourceImage) => setRollbackForm({ ...rollbackForm, sourceImage })} />
+          <Input label="目标仓库" value={rollbackForm.targetRepository} onChange={(targetRepository) => setRollbackForm({ ...rollbackForm, targetRepository })} />
+          <Input label="目标标签" value={rollbackForm.targetTag} onChange={(targetTag) => setRollbackForm({ ...rollbackForm, targetTag })} />
+        </div>
+        <button onClick={() => void rollbackImage()} type="button"><RotateCw size={15} />回滚标签</button>
+        <pre className="report-output compact-output">{pullLines.join("") || "暂无镜像任务"}</pre>
+      </div>
+
+      <div className="panel">
+        <div className="panel-title"><Archive size={18} /><span>本地镜像</span></div>
+        <div className="table-list compact-list">
+          {images.slice(0, 8).map((image) => (
+            <div className="key-row" key={image.id}>
+              <strong>{image.repoTags[0] || image.id.slice(0, 18)}</strong>
+              <small>{formatBytes(image.sizeBytes)} · containers {image.containers}</small>
+            </div>
+          ))}
+          {!images.length && <div className="empty-state">暂无镜像</div>}
+        </div>
+      </div>
+
+      <div className="panel wide-panel">
+        <div className="panel-title"><FileText size={18} /><span>Compose 编排</span></div>
+        <Input label="项目名" value={composeForm.name} onChange={(name) => setComposeForm({ ...composeForm, name })} />
+        <textarea
+          className="pem-input code-input"
+          value={composeForm.composeYaml}
+          onChange={(event) => setComposeForm({ ...composeForm, composeYaml: event.target.value })}
+        />
+        <div className="row-actions backup-actions">
+          <button onClick={() => void saveCompose()} type="button"><Save size={15} />保存</button>
+          <button onClick={() => void deployCompose()} type="button"><Play size={15} />部署</button>
+        </div>
+        <div className="table-list compact-list">
+          {composeProjects.map((project) => (
+            <div className="table-row" key={project.name}>
+              <div>
+                <strong>{project.name}</strong>
+                <small>{project.serviceNames.join(", ") || project.composePath}</small>
+              </div>
+              <StatusPill label={project.statusText || "saved"} tone="muted" />
+              <div className="row-actions">
+                <IconButton label="编辑" icon={FileText} onClick={() => setComposeForm({ name: project.name, composeYaml: project.composeYaml })} />
+                <IconButton label="部署" icon={Play} onClick={() => void deployCompose(project.name)} />
+                <IconButton label="删除" icon={Trash2} onClick={() => void removeCompose(project.name)} />
+              </div>
+            </div>
+          ))}
+          {!composeProjects.length && <div className="empty-state">暂无 Compose 项目</div>}
+        </div>
+      </div>
+
+      <div className="panel">
         <div className="panel-title"><Store size={18} /><span>应用模板</span></div>
         <div className="template-grid">
           {templates.map((template) => (
             <div className="item-card" key={template.slug}>
               <strong>{template.name}</strong>
-              <small>{template.image}</small>
-              <button onClick={() => void clients.appStore.deployApp({ slug: template.slug, appName: template.slug }).then(load)} type="button">
+              <small>{template.runtimeKind} · {template.image}</small>
+              <select
+                value={selectedVersions[template.slug] || template.defaultVersion}
+                onChange={(event) => setSelectedVersions({ ...selectedVersions, [template.slug]: event.target.value })}
+              >
+                {template.versions.map((version) => (
+                  <option key={version.version} value={version.version}>{version.version}</option>
+                ))}
+              </select>
+              <button onClick={() => void deployTemplate(template)} type="button">
                 <Play size={15} />安装
               </button>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="panel full-span">
+        <div className="panel-title"><Store size={18} /><span>已安装运行环境</span></div>
+        <div className="table-list">
+          {installedApps.map((app) => (
+            <div className="table-row" key={app.appName}>
+              <div>
+                <strong>{app.appName}</strong>
+                <small>{app.slug} {app.version} · {app.image}</small>
+              </div>
+              <StatusPill label={app.state || "installed"} tone="good" />
+              <div className="row-actions">
+                <IconButton label="更新" icon={RefreshCw} onClick={() => void updateInstalledApp(app)} />
+                <IconButton label="卸载" icon={Trash2} onClick={() => void uninstallApp(app)} />
+              </div>
+            </div>
+          ))}
+          {!installedApps.length && <div className="empty-state">暂无已安装应用</div>}
         </div>
       </div>
 

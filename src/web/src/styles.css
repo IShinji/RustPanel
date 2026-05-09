@@ -560,6 +560,19 @@ button {
   padding: 0 12px;
 }
 
+.item-card select {
+  border: 1px solid #ccd7da;
+  border-radius: 6px;
+  height: 34px;
+  padding: 0 8px;
+  width: 100%;
+}
+
+.compact-output {
+  margin-top: 12px;
+  min-height: 120px;
+}
+
 .log-panel {
   grid-column: 1 / -1;
 }

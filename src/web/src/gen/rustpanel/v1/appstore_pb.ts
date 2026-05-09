@@ -12,7 +12,36 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/appstore.proto.
  */
 export const file_rustpanel_v1_appstore: GenFile = /*@__PURE__*/
-  fileDesc("ChtydXN0cGFuZWwvdjEvYXBwc3RvcmUucHJvdG8SDHJ1c3RwYW5lbC52MSJkCgtBcHBUZW1wbGF0ZRIMCgRzbHVnGAEgASgJEgwKBG5hbWUYAiABKAkSEwoLZGVzY3JpcHRpb24YAyABKAkSDQoFaW1hZ2UYBCABKAkSFQoNZGVmYXVsdF9wb3J0cxgFIAMoCSIZChdMaXN0QXBwVGVtcGxhdGVzUmVxdWVzdCJwChhMaXN0QXBwVGVtcGxhdGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiwKCXRlbXBsYXRlcxgCIAMoCzIZLnJ1c3RwYW5lbC52MS5BcHBUZW1wbGF0ZSIyChBEZXBsb3lBcHBSZXF1ZXN0EgwKBHNsdWcYASABKAkSEAoIYXBwX25hbWUYAiABKAkiZwoRRGVwbG95QXBwUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEhQKDGNvbXBvc2VfcGF0aBgCIAEoCRIUCgxjb21wb3NlX3lhbWwYAyABKAkywgEKD0FwcFN0b3JlU2VydmljZRJhChBMaXN0QXBwVGVtcGxhdGVzEiUucnVzdHBhbmVsLnYxLkxpc3RBcHBUZW1wbGF0ZXNSZXF1ZXN0GiYucnVzdHBhbmVsLnYxLkxpc3RBcHBUZW1wbGF0ZXNSZXNwb25zZRJMCglEZXBsb3lBcHASHi5ydXN0cGFuZWwudjEuRGVwbG95QXBwUmVxdWVzdBofLnJ1c3RwYW5lbC52MS5EZXBsb3lBcHBSZXNwb25zZWIGcHJvdG8z", [file_rustpanel_v1_common]);
+  fileDesc("ChtydXN0cGFuZWwvdjEvYXBwc3RvcmUucHJvdG8SDHJ1c3RwYW5lbC52MSJBCgpBcHBWZXJzaW9uEg8KB3ZlcnNpb24YASABKAkSDQoFaW1hZ2UYAiABKAkSEwoLcmVjb21tZW5kZWQYAyABKAgivwEKC0FwcFRlbXBsYXRlEgwKBHNsdWcYASABKAkSDAoEbmFtZRgCIAEoCRITCgtkZXNjcmlwdGlvbhgDIAEoCRINCgVpbWFnZRgEIAEoCRIVCg1kZWZhdWx0X3BvcnRzGAUgAygJEioKCHZlcnNpb25zGAYgAygLMhgucnVzdHBhbmVsLnYxLkFwcFZlcnNpb24SFwoPZGVmYXVsdF92ZXJzaW9uGAcgASgJEhQKDHJ1bnRpbWVfa2luZBgIIAEoCSKtAQoMSW5zdGFsbGVkQXBwEhAKCGFwcF9uYW1lGAEgASgJEgwKBHNsdWcYAiABKAkSDwoHdmVyc2lvbhgDIAEoCRINCgVpbWFnZRgEIAEoCRIUCgxjb21wb3NlX3BhdGgYBSABKAkSDQoFc3RhdGUYBiABKAkSHAoUaW5zdGFsbGVkX2F0X3NlY29uZHMYByABKAMSGgoSdXBkYXRlZF9hdF9zZWNvbmRzGAggASgDIhkKF0xpc3RBcHBUZW1wbGF0ZXNSZXF1ZXN0InAKGExpc3RBcHBUZW1wbGF0ZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLAoJdGVtcGxhdGVzGAIgAygLMhkucnVzdHBhbmVsLnYxLkFwcFRlbXBsYXRlIkMKEERlcGxveUFwcFJlcXVlc3QSDAoEc2x1ZxgBIAEoCRIQCghhcHBfbmFtZRgCIAEoCRIPCgd2ZXJzaW9uGAMgASgJIpABChFEZXBsb3lBcHBSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USFAoMY29tcG9zZV9wYXRoGAIgASgJEhQKDGNvbXBvc2VfeWFtbBgDIAEoCRInCgNhcHAYBCABKAsyGi5ydXN0cGFuZWwudjEuSW5zdGFsbGVkQXBwIhoKGExpc3RJbnN0YWxsZWRBcHBzUmVxdWVzdCJtChlMaXN0SW5zdGFsbGVkQXBwc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIoCgRhcHBzGAIgAygLMhoucnVzdHBhbmVsLnYxLkluc3RhbGxlZEFwcCInChNVbmluc3RhbGxBcHBSZXF1ZXN0EhAKCGFwcF9uYW1lGAEgASgJIj4KFFVuaW5zdGFsbEFwcFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSI1ChBVcGRhdGVBcHBSZXF1ZXN0EhAKCGFwcF9uYW1lGAEgASgJEg8KB3ZlcnNpb24YAiABKAkiegoRVXBkYXRlQXBwUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEicKA2FwcBgCIAEoCzIaLnJ1c3RwYW5lbC52MS5JbnN0YWxsZWRBcHASFAoMY29tcG9zZV95YW1sGAMgASgJMs0DCg9BcHBTdG9yZVNlcnZpY2USYQoQTGlzdEFwcFRlbXBsYXRlcxIlLnJ1c3RwYW5lbC52MS5MaXN0QXBwVGVtcGxhdGVzUmVxdWVzdBomLnJ1c3RwYW5lbC52MS5MaXN0QXBwVGVtcGxhdGVzUmVzcG9uc2USTAoJRGVwbG95QXBwEh4ucnVzdHBhbmVsLnYxLkRlcGxveUFwcFJlcXVlc3QaHy5ydXN0cGFuZWwudjEuRGVwbG95QXBwUmVzcG9uc2USZAoRTGlzdEluc3RhbGxlZEFwcHMSJi5ydXN0cGFuZWwudjEuTGlzdEluc3RhbGxlZEFwcHNSZXF1ZXN0GicucnVzdHBhbmVsLnYxLkxpc3RJbnN0YWxsZWRBcHBzUmVzcG9uc2USVQoMVW5pbnN0YWxsQXBwEiEucnVzdHBhbmVsLnYxLlVuaW5zdGFsbEFwcFJlcXVlc3QaIi5ydXN0cGFuZWwudjEuVW5pbnN0YWxsQXBwUmVzcG9uc2USTAoJVXBkYXRlQXBwEh4ucnVzdHBhbmVsLnYxLlVwZGF0ZUFwcFJlcXVlc3QaHy5ydXN0cGFuZWwudjEuVXBkYXRlQXBwUmVzcG9uc2ViBnByb3RvMw", [file_rustpanel_v1_common]);
+
+/**
+ * AppVersion 描述模板支持的一个运行环境版本。
+ *
+ * @generated from message rustpanel.v1.AppVersion
+ */
+export type AppVersion = Message<"rustpanel.v1.AppVersion"> & {
+  /**
+   * @generated from field: string version = 1;
+   */
+  version: string;
+
+  /**
+   * @generated from field: string image = 2;
+   */
+  image: string;
+
+  /**
+   * @generated from field: bool recommended = 3;
+   */
+  recommended: boolean;
+};
+
+/**
+ * Describes the message rustpanel.v1.AppVersion.
+ * Use `create(AppVersionSchema)` to create a new message.
+ */
+export const AppVersionSchema: GenMessage<AppVersion> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_appstore, 0);
 
 /**
  * AppTemplate 描述一个可部署应用模板。
@@ -44,6 +73,21 @@ export type AppTemplate = Message<"rustpanel.v1.AppTemplate"> & {
    * @generated from field: repeated string default_ports = 5;
    */
   defaultPorts: string[];
+
+  /**
+   * @generated from field: repeated rustpanel.v1.AppVersion versions = 6;
+   */
+  versions: AppVersion[];
+
+  /**
+   * @generated from field: string default_version = 7;
+   */
+  defaultVersion: string;
+
+  /**
+   * @generated from field: string runtime_kind = 8;
+   */
+  runtimeKind: string;
 };
 
 /**
@@ -51,7 +95,61 @@ export type AppTemplate = Message<"rustpanel.v1.AppTemplate"> & {
  * Use `create(AppTemplateSchema)` to create a new message.
  */
 export const AppTemplateSchema: GenMessage<AppTemplate> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_appstore, 0);
+  messageDesc(file_rustpanel_v1_appstore, 1);
+
+/**
+ * InstalledApp 描述已安装应用。
+ *
+ * @generated from message rustpanel.v1.InstalledApp
+ */
+export type InstalledApp = Message<"rustpanel.v1.InstalledApp"> & {
+  /**
+   * @generated from field: string app_name = 1;
+   */
+  appName: string;
+
+  /**
+   * @generated from field: string slug = 2;
+   */
+  slug: string;
+
+  /**
+   * @generated from field: string version = 3;
+   */
+  version: string;
+
+  /**
+   * @generated from field: string image = 4;
+   */
+  image: string;
+
+  /**
+   * @generated from field: string compose_path = 5;
+   */
+  composePath: string;
+
+  /**
+   * @generated from field: string state = 6;
+   */
+  state: string;
+
+  /**
+   * @generated from field: int64 installed_at_seconds = 7;
+   */
+  installedAtSeconds: bigint;
+
+  /**
+   * @generated from field: int64 updated_at_seconds = 8;
+   */
+  updatedAtSeconds: bigint;
+};
+
+/**
+ * Describes the message rustpanel.v1.InstalledApp.
+ * Use `create(InstalledAppSchema)` to create a new message.
+ */
+export const InstalledAppSchema: GenMessage<InstalledApp> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_appstore, 2);
 
 /**
  * ListAppTemplatesRequest 表示应用模板列表请求。
@@ -66,7 +164,7 @@ export type ListAppTemplatesRequest = Message<"rustpanel.v1.ListAppTemplatesRequ
  * Use `create(ListAppTemplatesRequestSchema)` to create a new message.
  */
 export const ListAppTemplatesRequestSchema: GenMessage<ListAppTemplatesRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_appstore, 1);
+  messageDesc(file_rustpanel_v1_appstore, 3);
 
 /**
  * ListAppTemplatesResponse 返回应用模板列表。
@@ -90,7 +188,7 @@ export type ListAppTemplatesResponse = Message<"rustpanel.v1.ListAppTemplatesRes
  * Use `create(ListAppTemplatesResponseSchema)` to create a new message.
  */
 export const ListAppTemplatesResponseSchema: GenMessage<ListAppTemplatesResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_appstore, 2);
+  messageDesc(file_rustpanel_v1_appstore, 4);
 
 /**
  * DeployAppRequest 表示应用一键部署请求。
@@ -107,6 +205,11 @@ export type DeployAppRequest = Message<"rustpanel.v1.DeployAppRequest"> & {
    * @generated from field: string app_name = 2;
    */
   appName: string;
+
+  /**
+   * @generated from field: string version = 3;
+   */
+  version: string;
 };
 
 /**
@@ -114,7 +217,7 @@ export type DeployAppRequest = Message<"rustpanel.v1.DeployAppRequest"> & {
  * Use `create(DeployAppRequestSchema)` to create a new message.
  */
 export const DeployAppRequestSchema: GenMessage<DeployAppRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_appstore, 3);
+  messageDesc(file_rustpanel_v1_appstore, 5);
 
 /**
  * DeployAppResponse 返回应用部署结果。
@@ -136,6 +239,11 @@ export type DeployAppResponse = Message<"rustpanel.v1.DeployAppResponse"> & {
    * @generated from field: string compose_yaml = 3;
    */
   composeYaml: string;
+
+  /**
+   * @generated from field: rustpanel.v1.InstalledApp app = 4;
+   */
+  app?: InstalledApp | undefined;
 };
 
 /**
@@ -143,7 +251,137 @@ export type DeployAppResponse = Message<"rustpanel.v1.DeployAppResponse"> & {
  * Use `create(DeployAppResponseSchema)` to create a new message.
  */
 export const DeployAppResponseSchema: GenMessage<DeployAppResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_appstore, 4);
+  messageDesc(file_rustpanel_v1_appstore, 6);
+
+/**
+ * ListInstalledAppsRequest 表示已安装应用列表请求。
+ *
+ * @generated from message rustpanel.v1.ListInstalledAppsRequest
+ */
+export type ListInstalledAppsRequest = Message<"rustpanel.v1.ListInstalledAppsRequest"> & {
+};
+
+/**
+ * Describes the message rustpanel.v1.ListInstalledAppsRequest.
+ * Use `create(ListInstalledAppsRequestSchema)` to create a new message.
+ */
+export const ListInstalledAppsRequestSchema: GenMessage<ListInstalledAppsRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_appstore, 7);
+
+/**
+ * ListInstalledAppsResponse 返回已安装应用列表。
+ *
+ * @generated from message rustpanel.v1.ListInstalledAppsResponse
+ */
+export type ListInstalledAppsResponse = Message<"rustpanel.v1.ListInstalledAppsResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.InstalledApp apps = 2;
+   */
+  apps: InstalledApp[];
+};
+
+/**
+ * Describes the message rustpanel.v1.ListInstalledAppsResponse.
+ * Use `create(ListInstalledAppsResponseSchema)` to create a new message.
+ */
+export const ListInstalledAppsResponseSchema: GenMessage<ListInstalledAppsResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_appstore, 8);
+
+/**
+ * UninstallAppRequest 表示应用卸载请求。
+ *
+ * @generated from message rustpanel.v1.UninstallAppRequest
+ */
+export type UninstallAppRequest = Message<"rustpanel.v1.UninstallAppRequest"> & {
+  /**
+   * @generated from field: string app_name = 1;
+   */
+  appName: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.UninstallAppRequest.
+ * Use `create(UninstallAppRequestSchema)` to create a new message.
+ */
+export const UninstallAppRequestSchema: GenMessage<UninstallAppRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_appstore, 9);
+
+/**
+ * UninstallAppResponse 返回应用卸载结果。
+ *
+ * @generated from message rustpanel.v1.UninstallAppResponse
+ */
+export type UninstallAppResponse = Message<"rustpanel.v1.UninstallAppResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.UninstallAppResponse.
+ * Use `create(UninstallAppResponseSchema)` to create a new message.
+ */
+export const UninstallAppResponseSchema: GenMessage<UninstallAppResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_appstore, 10);
+
+/**
+ * UpdateAppRequest 表示应用版本更新请求。
+ *
+ * @generated from message rustpanel.v1.UpdateAppRequest
+ */
+export type UpdateAppRequest = Message<"rustpanel.v1.UpdateAppRequest"> & {
+  /**
+   * @generated from field: string app_name = 1;
+   */
+  appName: string;
+
+  /**
+   * @generated from field: string version = 2;
+   */
+  version: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.UpdateAppRequest.
+ * Use `create(UpdateAppRequestSchema)` to create a new message.
+ */
+export const UpdateAppRequestSchema: GenMessage<UpdateAppRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_appstore, 11);
+
+/**
+ * UpdateAppResponse 返回应用版本更新结果。
+ *
+ * @generated from message rustpanel.v1.UpdateAppResponse
+ */
+export type UpdateAppResponse = Message<"rustpanel.v1.UpdateAppResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.InstalledApp app = 2;
+   */
+  app?: InstalledApp | undefined;
+
+  /**
+   * @generated from field: string compose_yaml = 3;
+   */
+  composeYaml: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.UpdateAppResponse.
+ * Use `create(UpdateAppResponseSchema)` to create a new message.
+ */
+export const UpdateAppResponseSchema: GenMessage<UpdateAppResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_appstore, 12);
 
 /**
  * AppStoreService 提供 Docker-first 应用市场能力。
@@ -166,6 +404,30 @@ export const AppStoreService: GenService<{
     methodKind: "unary";
     input: typeof DeployAppRequestSchema;
     output: typeof DeployAppResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.AppStoreService.ListInstalledApps
+   */
+  listInstalledApps: {
+    methodKind: "unary";
+    input: typeof ListInstalledAppsRequestSchema;
+    output: typeof ListInstalledAppsResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.AppStoreService.UninstallApp
+   */
+  uninstallApp: {
+    methodKind: "unary";
+    input: typeof UninstallAppRequestSchema;
+    output: typeof UninstallAppResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.AppStoreService.UpdateApp
+   */
+  updateApp: {
+    methodKind: "unary";
+    input: typeof UpdateAppRequestSchema;
+    output: typeof UpdateAppResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_rustpanel_v1_appstore, 0);
