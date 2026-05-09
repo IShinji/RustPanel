@@ -19,6 +19,19 @@ if (fs.existsSync(workflowsDir)) {
     if (/node\s+scripts\/[^\s]+\.cjs/.test(content)) {
       issues.push(`${fileName}: run compiled TypeScript scripts from dist/node-scripts, not scripts/*.cjs`)
     }
+    if (content.includes('docker/build-push-action@')) {
+      if (!content.includes('cache-from:') || !content.includes('cache-to:')) {
+        issues.push(`${fileName}: docker/build-push-action must configure cache-from and cache-to`)
+      }
+      if (!content.includes('builder:')) {
+        issues.push(`${fileName}: docker/build-push-action must use an explicit builder`)
+      }
+    }
+    if (content.includes('docker/setup-buildx-action@')) {
+      if (!content.includes('keep-state: true') || !content.includes('cleanup: false')) {
+        issues.push(`${fileName}: docker/setup-buildx-action must keep self-hosted BuildKit state`)
+      }
+    }
   }
 }
 

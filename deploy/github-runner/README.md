@@ -77,4 +77,25 @@ rustpanel-runner-data
 /cache/buildkit/rustpanel
 ```
 
+## 与 SuperCard 共享缓存
+
+RustPanel runner 和 SuperCard runner 复用同一组 Docker volumes：
+
+```text
+github-runner-cargo
+github-runner-rustup
+github-runner-sccache
+github-runner-buildkit
+```
+
+`Release CI & Deploy` 会把 RustPanel 的 BuildKit cache 导出到 `/cache/buildkit/rustpanel/backend-image`，同时在构建时读取 SuperCard 的 `/cache/buildkit/supercard/backend-image`。Dockerfile 内部使用与 SuperCard 相同的 Cargo cache mount id：
+
+```text
+rust-cargo-registry-v1
+rust-cargo-git-v1
+rust-sccache-v1
+```
+
+这样可以共享 crates.io registry、git 依赖缓存、sccache 编译结果和可复用的 BuildKit 层。`target` 目录 cache 仍保持 RustPanel 专属，避免两个不同 workspace 的增量产物互相污染或无限膨胀。
+
 多项目接入细节参考 `/Users/wisely/Documents/GitHub/SuperCard/docs/guides/personal-multi-project-runner.md`。
