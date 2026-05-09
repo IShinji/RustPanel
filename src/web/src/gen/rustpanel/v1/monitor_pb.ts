@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/monitor.proto.
  */
 export const file_rustpanel_v1_monitor: GenFile = /*@__PURE__*/
-  fileDesc("ChpydXN0cGFuZWwvdjEvbW9uaXRvci5wcm90bxIMcnVzdHBhbmVsLnYxIk4KDUNwdUNvcmVTdGF0dXMSDwoHY29yZV9pZBgBIAEoDRIVCg11c2FnZV9wZXJjZW50GAIgASgCEhUKDWZyZXF1ZW5jeV9taHoYAyABKAQigwEKDE1lbW9yeVN0YXR1cxITCgt0b3RhbF9ieXRlcxgBIAEoBBISCgp1c2VkX2J5dGVzGAIgASgEEhcKD2F2YWlsYWJsZV9ieXRlcxgDIAEoBBIYChBzd2FwX3RvdGFsX2J5dGVzGAQgASgEEhcKD3N3YXBfdXNlZF9ieXRlcxgFIAEoBCJWChFMb2FkQXZlcmFnZVN0YXR1cxISCgpvbmVfbWludXRlGAEgASgBEhQKDGZpdmVfbWludXRlcxgCIAEoARIXCg9maWZ0ZWVuX21pbnV0ZXMYAyABKAEiXAoPTmV0d29ya0lvU3RhdHVzEhYKDmludGVyZmFjZV9uYW1lGAEgASgJEhYKDnJlY2VpdmVkX2J5dGVzGAIgASgEEhkKEXRyYW5zbWl0dGVkX2J5dGVzGAMgASgEIpsBCgxEaXNrSW9TdGF0dXMSEQoJZGlza19uYW1lGAEgASgJEhMKC21vdW50X3BvaW50GAIgASgJEhkKEXRvdGFsX3NwYWNlX2J5dGVzGAMgASgEEh0KFWF2YWlsYWJsZV9zcGFjZV9ieXRlcxgEIAEoBBISCgpyZWFkX2J5dGVzGAUgASgEEhUKDXdyaXR0ZW5fYnl0ZXMYBiABKAQiywIKDFN5c3RlbVN0YXR1cxIZChF0aW1lc3RhbXBfc2Vjb25kcxgBIAEoBBIZChFjcHVfdXNhZ2VfcGVyY2VudBgCIAEoAhIuCgljcHVfY29yZXMYAyADKAsyGy5ydXN0cGFuZWwudjEuQ3B1Q29yZVN0YXR1cxIqCgZtZW1vcnkYBCABKAsyGi5ydXN0cGFuZWwudjEuTWVtb3J5U3RhdHVzEjUKDGxvYWRfYXZlcmFnZRgFIAEoCzIfLnJ1c3RwYW5lbC52MS5Mb2FkQXZlcmFnZVN0YXR1cxIvCghuZXR3b3JrcxgGIAMoCzIdLnJ1c3RwYW5lbC52MS5OZXR3b3JrSW9TdGF0dXMSKQoFZGlza3MYByADKAsyGi5ydXN0cGFuZWwudjEuRGlza0lvU3RhdHVzEhYKDnVwdGltZV9zZWNvbmRzGAggASgEIhgKFkdldFN5c3RlbVN0YXR1c1JlcXVlc3QidAoXR2V0U3lzdGVtU3RhdHVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjEKDXN5c3RlbV9zdGF0dXMYAiABKAsyGi5ydXN0cGFuZWwudjEuU3lzdGVtU3RhdHVzIjQKGFdhdGNoU3lzdGVtU3RhdHVzUmVxdWVzdBIYChBpbnRlcnZhbF9zZWNvbmRzGAEgASgNInYKGVdhdGNoU3lzdGVtU3RhdHVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjEKDXN5c3RlbV9zdGF0dXMYAiABKAsyGi5ydXN0cGFuZWwudjEuU3lzdGVtU3RhdHVzMtgBCg5Nb25pdG9yU2VydmljZRJeCg9HZXRTeXN0ZW1TdGF0dXMSJC5ydXN0cGFuZWwudjEuR2V0U3lzdGVtU3RhdHVzUmVxdWVzdBolLnJ1c3RwYW5lbC52MS5HZXRTeXN0ZW1TdGF0dXNSZXNwb25zZRJmChFXYXRjaFN5c3RlbVN0YXR1cxImLnJ1c3RwYW5lbC52MS5XYXRjaFN5c3RlbVN0YXR1c1JlcXVlc3QaJy5ydXN0cGFuZWwudjEuV2F0Y2hTeXN0ZW1TdGF0dXNSZXNwb25zZTABYgZwcm90bzM", [file_rustpanel_v1_common]);
+  fileDesc("ChpydXN0cGFuZWwvdjEvbW9uaXRvci5wcm90bxIMcnVzdHBhbmVsLnYxIk4KDUNwdUNvcmVTdGF0dXMSDwoHY29yZV9pZBgBIAEoDRIVCg11c2FnZV9wZXJjZW50GAIgASgCEhUKDWZyZXF1ZW5jeV9taHoYAyABKAQigwEKDE1lbW9yeVN0YXR1cxITCgt0b3RhbF9ieXRlcxgBIAEoBBISCgp1c2VkX2J5dGVzGAIgASgEEhcKD2F2YWlsYWJsZV9ieXRlcxgDIAEoBBIYChBzd2FwX3RvdGFsX2J5dGVzGAQgASgEEhcKD3N3YXBfdXNlZF9ieXRlcxgFIAEoBCJWChFMb2FkQXZlcmFnZVN0YXR1cxISCgpvbmVfbWludXRlGAEgASgBEhQKDGZpdmVfbWludXRlcxgCIAEoARIXCg9maWZ0ZWVuX21pbnV0ZXMYAyABKAEiXAoPTmV0d29ya0lvU3RhdHVzEhYKDmludGVyZmFjZV9uYW1lGAEgASgJEhYKDnJlY2VpdmVkX2J5dGVzGAIgASgEEhkKEXRyYW5zbWl0dGVkX2J5dGVzGAMgASgEIpsBCgxEaXNrSW9TdGF0dXMSEQoJZGlza19uYW1lGAEgASgJEhMKC21vdW50X3BvaW50GAIgASgJEhkKEXRvdGFsX3NwYWNlX2J5dGVzGAMgASgEEh0KFWF2YWlsYWJsZV9zcGFjZV9ieXRlcxgEIAEoBBISCgpyZWFkX2J5dGVzGAUgASgEEhUKDXdyaXR0ZW5fYnl0ZXMYBiABKAQiywIKDFN5c3RlbVN0YXR1cxIZChF0aW1lc3RhbXBfc2Vjb25kcxgBIAEoBBIZChFjcHVfdXNhZ2VfcGVyY2VudBgCIAEoAhIuCgljcHVfY29yZXMYAyADKAsyGy5ydXN0cGFuZWwudjEuQ3B1Q29yZVN0YXR1cxIqCgZtZW1vcnkYBCABKAsyGi5ydXN0cGFuZWwudjEuTWVtb3J5U3RhdHVzEjUKDGxvYWRfYXZlcmFnZRgFIAEoCzIfLnJ1c3RwYW5lbC52MS5Mb2FkQXZlcmFnZVN0YXR1cxIvCghuZXR3b3JrcxgGIAMoCzIdLnJ1c3RwYW5lbC52MS5OZXR3b3JrSW9TdGF0dXMSKQoFZGlza3MYByADKAsyGi5ydXN0cGFuZWwudjEuRGlza0lvU3RhdHVzEhYKDnVwdGltZV9zZWNvbmRzGAggASgEIhgKFkdldFN5c3RlbVN0YXR1c1JlcXVlc3QidAoXR2V0U3lzdGVtU3RhdHVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjEKDXN5c3RlbV9zdGF0dXMYAiABKAsyGi5ydXN0cGFuZWwudjEuU3lzdGVtU3RhdHVzIjQKGFdhdGNoU3lzdGVtU3RhdHVzUmVxdWVzdBIYChBpbnRlcnZhbF9zZWNvbmRzGAEgASgNInYKGVdhdGNoU3lzdGVtU3RhdHVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjEKDXN5c3RlbV9zdGF0dXMYAiABKAsyGi5ydXN0cGFuZWwudjEuU3lzdGVtU3RhdHVzIkUKF0dldE1ldHJpY0hpc3RvcnlSZXF1ZXN0EhUKDXN0YXJ0X3NlY29uZHMYASABKAQSEwoLZW5kX3NlY29uZHMYAiABKAQibwoYR2V0TWV0cmljSGlzdG9yeVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIrCgdzYW1wbGVzGAIgAygLMhoucnVzdHBhbmVsLnYxLlN5c3RlbVN0YXR1cyJlChdQcm9jZXNzUmVzb3VyY2VTbmFwc2hvdBILCgNwaWQYASABKAkSDAoEbmFtZRgCIAEoCRIZChFjcHVfdXNhZ2VfcGVyY2VudBgDIAEoAhIUCgxtZW1vcnlfYnl0ZXMYBCABKAQiRQoZR2V0UHJvY2Vzc1NuYXBzaG90UmVxdWVzdBIZChF0aW1lc3RhbXBfc2Vjb25kcxgBIAEoBBINCgVsaW1pdBgCIAEoDSJ+ChpHZXRQcm9jZXNzU25hcHNob3RSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USOAoJcHJvY2Vzc2VzGAIgAygLMiUucnVzdHBhbmVsLnYxLlByb2Nlc3NSZXNvdXJjZVNuYXBzaG90Ii0KG0dlbmVyYXRlSGVhbHRoUmVwb3J0UmVxdWVzdBIOCgZwZXJpb2QYASABKAkiVgocR2VuZXJhdGVIZWFsdGhSZXBvcnRSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USDgoGcmVwb3J0GAIgASgJMpMECg5Nb25pdG9yU2VydmljZRJeCg9HZXRTeXN0ZW1TdGF0dXMSJC5ydXN0cGFuZWwudjEuR2V0U3lzdGVtU3RhdHVzUmVxdWVzdBolLnJ1c3RwYW5lbC52MS5HZXRTeXN0ZW1TdGF0dXNSZXNwb25zZRJmChFXYXRjaFN5c3RlbVN0YXR1cxImLnJ1c3RwYW5lbC52MS5XYXRjaFN5c3RlbVN0YXR1c1JlcXVlc3QaJy5ydXN0cGFuZWwudjEuV2F0Y2hTeXN0ZW1TdGF0dXNSZXNwb25zZTABEmEKEEdldE1ldHJpY0hpc3RvcnkSJS5ydXN0cGFuZWwudjEuR2V0TWV0cmljSGlzdG9yeVJlcXVlc3QaJi5ydXN0cGFuZWwudjEuR2V0TWV0cmljSGlzdG9yeVJlc3BvbnNlEmcKEkdldFByb2Nlc3NTbmFwc2hvdBInLnJ1c3RwYW5lbC52MS5HZXRQcm9jZXNzU25hcHNob3RSZXF1ZXN0GigucnVzdHBhbmVsLnYxLkdldFByb2Nlc3NTbmFwc2hvdFJlc3BvbnNlEm0KFEdlbmVyYXRlSGVhbHRoUmVwb3J0EikucnVzdHBhbmVsLnYxLkdlbmVyYXRlSGVhbHRoUmVwb3J0UmVxdWVzdBoqLnJ1c3RwYW5lbC52MS5HZW5lcmF0ZUhlYWx0aFJlcG9ydFJlc3BvbnNlYgZwcm90bzM", [file_rustpanel_v1_common]);
 
 /**
  * CpuCoreStatus 描述单个 CPU 核心的实时占用。
@@ -321,6 +321,179 @@ export const WatchSystemStatusResponseSchema: GenMessage<WatchSystemStatusRespon
   messageDesc(file_rustpanel_v1_monitor, 9);
 
 /**
+ * GetMetricHistoryRequest 表示历史指标查询请求。
+ *
+ * @generated from message rustpanel.v1.GetMetricHistoryRequest
+ */
+export type GetMetricHistoryRequest = Message<"rustpanel.v1.GetMetricHistoryRequest"> & {
+  /**
+   * @generated from field: uint64 start_seconds = 1;
+   */
+  startSeconds: bigint;
+
+  /**
+   * @generated from field: uint64 end_seconds = 2;
+   */
+  endSeconds: bigint;
+};
+
+/**
+ * Describes the message rustpanel.v1.GetMetricHistoryRequest.
+ * Use `create(GetMetricHistoryRequestSchema)` to create a new message.
+ */
+export const GetMetricHistoryRequestSchema: GenMessage<GetMetricHistoryRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_monitor, 10);
+
+/**
+ * GetMetricHistoryResponse 返回历史指标序列。
+ *
+ * @generated from message rustpanel.v1.GetMetricHistoryResponse
+ */
+export type GetMetricHistoryResponse = Message<"rustpanel.v1.GetMetricHistoryResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.SystemStatus samples = 2;
+   */
+  samples: SystemStatus[];
+};
+
+/**
+ * Describes the message rustpanel.v1.GetMetricHistoryResponse.
+ * Use `create(GetMetricHistoryResponseSchema)` to create a new message.
+ */
+export const GetMetricHistoryResponseSchema: GenMessage<GetMetricHistoryResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_monitor, 11);
+
+/**
+ * ProcessResourceSnapshot 描述特定时刻附近的进程资源信息。
+ *
+ * @generated from message rustpanel.v1.ProcessResourceSnapshot
+ */
+export type ProcessResourceSnapshot = Message<"rustpanel.v1.ProcessResourceSnapshot"> & {
+  /**
+   * @generated from field: string pid = 1;
+   */
+  pid: string;
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * @generated from field: float cpu_usage_percent = 3;
+   */
+  cpuUsagePercent: number;
+
+  /**
+   * @generated from field: uint64 memory_bytes = 4;
+   */
+  memoryBytes: bigint;
+};
+
+/**
+ * Describes the message rustpanel.v1.ProcessResourceSnapshot.
+ * Use `create(ProcessResourceSnapshotSchema)` to create a new message.
+ */
+export const ProcessResourceSnapshotSchema: GenMessage<ProcessResourceSnapshot> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_monitor, 12);
+
+/**
+ * GetProcessSnapshotRequest 表示异常时刻进程详情请求。
+ *
+ * @generated from message rustpanel.v1.GetProcessSnapshotRequest
+ */
+export type GetProcessSnapshotRequest = Message<"rustpanel.v1.GetProcessSnapshotRequest"> & {
+  /**
+   * @generated from field: uint64 timestamp_seconds = 1;
+   */
+  timestampSeconds: bigint;
+
+  /**
+   * @generated from field: uint32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message rustpanel.v1.GetProcessSnapshotRequest.
+ * Use `create(GetProcessSnapshotRequestSchema)` to create a new message.
+ */
+export const GetProcessSnapshotRequestSchema: GenMessage<GetProcessSnapshotRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_monitor, 13);
+
+/**
+ * GetProcessSnapshotResponse 返回进程资源快照。
+ *
+ * @generated from message rustpanel.v1.GetProcessSnapshotResponse
+ */
+export type GetProcessSnapshotResponse = Message<"rustpanel.v1.GetProcessSnapshotResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.ProcessResourceSnapshot processes = 2;
+   */
+  processes: ProcessResourceSnapshot[];
+};
+
+/**
+ * Describes the message rustpanel.v1.GetProcessSnapshotResponse.
+ * Use `create(GetProcessSnapshotResponseSchema)` to create a new message.
+ */
+export const GetProcessSnapshotResponseSchema: GenMessage<GetProcessSnapshotResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_monitor, 14);
+
+/**
+ * GenerateHealthReportRequest 表示运行日报/周报生成请求。
+ *
+ * @generated from message rustpanel.v1.GenerateHealthReportRequest
+ */
+export type GenerateHealthReportRequest = Message<"rustpanel.v1.GenerateHealthReportRequest"> & {
+  /**
+   * @generated from field: string period = 1;
+   */
+  period: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.GenerateHealthReportRequest.
+ * Use `create(GenerateHealthReportRequestSchema)` to create a new message.
+ */
+export const GenerateHealthReportRequestSchema: GenMessage<GenerateHealthReportRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_monitor, 15);
+
+/**
+ * GenerateHealthReportResponse 返回健康报告。
+ *
+ * @generated from message rustpanel.v1.GenerateHealthReportResponse
+ */
+export type GenerateHealthReportResponse = Message<"rustpanel.v1.GenerateHealthReportResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: string report = 2;
+   */
+  report: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.GenerateHealthReportResponse.
+ * Use `create(GenerateHealthReportResponseSchema)` to create a new message.
+ */
+export const GenerateHealthReportResponseSchema: GenMessage<GenerateHealthReportResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_monitor, 16);
+
+/**
  * MonitorService 提供服务器资源监控能力。
  *
  * @generated from service rustpanel.v1.MonitorService
@@ -341,6 +514,30 @@ export const MonitorService: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchSystemStatusRequestSchema;
     output: typeof WatchSystemStatusResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.MonitorService.GetMetricHistory
+   */
+  getMetricHistory: {
+    methodKind: "unary";
+    input: typeof GetMetricHistoryRequestSchema;
+    output: typeof GetMetricHistoryResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.MonitorService.GetProcessSnapshot
+   */
+  getProcessSnapshot: {
+    methodKind: "unary";
+    input: typeof GetProcessSnapshotRequestSchema;
+    output: typeof GetProcessSnapshotResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.MonitorService.GenerateHealthReport
+   */
+  generateHealthReport: {
+    methodKind: "unary";
+    input: typeof GenerateHealthReportRequestSchema;
+    output: typeof GenerateHealthReportResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_rustpanel_v1_monitor, 0);

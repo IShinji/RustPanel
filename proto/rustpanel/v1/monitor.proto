@@ -76,8 +76,54 @@ message WatchSystemStatusResponse {
   SystemStatus system_status = 2;
 }
 
+// GetMetricHistoryRequest 表示历史指标查询请求。
+message GetMetricHistoryRequest {
+  uint64 start_seconds = 1;
+  uint64 end_seconds = 2;
+}
+
+// GetMetricHistoryResponse 返回历史指标序列。
+message GetMetricHistoryResponse {
+  Response status = 1;
+  repeated SystemStatus samples = 2;
+}
+
+// ProcessResourceSnapshot 描述特定时刻附近的进程资源信息。
+message ProcessResourceSnapshot {
+  string pid = 1;
+  string name = 2;
+  float cpu_usage_percent = 3;
+  uint64 memory_bytes = 4;
+}
+
+// GetProcessSnapshotRequest 表示异常时刻进程详情请求。
+message GetProcessSnapshotRequest {
+  uint64 timestamp_seconds = 1;
+  uint32 limit = 2;
+}
+
+// GetProcessSnapshotResponse 返回进程资源快照。
+message GetProcessSnapshotResponse {
+  Response status = 1;
+  repeated ProcessResourceSnapshot processes = 2;
+}
+
+// GenerateHealthReportRequest 表示运行日报/周报生成请求。
+message GenerateHealthReportRequest {
+  string period = 1;
+}
+
+// GenerateHealthReportResponse 返回健康报告。
+message GenerateHealthReportResponse {
+  Response status = 1;
+  string report = 2;
+}
+
 // MonitorService 提供服务器资源监控能力。
 service MonitorService {
   rpc GetSystemStatus(GetSystemStatusRequest) returns (GetSystemStatusResponse);
   rpc WatchSystemStatus(WatchSystemStatusRequest) returns (stream WatchSystemStatusResponse);
+  rpc GetMetricHistory(GetMetricHistoryRequest) returns (GetMetricHistoryResponse);
+  rpc GetProcessSnapshot(GetProcessSnapshotRequest) returns (GetProcessSnapshotResponse);
+  rpc GenerateHealthReport(GenerateHealthReportRequest) returns (GenerateHealthReportResponse);
 }

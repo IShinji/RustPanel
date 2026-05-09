@@ -34,7 +34,7 @@ import {
   Trash2,
   Upload
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -49,7 +49,7 @@ import { AppTemplate } from "./gen/rustpanel/v1/appstore_pb";
 import { CronRunState, CronTask, CronTaskState } from "./gen/rustpanel/v1/cron_pb";
 import { ContainerItem } from "./gen/rustpanel/v1/docker_pb";
 import { ArchiveFormat, FileItem, FileKind, RecycleBinItem, SearchMatch } from "./gen/rustpanel/v1/fs_pb";
-import { SystemStatus } from "./gen/rustpanel/v1/monitor_pb";
+import { ProcessResourceSnapshot, SystemStatus } from "./gen/rustpanel/v1/monitor_pb";
 import {
   FirewallAction,
   FirewallBackend,
@@ -71,6 +71,16 @@ import { useMonitorStore } from "./store/monitor";
 
 type Clients = ReturnType<typeof createRpcClients>;
 type TabId = "dashboard" | "security" | "terminal" | "files" | "docker" | "sites" | "database" | "cron";
+type MonitorRange = "1h" | "24h" | "7d" | "custom";
+type ChartPoint = {
+  time: string;
+  timestamp: number;
+  cpu: number;
+  memory: number;
+};
+type ChartClickState = {
+  activePayload?: Array<{ payload?: ChartPoint }>;
+};
 type FirewallForm = {
   id: string;
   name: string;
@@ -131,6 +141,12 @@ type SshKeyForm = {
 };
 
 const clients = createRpcClients();
+const monitorRanges: Array<{ id: MonitorRange; label: string }> = [
+  { id: "1h", label: "1h" },
+  { id: "24h", label: "24h" },
+  { id: "7d", label: "7d" },
+  { id: "custom", label: "自定义" }
+];
 const defaultFirewallForm: FirewallForm = {
   id: "",
   name: "SSH 管理",
@@ -250,6 +266,23 @@ function Dashboard({ clients }: { clients: Clients }) {
   const setCurrent = useMonitorStore((state) => state.setCurrent);
   const [system, setSystem] = useState({ hostname: "-", os: "-", kernel: "-", arch: "-" });
   const [error, setError] = useState("");
+  const [range, setRange] = useState<MonitorRange>("1h");
+  const [customStart, setCustomStart] = useState(() => toLocalInputValue(Date.now() - 60 * 60 * 1000));
+  const [customEnd, setCustomEnd] = useState(() => toLocalInputValue(Date.now()));
+  const [metricSamples, setMetricSamples] = useState<SystemStatus[]>([]);
+  const [selectedTimestamp, setSelectedTimestamp] = useState<number>();
+  const [processes, setProcesses] = useState<ProcessResourceSnapshot[]>([]);
+  const [reportPeriod, setReportPeriod] = useState<"daily" | "weekly">("daily");
+  const [healthReport, setHealthReport] = useState("");
+
+  const loadMetricHistory = useCallback(async () => {
+    const window = resolveHistoryWindow(range, customStart, customEnd);
+    const response = await clients.monitor.getMetricHistory({
+      startSeconds: BigInt(window.startSeconds),
+      endSeconds: BigInt(window.endSeconds)
+    });
+    setMetricSamples(response.samples);
+  }, [clients, customEnd, customStart, range]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -273,7 +306,6 @@ function Dashboard({ clients }: { clients: Clients }) {
         }
       })
       .catch((err: unknown) => setError(safeError(err)));
-
     void (async () => {
       try {
         for await (const event of clients.monitor.watchSystemStatus(
@@ -294,19 +326,63 @@ function Dashboard({ clients }: { clients: Clients }) {
     return () => controller.abort();
   }, [clients, setCurrent]);
 
-  const chartData = history.map((sample) => {
-    const memory = sample.memory;
-    const memoryPercent =
-      memory && memory.totalBytes > 0n
-        ? (Number(memory.usedBytes) / Number(memory.totalBytes)) * 100
-        : 0;
+  useEffect(() => {
+    loadMetricHistory().catch((err: unknown) => setError(safeError(err)));
+  }, [loadMetricHistory]);
 
-    return {
-      time: new Date(Number(sample.timestampSeconds) * 1000).toLocaleTimeString(),
-      cpu: sample.cpuUsagePercent,
-      memory: memoryPercent
-    };
-  });
+  const chartSource = metricSamples.length > 0 ? metricSamples : history;
+  const chartData = useMemo(
+    () =>
+      chartSource.map((sample) => {
+        const memory = sample.memory;
+        const memoryPercent =
+          memory && memory.totalBytes > 0n
+            ? (Number(memory.usedBytes) / Number(memory.totalBytes)) * 100
+            : 0;
+
+        return {
+          time: formatChartTimestamp(sample.timestampSeconds, range),
+          timestamp: Number(sample.timestampSeconds),
+          cpu: sample.cpuUsagePercent,
+          memory: memoryPercent
+        };
+      }),
+    [chartSource, range]
+  );
+  const selectedLabel = selectedTimestamp
+    ? new Date(selectedTimestamp * 1000).toLocaleString()
+    : "未选择";
+
+  const loadProcessSnapshot = async (timestamp: number) => {
+    try {
+      const response = await clients.monitor.getProcessSnapshot({
+        timestampSeconds: BigInt(timestamp),
+        limit: 8
+      });
+      setSelectedTimestamp(timestamp);
+      setProcesses(response.processes);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const handleChartClick = (state: ChartClickState) => {
+    const point = state.activePayload?.[0]?.payload;
+    if (point) {
+      void loadProcessSnapshot(point.timestamp);
+    }
+  };
+
+  const generateReport = async () => {
+    try {
+      const response = await clients.monitor.generateHealthReport({ period: reportPeriod });
+      setHealthReport(response.report);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
 
   return (
     <section className="page-grid">
@@ -335,9 +411,38 @@ function Dashboard({ clients }: { clients: Clients }) {
         <div className="panel-title">
           <Activity size={18} />
           <span>CPU / 内存趋势</span>
+          <div className="range-tabs">
+            {monitorRanges.map((item) => (
+              <button
+                className={range === item.id ? "range-tab active" : "range-tab"}
+                key={item.id}
+                onClick={() => setRange(item.id)}
+                type="button"
+              >
+                {item.label}
+              </button>
+            ))}
+            <IconButton label="刷新历史" icon={RefreshCw} onClick={() => void loadMetricHistory()} />
+          </div>
         </div>
+        {range === "custom" && (
+          <div className="custom-range">
+            <input
+              aria-label="开始时间"
+              onChange={(event) => setCustomStart(event.target.value)}
+              type="datetime-local"
+              value={customStart}
+            />
+            <input
+              aria-label="结束时间"
+              onChange={(event) => setCustomEnd(event.target.value)}
+              type="datetime-local"
+              value={customEnd}
+            />
+          </div>
+        )}
         <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={chartData}>
+          <LineChart data={chartData} onClick={(state) => handleChartClick(state as ChartClickState)}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="time" minTickGap={24} />
             <YAxis domain={[0, 100]} />
@@ -347,8 +452,84 @@ function Dashboard({ clients }: { clients: Clients }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
+
+      <div className="panel wide-panel">
+        <div className="panel-title">
+          <Server size={18} />
+          <span>异常时刻进程</span>
+          <small>{selectedLabel}</small>
+        </div>
+        <div className="table-list">
+          {processes.length === 0 && <div className="empty-state">点击趋势图查看该时刻进程资源</div>}
+          {processes.map((process) => (
+            <div className="table-row process-row" key={`${process.pid}-${process.name}`}>
+              <div>
+                <strong>{process.name || process.pid}</strong>
+                <small>PID {process.pid}</small>
+              </div>
+              <span>{formatPercent(process.cpuUsagePercent)}</span>
+              <small>{formatBytes(process.memoryBytes)}</small>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel report-panel">
+        <div className="panel-title">
+          <FileText size={18} />
+          <span>运行报告</span>
+        </div>
+        <div className="report-actions">
+          <select value={reportPeriod} onChange={(event) => setReportPeriod(event.target.value as "daily" | "weekly")}>
+            <option value="daily">日报</option>
+            <option value="weekly">周报</option>
+          </select>
+          <button onClick={() => void generateReport()} type="button">
+            <RefreshCw size={15} />
+            生成
+          </button>
+        </div>
+        <pre className="report-output">{healthReport || "暂无报告"}</pre>
+      </div>
     </section>
   );
+}
+
+function resolveHistoryWindow(range: MonitorRange, customStart: string, customEnd: string) {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (range === "custom") {
+    const startSeconds = localInputToSeconds(customStart) || nowSeconds - 60 * 60;
+    const endSeconds = localInputToSeconds(customEnd) || nowSeconds;
+    return {
+      startSeconds: Math.min(startSeconds, endSeconds),
+      endSeconds: Math.max(startSeconds, endSeconds)
+    };
+  }
+
+  const seconds = range === "7d" ? 7 * 24 * 60 * 60 : range === "24h" ? 24 * 60 * 60 : 60 * 60;
+  return {
+    startSeconds: nowSeconds - seconds,
+    endSeconds: nowSeconds
+  };
+}
+
+function toLocalInputValue(timestampMs: number) {
+  const date = new Date(timestampMs);
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(timestampMs - offsetMs).toISOString().slice(0, 16);
+}
+
+function localInputToSeconds(value: string) {
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : 0;
+}
+
+function formatChartTimestamp(timestampSeconds: bigint, range: MonitorRange) {
+  const date = new Date(Number(timestampSeconds) * 1000);
+  if (range === "7d") {
+    return date.toLocaleDateString(undefined, { month: "2-digit", day: "2-digit" });
+  }
+  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
 function SecurityPanel({ clients }: { clients: Clients }) {

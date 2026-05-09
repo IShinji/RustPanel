@@ -171,6 +171,68 @@ button {
   min-height: 360px;
 }
 
+.range-tabs {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.range-tab {
+  background: #eef3f4;
+  color: #34464b;
+  height: 32px;
+  justify-content: center;
+  min-width: 48px;
+  padding: 0 10px;
+}
+
+.range-tab.active,
+.range-tab:hover {
+  background: #136f63;
+  color: #ffffff;
+}
+
+.custom-range,
+.report-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.custom-range input,
+.report-actions select {
+  border: 1px solid #ccd7da;
+  border-radius: 6px;
+  height: 34px;
+  padding: 0 10px;
+}
+
+.report-actions button {
+  background: #136f63;
+  color: #ffffff;
+  height: 34px;
+  justify-content: center;
+  padding: 0 12px;
+}
+
+.report-output {
+  background: #f7fafb;
+  border: 1px solid #dfe7e9;
+  border-radius: 6px;
+  color: #1d2527;
+  margin: 0;
+  min-height: 220px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.process-row {
+  grid-template-columns: minmax(0, 1fr) 80px 96px;
+}
+
 .terminal-layout {
   grid-template-columns: 1fr;
 }
@@ -618,5 +680,18 @@ button {
   .section-header {
     flex-direction: column;
     gap: 12px;
+  }
+
+  .panel-title,
+  .custom-range,
+  .range-tabs,
+  .report-actions {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .range-tabs {
+    margin-left: 0;
+    width: 100%;
   }
 }
