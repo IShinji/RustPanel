@@ -11,13 +11,18 @@ permissions:
   packages: write
   deployments: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   NODE_OPTIONS: '--no-deprecation'
   BACKEND_IMAGE_PLATFORM: linux/amd64
   BACKEND_IMAGE_CACHE_NAME: backend-image
-  BUILDKIT_CACHE_DIR: ${{ vars.RUSTPANEL_BUILDKIT_CACHE_DIR || '/cache/buildkit/rustpanel' }}
-  SUPERCARD_BUILDKIT_CACHE_DIR: ${{ vars.SUPERCARD_BUILDKIT_CACHE_DIR || '/cache/buildkit/supercard' }}
+  BACKEND_IMAGE_CACHE_FAMILY: rust-backend-linux-amd64-v1
+  BUILDKIT_CACHE_PROJECT: rustpanel
+  BUILDKIT_CACHE_ROOT: ${{ vars.BUILDKIT_CACHE_ROOT || '/cache/buildkit' }}
 
 jobs:
   verify:
@@ -53,52 +58,36 @@ jobs:
       - name: Build root TypeScript scripts
         if: steps.backend-crate.outputs.exists == 'true'
         run: bun install --frozen-lockfile && bun run scripts:build
+      - name: Warm Docker base image cache
+        if: steps.backend-crate.outputs.exists == 'true'
+        run: scripts/warm-docker-base-images.sh src/backend/Dockerfile
       - name: Validate backend image BuildKit cache
         if: steps.backend-crate.outputs.exists == 'true'
         env:
-          CACHE_PATH: ${{ env.BUILDKIT_CACHE_DIR }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}
+          CACHE_PATH: ${{ env.BUILDKIT_CACHE_ROOT }}/${{ env.BACKEND_IMAGE_CACHE_FAMILY }}/${{ env.BUILDKIT_CACHE_PROJECT }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}
         run: node dist/node-scripts/scripts/validate-buildkit-local-cache.js --path "$CACHE_PATH" --quarantine --label backend-image
       - name: Collect backend image cache imports
         if: steps.backend-crate.outputs.exists == 'true'
-        id: cache-imports
+        id: backend-cache
         env:
-          CACHE_PATH: ${{ env.BUILDKIT_CACHE_DIR }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}
-          SUPERCARD_CACHE_PATH: ${{ env.SUPERCARD_BUILDKIT_CACHE_DIR }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}
+          LOCAL_CACHE_DEST: ${{ env.BUILDKIT_CACHE_ROOT }}/${{ env.BACKEND_IMAGE_CACHE_FAMILY }}/${{ env.BUILDKIT_CACHE_PROJECT }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}
+          REGISTRY_CACHE: ghcr.io/${{ github.repository_owner }}/rustpanel-backend:buildcache
         run: |
-          cache_from=""
-
-          add_cache_import() {
-            local label="$1"
-            local path="$2"
-
-            if [ -f "$path/index.json" ] && [ -d "$path/blobs/sha256" ]; then
-              if ! node dist/node-scripts/scripts/validate-buildkit-local-cache.js --path "$path" --label "$label"; then
-                echo "Skipping $label BuildKit cache import; cache is invalid: $path"
-                return 0
-              fi
-
-              echo "Using $label BuildKit cache import: $path"
-              cache_from="${cache_from}type=local,src=${path}"$'\n'
-            else
-              echo "Skipping $label BuildKit cache import; cache not warmed yet: $path"
-            fi
-          }
-
-          add_cache_import rustpanel "$CACHE_PATH"
-          add_cache_import supercard "$SUPERCARD_CACHE_PATH"
-
-          {
-            echo "cache-from<<EOF"
-            printf "%s" "$cache_from"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          node dist/node-scripts/scripts/collect-buildkit-cache-imports.js \
+            --cache-root "$BUILDKIT_CACHE_ROOT" \
+            --family "$BACKEND_IMAGE_CACHE_FAMILY" \
+            --project "$BUILDKIT_CACHE_PROJECT" \
+            --cache-name "$BACKEND_IMAGE_CACHE_NAME" \
+            --local-dest "$LOCAL_CACHE_DEST" \
+            --registry-cache "$REGISTRY_CACHE" \
+            --include-legacy-root-peers
       - name: Prepare backend image cache export
         if: steps.backend-crate.outputs.exists == 'true'
         env:
-          NEXT_CACHE_PATH: ${{ env.BUILDKIT_CACHE_DIR }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}
+          NEXT_CACHE_PATH: ${{ env.BUILDKIT_CACHE_ROOT }}/${{ env.BACKEND_IMAGE_CACHE_FAMILY }}/${{ env.BUILDKIT_CACHE_PROJECT }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}
         run: |
-          mkdir -p "$BUILDKIT_CACHE_DIR"
-          find "$BUILDKIT_CACHE_DIR" -mindepth 1 -maxdepth 1 -type d -name "${BACKEND_IMAGE_CACHE_NAME}-next-*" -mtime +1 -exec rm -rf "{}" +
+          mkdir -p "$(dirname "$NEXT_CACHE_PATH")"
+          find "$(dirname "$NEXT_CACHE_PATH")" -mindepth 1 -maxdepth 1 -type d -name "${BACKEND_IMAGE_CACHE_NAME}-next-*" -mtime +1 -exec rm -rf "{}" +
           rm -rf "$NEXT_CACHE_PATH"
       - uses: docker/setup-buildx-action@v4
         if: steps.backend-crate.outputs.exists == 'true'
@@ -121,15 +110,15 @@ jobs:
           file: src/backend/Dockerfile
           platforms: ${{ env.BACKEND_IMAGE_PLATFORM }}
           push: true
-          tags: ghcr.io/ishinji/rustpanel-backend:latest,ghcr.io/ishinji/rustpanel-backend:sha-${{ github.sha }}
-          cache-from: ${{ steps.cache-imports.outputs.cache-from }}
-          cache-to: type=local,dest=${{ env.BUILDKIT_CACHE_DIR }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }},mode=max
+          tags: ghcr.io/${{ github.repository_owner }}/rustpanel-backend:latest,ghcr.io/${{ github.repository_owner }}/rustpanel-backend:sha-${{ github.sha }}
+          cache-from: ${{ steps.backend-cache.outputs.cache-from }}
+          cache-to: ${{ steps.backend-cache.outputs.cache-to }}
       - name: Promote backend image BuildKit cache
         if: success() && steps.backend-crate.outputs.exists == 'true'
         env:
-          CACHE_PATH: ${{ env.BUILDKIT_CACHE_DIR }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}
-          NEXT_CACHE_PATH: ${{ env.BUILDKIT_CACHE_DIR }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}
-          PREVIOUS_CACHE_PATH: ${{ env.BUILDKIT_CACHE_DIR }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}-prev
+          CACHE_PATH: ${{ env.BUILDKIT_CACHE_ROOT }}/${{ env.BACKEND_IMAGE_CACHE_FAMILY }}/${{ env.BUILDKIT_CACHE_PROJECT }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}
+          NEXT_CACHE_PATH: ${{ env.BUILDKIT_CACHE_ROOT }}/${{ env.BACKEND_IMAGE_CACHE_FAMILY }}/${{ env.BUILDKIT_CACHE_PROJECT }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}
+          PREVIOUS_CACHE_PATH: ${{ env.BUILDKIT_CACHE_ROOT }}/${{ env.BACKEND_IMAGE_CACHE_FAMILY }}/${{ env.BUILDKIT_CACHE_PROJECT }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}-prev
         run: |
           if [ ! -d "$NEXT_CACHE_PATH" ]; then
             echo "No backend image cache export found at $NEXT_CACHE_PATH"
@@ -142,5 +131,23 @@ jobs:
           fi
           mv "$NEXT_CACHE_PATH" "$CACHE_PATH"
           rm -rf "$PREVIOUS_CACHE_PATH"
+      - name: Summarize backend image
+        if: always() && steps.backend-crate.outputs.exists == 'true'
+        env:
+          CACHE_IMPORTS: ${{ steps.backend-cache.outputs.summary }}
+          CACHE_PATH: ${{ env.BUILDKIT_CACHE_ROOT }}/${{ env.BACKEND_IMAGE_CACHE_FAMILY }}/${{ env.BUILDKIT_CACHE_PROJECT }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}
+          NEXT_CACHE_PATH: ${{ env.BUILDKIT_CACHE_ROOT }}/${{ env.BACKEND_IMAGE_CACHE_FAMILY }}/${{ env.BUILDKIT_CACHE_PROJECT }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}
+        run: |
+          {
+            echo "### Backend image"
+            echo "- BuildKit cache: \`$CACHE_PATH\`"
+            echo "- BuildKit cache export: \`$NEXT_CACHE_PATH\`"
+            if [ -n "$CACHE_IMPORTS" ]; then
+              echo "- BuildKit cache sources:"
+              printf '%s\n' "$CACHE_IMPORTS" | while IFS= read -r source; do
+                [ -n "$source" ] && echo "  - \`$source\`"
+              done
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
       - if: steps.backend-crate.outputs.exists != 'true'
         run: echo "src/backend/Cargo.toml not found; skipping backend image build."

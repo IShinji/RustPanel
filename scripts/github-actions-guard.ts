@@ -4,6 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const workflowsDir = path.resolve('.github/workflows')
+const backendWorkflowPath = path.join(workflowsDir, 'backend.yml')
+const dockerfilePath = path.resolve('src/backend/Dockerfile')
 const issues: string[] = []
 
 if (fs.existsSync(workflowsDir)) {
@@ -31,6 +33,50 @@ if (fs.existsSync(workflowsDir)) {
       if (!content.includes('keep-state: true') || !content.includes('cleanup: false')) {
         issues.push(`${fileName}: docker/setup-buildx-action must keep self-hosted BuildKit state`)
       }
+    }
+  }
+}
+
+if (fs.existsSync(backendWorkflowPath)) {
+  const backend = fs.readFileSync(backendWorkflowPath, 'utf8')
+  for (const required of [
+    "BUILDKIT_CACHE_ROOT: ${{ vars.BUILDKIT_CACHE_ROOT || '/cache/buildkit' }}",
+    'BACKEND_IMAGE_CACHE_FAMILY: rust-backend-linux-amd64-v1',
+    'BUILDKIT_CACHE_PROJECT: rustpanel',
+    'concurrency:',
+    'scripts/warm-docker-base-images.sh src/backend/Dockerfile',
+    'name: Collect backend image cache imports',
+    'dist/node-scripts/scripts/collect-buildkit-cache-imports.js',
+    '--include-legacy-root-peers',
+    'ghcr.io/${{ github.repository_owner }}/rustpanel-backend:buildcache',
+    'cache-from: ${{ steps.backend-cache.outputs.cache-from }}',
+    'cache-to: ${{ steps.backend-cache.outputs.cache-to }}',
+    '${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}',
+  ]) {
+    if (!backend.includes(required)) {
+      issues.push(`backend.yml: missing required cache marker "${required}"`)
+    }
+  }
+}
+
+if (fs.existsSync(dockerfilePath)) {
+  const dockerfile = fs.readFileSync(dockerfilePath, 'utf8')
+  for (const required of [
+    '# syntax=docker/dockerfile:1.7',
+    'cargo install sccache --version 0.15.0 --locked',
+    'cargo install cargo-chef --locked',
+    'FROM chef AS planner',
+    'FROM chef AS ci-deps',
+    'cargo chef cook --locked --all-targets --recipe-path recipe.json',
+    'cargo chef cook --release --locked --recipe-path recipe.json',
+    'id=rust-sccache-v1',
+    'id=rust-cargo-registry-v1',
+    'id=rust-cargo-git-v1',
+    'id=rustpanel-backend-ci-target-v2',
+    'sccache --show-stats',
+  ]) {
+    if (!dockerfile.includes(required)) {
+      issues.push(`src/backend/Dockerfile: missing required cache marker "${required}"`)
     }
   }
 }

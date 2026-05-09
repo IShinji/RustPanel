@@ -1,0 +1,13 @@
+.git
+.DS_Store
+**/.DS_Store
+
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.gradle
+
+# Rust 本地编译缓存体积很大，Dockerfile 会在镜像内重新构建。
+target
+**/target
