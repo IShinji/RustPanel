@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root_dir="$(git rev-parse --show-toplevel)"
+cd "$root_dir"
+
+bun install --frozen-lockfile
+bun run scripts:build
+node dist/node-scripts/scripts/sync-release-version.js --staged --stage
+scripts/verify-all.sh

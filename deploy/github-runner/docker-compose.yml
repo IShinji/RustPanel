@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
     environment:
       GITHUB_REPOSITORY_URL: ${GITHUB_REPOSITORY_URL:-https://github.com/IShinji/RustPanel}
-      GITHUB_RUNNER_TOKEN: ${GITHUB_RUNNER_TOKEN:?Set GITHUB_RUNNER_TOKEN in github-runner/.env}
+      GITHUB_RUNNER_TOKEN: ${GITHUB_RUNNER_TOKEN:?Set GITHUB_RUNNER_TOKEN in deploy/github-runner/.env}
       GITHUB_RUNNER_NAME: ${GITHUB_RUNNER_NAME:-Shinji-M4-RustPanel}
       GITHUB_RUNNER_LABELS: ${GITHUB_RUNNER_LABELS:-m4-runner,rustpanel-runner}
       GITHUB_RUNNER_WORKDIR: ${GITHUB_RUNNER_WORKDIR:-_work}

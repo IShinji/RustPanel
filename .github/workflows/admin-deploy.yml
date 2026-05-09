@@ -1,0 +1,35 @@
+name: Admin CI & Deploy
+
+on:
+  workflow_call:
+    inputs:
+      deploy:
+        type: boolean
+        required: false
+        default: false
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  NODE_OPTIONS: '--no-deprecation'
+
+jobs:
+  admin-ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/admin
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun lint
+      - run: bun test
+      - run: bun run build

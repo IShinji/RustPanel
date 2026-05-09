@@ -5,7 +5,7 @@
 ## 首次启动
 
 ```bash
-cd github-runner
+cd deploy/github-runner
 cp .env.example .env
 ```
 

@@ -1,0 +1,16 @@
+{
+  "name": "rustpanel-root-scripts",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "scripts:clean": "node -e \"require('node:fs').rmSync('dist/node-scripts', { recursive: true, force: true })\"",
+    "scripts:check": "tsc -p tsconfig.scripts.json --noEmit",
+    "scripts:build": "bun run scripts:clean && tsc -p tsconfig.scripts.json",
+    "ci:check": "bun run scripts:build && node dist/node-scripts/scripts/check-latest-ci.js",
+    "version:sync": "bun run scripts:build && node dist/node-scripts/scripts/sync-release-version.js"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2",
+    "typescript": "~6.0.3"
+  }
+}

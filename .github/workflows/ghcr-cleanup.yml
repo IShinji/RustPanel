@@ -1,0 +1,53 @@
+name: GHCR Package Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+  schedule:
+    - cron: '17 11 * * 0'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  NODE_OPTIONS: '--no-deprecation'
+  GHCR_CLEANUP_OWNER: 'IShinji'
+  GHCR_CLEANUP_PACKAGE: 'rustpanel-backend'
+  GHCR_CLEANUP_PACKAGE_TYPE: container
+  GHCR_CLEANUP_KEEP_SHA: '15'
+  GHCR_CLEANUP_TOKEN: ${{ secrets.GHCR_CLEANUP_TOKEN || github.token }}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - run: |
+          bun install --frozen-lockfile
+          bun run scripts:build
+      - run: |
+          args=(
+            --owner "$GHCR_CLEANUP_OWNER"
+            --package "$GHCR_CLEANUP_PACKAGE"
+            --package-type "$GHCR_CLEANUP_PACKAGE_TYPE"
+            --keep-sha "$GHCR_CLEANUP_KEEP_SHA"
+          )
+          if [ "${{ inputs.dry_run || 'false' }}" = "true" ]; then
+            args+=(--dry-run)
+          else
+            args+=(--execute)
+          fi
+          node dist/node-scripts/scripts/cleanup-ghcr-package-versions.js "${args[@]}"

@@ -1,4 +1,7 @@
 .DS_Store
+.env
+deploy/.env
+deploy/github-runner/.env
 dist/
 node_modules/
 github-runner/.env
