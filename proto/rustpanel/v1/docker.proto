@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// ContainerPort 描述容器端口映射。
+message ContainerPort {
+  string ip = 1;
+  uint32 private_port = 2;
+  uint32 public_port = 3;
+  string type = 4;
+}
+
+// ContainerItem 描述单个 Docker 容器。
+message ContainerItem {
+  string id = 1;
+  string name = 2;
+  string image = 3;
+  string state = 4;
+  string status_text = 5;
+  repeated ContainerPort ports = 6;
+  int64 created_at_seconds = 7;
+}
+
+// ListContainersRequest 表示容器列表请求。
+message ListContainersRequest {
+  bool all = 1;
+}
+
+// ListContainersResponse 返回容器列表。
+message ListContainersResponse {
+  Response status = 1;
+  repeated ContainerItem containers = 2;
+}
+
+// StartContainerRequest 表示启动容器请求。
+message StartContainerRequest {
+  string container_id = 1;
+}
+
+// StartContainerResponse 返回启动容器结果。
+message StartContainerResponse {
+  Response status = 1;
+}
+
+// StopContainerRequest 表示停止容器请求。
+message StopContainerRequest {
+  string container_id = 1;
+}
+
+// StopContainerResponse 返回停止容器结果。
+message StopContainerResponse {
+  Response status = 1;
+}
+
+// RestartContainerRequest 表示重启容器请求。
+message RestartContainerRequest {
+  string container_id = 1;
+}
+
+// RestartContainerResponse 返回重启容器结果。
+message RestartContainerResponse {
+  Response status = 1;
+}
+
+// RemoveContainerRequest 表示删除容器请求。
+message RemoveContainerRequest {
+  string container_id = 1;
+}
+
+// RemoveContainerResponse 返回删除容器结果。
+message RemoveContainerResponse {
+  Response status = 1;
+}
+
+// PauseContainerRequest 表示暂停容器请求。
+message PauseContainerRequest {
+  string container_id = 1;
+}
+
+// PauseContainerResponse 返回暂停容器结果。
+message PauseContainerResponse {
+  Response status = 1;
+}
+
+// PullImageRequest 表示镜像拉取请求。
+message PullImageRequest {
+  string image = 1;
+  string tag = 2;
+}
+
+// PullImageResponse 返回镜像拉取结果。
+message PullImageResponse {
+  Response status = 1;
+}
+
+// WatchContainerLogsRequest 表示容器日志订阅请求。
+message WatchContainerLogsRequest {
+  string container_id = 1;
+  uint32 tail_lines = 2;
+}
+
+// WatchContainerLogsResponse 返回容器日志事件。
+message WatchContainerLogsResponse {
+  Response status = 1;
+  string line = 2;
+}
+
+// DockerService 提供 Docker 引擎管理能力。
+service DockerService {
+  rpc ListContainers(ListContainersRequest) returns (ListContainersResponse);
+  rpc StartContainer(StartContainerRequest) returns (StartContainerResponse);
+  rpc StopContainer(StopContainerRequest) returns (StopContainerResponse);
+  rpc RestartContainer(RestartContainerRequest) returns (RestartContainerResponse);
+  rpc RemoveContainer(RemoveContainerRequest) returns (RemoveContainerResponse);
+  rpc PauseContainer(PauseContainerRequest) returns (PauseContainerResponse);
+  rpc PullImage(PullImageRequest) returns (PullImageResponse);
+  rpc WatchContainerLogs(WatchContainerLogsRequest) returns (stream WatchContainerLogsResponse);
+}

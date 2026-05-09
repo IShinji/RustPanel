@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// DatabaseEngine 描述数据库引擎。
+enum DatabaseEngine {
+  DATABASE_ENGINE_UNSPECIFIED = 0;
+  DATABASE_ENGINE_MYSQL = 1;
+  DATABASE_ENGINE_POSTGRES = 2;
+  DATABASE_ENGINE_SQLITE = 3;
+}
+
+// DatabaseItem 描述数据库。
+message DatabaseItem {
+  string name = 1;
+}
+
+// ListDatabasesRequest 表示数据库列表请求。
+message ListDatabasesRequest {
+  string dsn = 1;
+}
+
+// ListDatabasesResponse 返回数据库列表。
+message ListDatabasesResponse {
+  Response status = 1;
+  repeated DatabaseItem databases = 2;
+}
+
+// CreateDatabaseRequest 表示创建数据库请求。
+message CreateDatabaseRequest {
+  string dsn = 1;
+  string name = 2;
+}
+
+// CreateDatabaseResponse 返回创建数据库结果。
+message CreateDatabaseResponse {
+  Response status = 1;
+}
+
+// CreateDatabaseUserRequest 表示创建数据库用户请求。
+message CreateDatabaseUserRequest {
+  string dsn = 1;
+  string username = 2;
+  string password = 3;
+  string database = 4;
+}
+
+// CreateDatabaseUserResponse 返回创建数据库用户结果。
+message CreateDatabaseUserResponse {
+  Response status = 1;
+}
+
+// ExecuteSqlRequest 表示 SQL 执行请求。
+message ExecuteSqlRequest {
+  string dsn = 1;
+  string sql = 2;
+  uint32 max_rows = 3;
+}
+
+// SqlRow 表示 SQL 结果行。
+message SqlRow {
+  repeated string values = 1;
+}
+
+// ExecuteSqlResponse 返回 SQL 执行结果。
+message ExecuteSqlResponse {
+  Response status = 1;
+  repeated string columns = 2;
+  repeated SqlRow rows = 3;
+  uint64 rows_affected = 4;
+}
+
+// BackupDatabaseRequest 表示数据库备份请求。
+message BackupDatabaseRequest {
+  string dsn = 1;
+  string database = 2;
+}
+
+// BackupDatabaseResponse 返回数据库备份入口。
+message BackupDatabaseResponse {
+  Response status = 1;
+  string download_url = 2;
+}
+
+// DatabaseService 提供数据库直连管理能力。
+service DatabaseService {
+  rpc ListDatabases(ListDatabasesRequest) returns (ListDatabasesResponse);
+  rpc CreateDatabase(CreateDatabaseRequest) returns (CreateDatabaseResponse);
+  rpc CreateDatabaseUser(CreateDatabaseUserRequest) returns (CreateDatabaseUserResponse);
+  rpc ExecuteSql(ExecuteSqlRequest) returns (ExecuteSqlResponse);
+  rpc BackupDatabase(BackupDatabaseRequest) returns (BackupDatabaseResponse);
+}

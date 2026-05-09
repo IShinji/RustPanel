@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// CronTaskState 描述计划任务状态。
+enum CronTaskState {
+  CRON_TASK_STATE_UNSPECIFIED = 0;
+  CRON_TASK_STATE_ENABLED = 1;
+  CRON_TASK_STATE_PAUSED = 2;
+}
+
+// CronRunState 描述任务执行结果。
+enum CronRunState {
+  CRON_RUN_STATE_UNSPECIFIED = 0;
+  CRON_RUN_STATE_RUNNING = 1;
+  CRON_RUN_STATE_SUCCEEDED = 2;
+  CRON_RUN_STATE_FAILED = 3;
+  CRON_RUN_STATE_TIMED_OUT = 4;
+}
+
+// CronTask 描述一个计划任务。
+message CronTask {
+  string id = 1;
+  string name = 2;
+  string cron_expression = 3;
+  string command = 4;
+  CronTaskState state = 5;
+  uint64 timeout_seconds = 6;
+  string next_run_at = 7;
+}
+
+// CronRun 描述一次任务执行。
+message CronRun {
+  string id = 1;
+  string task_id = 2;
+  CronRunState state = 3;
+  int32 exit_code = 4;
+  string log_path = 5;
+  uint64 started_at_seconds = 6;
+  uint64 finished_at_seconds = 7;
+}
+
+// ListCronTasksRequest 表示任务列表请求。
+message ListCronTasksRequest {}
+
+// ListCronTasksResponse 返回任务列表。
+message ListCronTasksResponse {
+  Response status = 1;
+  repeated CronTask tasks = 2;
+}
+
+// CreateCronTaskRequest 表示创建任务请求。
+message CreateCronTaskRequest {
+  CronTask task = 1;
+}
+
+// CreateCronTaskResponse 返回创建任务结果。
+message CreateCronTaskResponse {
+  Response status = 1;
+  CronTask task = 2;
+}
+
+// UpdateCronTaskStateRequest 表示暂停或恢复任务请求。
+message UpdateCronTaskStateRequest {
+  string task_id = 1;
+  CronTaskState state = 2;
+}
+
+// UpdateCronTaskStateResponse 返回状态更新结果。
+message UpdateCronTaskStateResponse {
+  Response status = 1;
+}
+
+// RunCronTaskRequest 表示立即测试运行任务请求。
+message RunCronTaskRequest {
+  string task_id = 1;
+}
+
+// RunCronTaskResponse 返回立即运行结果。
+message RunCronTaskResponse {
+  Response status = 1;
+  CronRun run = 2;
+}
+
+// GetCronTaskLogRequest 表示执行日志读取请求。
+message GetCronTaskLogRequest {
+  string task_id = 1;
+}
+
+// GetCronTaskLogResponse 返回执行日志。
+message GetCronTaskLogResponse {
+  Response status = 1;
+  string content = 2;
+}
+
+// CronService 提供计划任务管理能力。
+service CronService {
+  rpc ListCronTasks(ListCronTasksRequest) returns (ListCronTasksResponse);
+  rpc CreateCronTask(CreateCronTaskRequest) returns (CreateCronTaskResponse);
+  rpc UpdateCronTaskState(UpdateCronTaskStateRequest) returns (UpdateCronTaskStateResponse);
+  rpc RunCronTask(RunCronTaskRequest) returns (RunCronTaskResponse);
+  rpc GetCronTaskLog(GetCronTaskLogRequest) returns (GetCronTaskLogResponse);
+}

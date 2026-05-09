@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// CertificateState 描述证书状态。
+enum CertificateState {
+  CERTIFICATE_STATE_UNSPECIFIED = 0;
+  CERTIFICATE_STATE_PENDING = 1;
+  CERTIFICATE_STATE_ISSUED = 2;
+  CERTIFICATE_STATE_REVOKED = 3;
+  CERTIFICATE_STATE_FAILED = 4;
+}
+
+// CertificateItem 描述一个站点证书。
+message CertificateItem {
+  string domain = 1;
+  string certificate_path = 2;
+  string private_key_path = 3;
+  uint64 expires_at_seconds = 4;
+  CertificateState state = 5;
+}
+
+// RequestCertificateRequest 表示申请证书请求。
+message RequestCertificateRequest {
+  string domain = 1;
+  string email = 2;
+}
+
+// RequestCertificateResponse 返回申请证书结果。
+message RequestCertificateResponse {
+  Response status = 1;
+  CertificateItem certificate = 2;
+}
+
+// RevokeCertificateRequest 表示吊销证书请求。
+message RevokeCertificateRequest {
+  string domain = 1;
+}
+
+// RevokeCertificateResponse 返回吊销证书结果。
+message RevokeCertificateResponse {
+  Response status = 1;
+}
+
+// WatchCertificateProgressRequest 表示证书进度订阅请求。
+message WatchCertificateProgressRequest {
+  string domain = 1;
+}
+
+// WatchCertificateProgressResponse 返回证书进度事件。
+message WatchCertificateProgressResponse {
+  Response status = 1;
+  CertificateItem certificate = 2;
+  string message = 3;
+}
+
+// SslService 提供 SSL 自动化能力。
+service SslService {
+  rpc RequestCertificate(RequestCertificateRequest) returns (RequestCertificateResponse);
+  rpc RevokeCertificate(RevokeCertificateRequest) returns (RevokeCertificateResponse);
+  rpc WatchCertificateProgress(WatchCertificateProgressRequest) returns (stream WatchCertificateProgressResponse);
+}

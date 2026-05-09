@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// TerminalResize 表示终端窗口大小。
+message TerminalResize {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
+
+// OpenTerminalRequest 表示浏览器发往伪终端的数据。
+message OpenTerminalRequest {
+  oneof payload {
+    bytes data = 1;
+    TerminalResize resize = 2;
+  }
+}
+
+// OpenTerminalResponse 表示伪终端返回给浏览器的数据。
+message OpenTerminalResponse {
+  Response status = 1;
+  bytes data = 2;
+  bool exited = 3;
+}
+
+// ResizeTerminalRequest 表示单独的终端窗口调整请求。
+message ResizeTerminalRequest {
+  string session_id = 1;
+  TerminalResize resize = 2;
+}
+
+// ResizeTerminalResponse 返回终端窗口调整结果。
+message ResizeTerminalResponse {
+  Response status = 1;
+}
+
+// TerminalService 提供 Web 终端能力。
+service TerminalService {
+  rpc OpenTerminal(stream OpenTerminalRequest) returns (stream OpenTerminalResponse);
+  rpc ResizeTerminal(ResizeTerminalRequest) returns (ResizeTerminalResponse);
+}

@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// SiteItem 描述一个站点配置。
+message SiteItem {
+  string name = 1;
+  repeated string domains = 2;
+  string root = 3;
+  string proxy_target = 4;
+  bool ssl_enabled = 5;
+  string config_path = 6;
+}
+
+// ListSitesRequest 表示站点列表请求。
+message ListSitesRequest {}
+
+// ListSitesResponse 返回站点列表。
+message ListSitesResponse {
+  Response status = 1;
+  repeated SiteItem sites = 2;
+}
+
+// CreateSiteRequest 表示创建站点请求。
+message CreateSiteRequest {
+  string name = 1;
+  repeated string domains = 2;
+  string root = 3;
+  string proxy_target = 4;
+  bool ssl_enabled = 5;
+}
+
+// CreateSiteResponse 返回创建站点结果。
+message CreateSiteResponse {
+  Response status = 1;
+  SiteItem site = 2;
+  string rendered_config = 3;
+}
+
+// ReloadNginxRequest 表示 Nginx 配置测试和重载请求。
+message ReloadNginxRequest {}
+
+// ReloadNginxResponse 返回 Nginx 重载结果。
+message ReloadNginxResponse {
+  Response status = 1;
+  string output = 2;
+}
+
+// SiteService 提供站点与反向代理配置能力。
+service SiteService {
+  rpc ListSites(ListSitesRequest) returns (ListSitesResponse);
+  rpc CreateSite(CreateSiteRequest) returns (CreateSiteResponse);
+  rpc ReloadNginx(ReloadNginxRequest) returns (ReloadNginxResponse);
+}

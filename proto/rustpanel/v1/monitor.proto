@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// CpuCoreStatus 描述单个 CPU 核心的实时占用。
+message CpuCoreStatus {
+  uint32 core_id = 1;
+  float usage_percent = 2;
+  uint64 frequency_mhz = 3;
+}
+
+// MemoryStatus 描述内存与交换分区占用。
+message MemoryStatus {
+  uint64 total_bytes = 1;
+  uint64 used_bytes = 2;
+  uint64 available_bytes = 3;
+  uint64 swap_total_bytes = 4;
+  uint64 swap_used_bytes = 5;
+}
+
+// LoadAverageStatus 描述系统负载。
+message LoadAverageStatus {
+  double one_minute = 1;
+  double five_minutes = 2;
+  double fifteen_minutes = 3;
+}
+
+// NetworkIoStatus 描述网络接口读写字节。
+message NetworkIoStatus {
+  string interface_name = 1;
+  uint64 received_bytes = 2;
+  uint64 transmitted_bytes = 3;
+}
+
+// DiskIoStatus 描述磁盘读写字节。
+message DiskIoStatus {
+  string disk_name = 1;
+  string mount_point = 2;
+  uint64 total_space_bytes = 3;
+  uint64 available_space_bytes = 4;
+  uint64 read_bytes = 5;
+  uint64 written_bytes = 6;
+}
+
+// SystemStatus 汇总服务器实时资源状态。
+message SystemStatus {
+  uint64 timestamp_seconds = 1;
+  float cpu_usage_percent = 2;
+  repeated CpuCoreStatus cpu_cores = 3;
+  MemoryStatus memory = 4;
+  LoadAverageStatus load_average = 5;
+  repeated NetworkIoStatus networks = 6;
+  repeated DiskIoStatus disks = 7;
+  uint64 uptime_seconds = 8;
+}
+
+// GetSystemStatusRequest 表示一次性系统状态读取请求。
+message GetSystemStatusRequest {}
+
+// GetSystemStatusResponse 返回一次性系统状态。
+message GetSystemStatusResponse {
+  Response status = 1;
+  SystemStatus system_status = 2;
+}
+
+// WatchSystemStatusRequest 表示系统状态流订阅请求。
+message WatchSystemStatusRequest {
+  uint32 interval_seconds = 1;
+}
+
+// WatchSystemStatusResponse 返回系统状态流事件。
+message WatchSystemStatusResponse {
+  Response status = 1;
+  SystemStatus system_status = 2;
+}
+
+// MonitorService 提供服务器资源监控能力。
+service MonitorService {
+  rpc GetSystemStatus(GetSystemStatusRequest) returns (GetSystemStatusResponse);
+  rpc WatchSystemStatus(WatchSystemStatusRequest) returns (stream WatchSystemStatusResponse);
+}

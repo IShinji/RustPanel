@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// AppTemplate 描述一个可部署应用模板。
+message AppTemplate {
+  string slug = 1;
+  string name = 2;
+  string description = 3;
+  string image = 4;
+  repeated string default_ports = 5;
+}
+
+// ListAppTemplatesRequest 表示应用模板列表请求。
+message ListAppTemplatesRequest {}
+
+// ListAppTemplatesResponse 返回应用模板列表。
+message ListAppTemplatesResponse {
+  Response status = 1;
+  repeated AppTemplate templates = 2;
+}
+
+// DeployAppRequest 表示应用一键部署请求。
+message DeployAppRequest {
+  string slug = 1;
+  string app_name = 2;
+}
+
+// DeployAppResponse 返回应用部署结果。
+message DeployAppResponse {
+  Response status = 1;
+  string compose_path = 2;
+  string compose_yaml = 3;
+}
+
+// AppStoreService 提供 Docker-first 应用市场能力。
+service AppStoreService {
+  rpc ListAppTemplates(ListAppTemplatesRequest) returns (ListAppTemplatesResponse);
+  rpc DeployApp(DeployAppRequest) returns (DeployAppResponse);
+}

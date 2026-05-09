@@ -1,0 +1,171 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// FileKind 描述文件系统项目类型。
+enum FileKind {
+  FILE_KIND_UNSPECIFIED = 0;
+  FILE_KIND_FILE = 1;
+  FILE_KIND_DIRECTORY = 2;
+  FILE_KIND_SYMLINK = 3;
+  FILE_KIND_OTHER = 4;
+}
+
+// ArchiveFormat 描述归档格式。
+enum ArchiveFormat {
+  ARCHIVE_FORMAT_UNSPECIFIED = 0;
+  ARCHIVE_FORMAT_ZIP = 1;
+  ARCHIVE_FORMAT_TAR_GZ = 2;
+}
+
+// ArchiveTaskState 描述归档任务状态。
+enum ArchiveTaskState {
+  ARCHIVE_TASK_STATE_UNSPECIFIED = 0;
+  ARCHIVE_TASK_STATE_RUNNING = 1;
+  ARCHIVE_TASK_STATE_SUCCEEDED = 2;
+  ARCHIVE_TASK_STATE_FAILED = 3;
+}
+
+// FileItem 描述单个文件系统项目。
+message FileItem {
+  string path = 1;
+  string name = 2;
+  FileKind kind = 3;
+  uint64 size_bytes = 4;
+  uint32 permissions = 5;
+  string owner = 6;
+  string group = 7;
+  uint64 modified_at_seconds = 8;
+}
+
+// ListDirectoryRequest 表示目录读取请求。
+message ListDirectoryRequest {
+  string path = 1;
+  bool recursive = 2;
+}
+
+// ListDirectoryResponse 返回目录项目列表。
+message ListDirectoryResponse {
+  Response status = 1;
+  repeated FileItem items = 2;
+}
+
+// CreateDirectoryRequest 表示创建目录请求。
+message CreateDirectoryRequest {
+  string path = 1;
+}
+
+// CreateDirectoryResponse 返回创建目录结果。
+message CreateDirectoryResponse {
+  Response status = 1;
+}
+
+// MovePathRequest 表示移动或重命名路径请求。
+message MovePathRequest {
+  string source_path = 1;
+  string target_path = 2;
+}
+
+// MovePathResponse 返回移动路径结果。
+message MovePathResponse {
+  Response status = 1;
+}
+
+// DeletePathRequest 表示删除路径请求。
+message DeletePathRequest {
+  string path = 1;
+  bool recursive = 2;
+}
+
+// DeletePathResponse 返回删除路径结果。
+message DeletePathResponse {
+  Response status = 1;
+}
+
+// ChmodRequest 表示权限修改请求。
+message ChmodRequest {
+  string path = 1;
+  uint32 mode = 2;
+}
+
+// ChmodResponse 返回权限修改结果。
+message ChmodResponse {
+  Response status = 1;
+}
+
+// ChownRequest 表示拥有者修改请求。
+message ChownRequest {
+  string path = 1;
+  string owner = 2;
+  string group = 3;
+}
+
+// ChownResponse 返回拥有者修改结果。
+message ChownResponse {
+  Response status = 1;
+}
+
+// ReadFileRequest 表示读取文件请求。
+message ReadFileRequest {
+  string path = 1;
+}
+
+// ReadFileResponse 返回文件内容。
+message ReadFileResponse {
+  Response status = 1;
+  bytes content = 2;
+}
+
+// SaveFileRequest 表示保存文件请求。
+message SaveFileRequest {
+  string path = 1;
+  bytes content = 2;
+}
+
+// SaveFileResponse 返回保存文件结果。
+message SaveFileResponse {
+  Response status = 1;
+}
+
+// CreateArchiveRequest 表示归档任务创建请求。
+message CreateArchiveRequest {
+  repeated string source_paths = 1;
+  string archive_path = 2;
+  ArchiveFormat format = 3;
+}
+
+// CreateArchiveResponse 返回归档任务创建结果。
+message CreateArchiveResponse {
+  Response status = 1;
+  string task_id = 2;
+}
+
+// WatchArchiveProgressRequest 表示归档进度订阅请求。
+message WatchArchiveProgressRequest {
+  string task_id = 1;
+}
+
+// WatchArchiveProgressResponse 返回归档进度事件。
+message WatchArchiveProgressResponse {
+  Response status = 1;
+  string task_id = 2;
+  ArchiveTaskState state = 3;
+  uint32 percent = 4;
+  string message = 5;
+}
+
+// FileSystemService 提供安全文件管理能力。
+service FileSystemService {
+  rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
+  rpc CreateDirectory(CreateDirectoryRequest) returns (CreateDirectoryResponse);
+  rpc MovePath(MovePathRequest) returns (MovePathResponse);
+  rpc DeletePath(DeletePathRequest) returns (DeletePathResponse);
+  rpc Chmod(ChmodRequest) returns (ChmodResponse);
+  rpc Chown(ChownRequest) returns (ChownResponse);
+  rpc ReadFile(ReadFileRequest) returns (ReadFileResponse);
+  rpc SaveFile(SaveFileRequest) returns (SaveFileResponse);
+  rpc CreateArchive(CreateArchiveRequest) returns (CreateArchiveResponse);
+  rpc WatchArchiveProgress(WatchArchiveProgressRequest) returns (stream WatchArchiveProgressResponse);
+}
