@@ -148,10 +148,17 @@ function collectCacheOutputs(parsed: ParsedArgs): CacheOutputs {
     if (added) peerCount += 1
   }
 
-  for (const registryCache of parsed.registryCaches.filter(Boolean)) {
-    cacheFrom.push(`type=registry,ref=${registryCache}`)
-    cacheTo.push(`type=registry,ref=${registryCache},mode=max,image-manifest=true,oci-mediatypes=true`)
-    summary.push(`registry: ${registryCache}`)
+  if (parsed.localDest && parsed.registryCaches.some(Boolean)) {
+    summary.push('registry cache disabled: local BuildKit cache is authoritative for this runner')
+  }
+
+  if (!parsed.localDest) {
+    for (const registryCache of parsed.registryCaches.filter(Boolean)) {
+      cacheFrom.push(`type=registry,ref=${registryCache}`)
+      cacheTo.push(`type=registry,ref=${registryCache},mode=max,image-manifest=true,oci-mediatypes=true`)
+      summary.push(`registry import: ${registryCache}`)
+      summary.push(`registry export: ${registryCache}`)
+    }
   }
 
   if (parsed.localDest) {
@@ -297,9 +304,29 @@ function runSelfTest() {
       assert(outputs.cacheFrom.some((line) => line.includes(`/${peerProject}/backend-image`)), `missing peer import: ${peerProject}`)
     }
     assert(outputs.cacheFrom.some((line) => line.includes(`/${legacyProject}/backend-image`)), 'missing legacy peer import')
-    assert(outputs.cacheFrom.some((line) => line.includes('type=registry')), 'missing registry import')
+    assert(
+      !outputs.cacheFrom.some((line) => line.includes('type=registry')),
+      'self-hosted local export must not import registry cache',
+    )
     assert(outputs.cacheTo.some((line) => line.includes('type=local')), 'missing local export')
-    assert(outputs.cacheTo.some((line) => line.includes('type=registry')), 'missing registry export')
+    assert(
+      !outputs.cacheTo.some((line) => line.includes('type=registry')),
+      'self-hosted local export must not also export registry cache',
+    )
+
+    const hostedOutputs = collectCacheOutputs({
+      cacheRoot: tempRoot,
+      family,
+      project,
+      cacheName: 'backend-image',
+      localDest: '',
+      registryCaches: ['ghcr.io/example/app-backend:buildcache'],
+      maxPeers: 6,
+      includeLegacyRootPeers: true,
+      selfTest: false,
+    })
+
+    assert(hostedOutputs.cacheTo.some((line) => line.includes('type=registry')), 'hosted export must use registry cache')
   } finally {
     fs.rmSync(tempRoot, { force: true, recursive: true })
   }

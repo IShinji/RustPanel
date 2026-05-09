@@ -88,7 +88,7 @@ github-runner-sccache
 github-runner-buildkit
 ```
 
-`Release CI & Deploy` 会把 RustPanel 的 BuildKit cache 导出到 `/cache/buildkit/rustpanel/backend-image`，同时在构建时读取 SuperCard 的 `/cache/buildkit/supercard/backend-image`。Dockerfile 内部使用与 SuperCard 相同的 Cargo cache mount id：
+`Release CI & Deploy` 会把 RustPanel 的 BuildKit cache 导出到 `/cache/buildkit/rust-backend-linux-amd64-v1/rustpanel/backend-image`，同时在构建时读取同一 family 下 SuperCard 的 `/cache/buildkit/rust-backend-linux-amd64-v1/supercard/backend-image`。self-hosted runner 上本地 BuildKit cache 是权威路径，不再同时导入或导出 GHCR registry buildcache。Dockerfile 内部使用与 SuperCard 相同的 Cargo cache mount id：
 
 ```text
 rust-cargo-registry-v1
