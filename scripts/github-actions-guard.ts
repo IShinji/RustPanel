@@ -56,10 +56,15 @@ if (fs.existsSync(backendWorkflowPath)) {
     'cache-from: ${{ steps.backend-cache.outputs.cache-from }}',
     'cache-to: ${{ steps.backend-cache.outputs.cache-to }}',
     '${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}',
+    'dist/node-scripts/scripts/publish-micro-release.js',
+    'GITHUB_TOKEN: ${{ github.token }}',
   ]) {
     if (!backend.includes(required)) {
       issues.push(`backend.yml: missing required cache marker "${required}"`)
     }
+  }
+  if (/gh\s+release/.test(backend)) {
+    issues.push('backend.yml: publish release step must not depend on gh CLI')
   }
 }
 

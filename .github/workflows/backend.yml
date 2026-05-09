@@ -183,15 +183,13 @@ jobs:
             --output type=local,dest=dist/backend-binary \
             -f src/backend/Dockerfile .
           tar -C dist/backend-binary -czf dist/release/rustpanel-backend-linux-amd64.tar.gz rustpanel-backend
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - name: Build release scripts
+        run: bun install --frozen-lockfile && bun run scripts:build
       - name: Publish micro binary release
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view micro-latest >/dev/null 2>&1; then
-            gh release upload micro-latest dist/release/rustpanel-backend-linux-amd64.tar.gz --clobber
-          else
-            gh release create micro-latest dist/release/rustpanel-backend-linux-amd64.tar.gz \
-              --title "RustPanel micro latest" \
-              --notes "Automated linux/amd64 binary for RustPanel micro installs." \
-              --latest=false
-          fi
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node dist/node-scripts/scripts/publish-micro-release.js --asset dist/release/rustpanel-backend-linux-amd64.tar.gz
