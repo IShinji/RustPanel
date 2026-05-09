@@ -3,6 +3,8 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
+    "proto:lint": "buf lint",
+    "proto:generate": "buf generate",
     "scripts:clean": "node -e \"require('node:fs').rmSync('dist/node-scripts', { recursive: true, force: true })\"",
     "scripts:check": "tsc -p tsconfig.scripts.json --noEmit",
     "scripts:build": "bun run scripts:clean && tsc -p tsconfig.scripts.json",
@@ -10,6 +12,11 @@
     "version:sync": "bun run scripts:build && node dist/node-scripts/scripts/sync-release-version.js"
   },
   "devDependencies": {
+    "@bufbuild/buf": "^1.69.0",
+    "@bufbuild/protobuf": "^2.12.0",
+    "@bufbuild/protoc-gen-es": "^2.12.0",
+    "@connectrpc/connect": "^2.1.1",
+    "@connectrpc/connect-web": "^2.1.1",
     "@types/node": "^25.6.2",
     "typescript": "~6.0.3"
   }

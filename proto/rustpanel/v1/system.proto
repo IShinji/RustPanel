@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// HealthStatus 描述守护进程当前健康状态。
+enum HealthStatus {
+  HEALTH_STATUS_UNSPECIFIED = 0;
+  HEALTH_STATUS_SERVING = 1;
+  HEALTH_STATUS_NOT_SERVING = 2;
+}
+
+// HealthCheckResponse 返回基础健康检查结果。
+message HealthCheckResponse {
+  Response status = 1;
+  HealthStatus health = 2;
+  string version = 3;
+}
+
+// HealthCheckRequest 表示健康检查请求。
+message HealthCheckRequest {}
+
+// GetSystemInfoRequest 表示系统信息探测请求。
+message GetSystemInfoRequest {}
+
+// GetSystemInfoResponse 返回系统基础探测信息。
+message GetSystemInfoResponse {
+  Response status = 1;
+  string hostname = 2;
+  string operating_system = 3;
+  string kernel_version = 4;
+  string architecture = 5;
+}
+
+// SystemService 提供系统守护进程的基础探测能力。
+service SystemService {
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
+}

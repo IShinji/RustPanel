@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "google/protobuf/any.proto";
+
+// Empty 表示不需要请求参数的 RPC。
+message Empty {}
+
+// Response 提供跨服务共享的基础状态包装。
+message Response {
+  int32 code = 1;
+  string message = 2;
+  google.protobuf.Any data = 3;
+}
+
+// Pagination 表示分页请求参数。
+message Pagination {
+  uint32 page = 1;
+  uint32 page_size = 2;
+}
+
+// PageInfo 表示分页响应元信息。
+message PageInfo {
+  uint32 page = 1;
+  uint32 page_size = 2;
+  uint64 total = 3;
+}

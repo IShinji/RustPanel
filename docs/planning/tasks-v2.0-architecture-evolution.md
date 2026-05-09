@@ -4,7 +4,7 @@
 
 ## 版本目标
 
-抛开旧有架构包袱，完全以**架构演进和功能闭环**的逻辑重构/开发 RustPanel。对标宝塔免费功能，但底层全面现代化。采用全栈架构：Rust (Tonic + Axum) + gRPC (Protobuf) + React + Docker 容器化。
+抛开旧有架构包袱，完全以**架构演进和功能闭环**的逻辑重构/开发 RustPanel。对标宝塔免费功能，但底层全面现代化。采用全栈架构：Rust (Tonic + Axum) + gRPC (Protobuf) + React + Docker 容器化。要求性能最优。
 
 ## 执行规则
 
@@ -20,11 +20,11 @@
 目标：建立整个面板的骨架，实现极简的单文件部署。
 
 ### P1-01 核心通信与 Protobuf 基建
-- [ ] **P1-01-1** 初始化 `proto` 目录，安装 `protoc` 及 `buf.yaml` 或基础 lint 工具。
-- [ ] **P1-01-2** 定义 `common.proto`：包含通用的 `Response`（code, message, data）、`Pagination` 及 `Empty` 请求结构。
-- [ ] **P1-01-3** 定义 `system.proto`：包含基础的 `HealthCheck` 和系统信息探测 RPC 接口。
-- [ ] **P1-01-4** 配置 Rust 后端 `build.rs`，引入 `tonic-build`，自动将 `.proto` 编译为 Rust 代码。
-- [ ] **P1-01-5** 配置前端 `buf generate` 脚本，将 `.proto` 编译为 React/TypeScript 可用的 gRPC-web (或 connect-web) 客户端代码。
+- [x] **P1-01-1** 初始化 `proto` 目录，安装 `protoc` 及 `buf.yaml` 或基础 lint 工具。
+- [x] **P1-01-2** 定义 `common.proto`：包含通用的 `Response`（code, message, data）、`Pagination` 及 `Empty` 请求结构。
+- [x] **P1-01-3** 定义 `system.proto`：包含基础的 `HealthCheck` 和系统信息探测 RPC 接口。
+- [x] **P1-01-4** 配置 Rust 后端 `build.rs`，引入 `tonic-build`，自动将 `.proto` 编译为 Rust 代码。
+- [x] **P1-01-5** 配置前端 `buf generate` 脚本，将 `.proto` 编译为 React/TypeScript 可用的 gRPC-web (或 connect-web) 客户端代码。
 
 ### P1-02 后端核心架构 (Axum + Tonic)
 - [ ] **P1-02-1** 初始化 Cargo 后端 Workspace (`cargo init`)，整理工作区目录。

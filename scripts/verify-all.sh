@@ -7,6 +7,11 @@ cd "$root_dir"
 bun install --frozen-lockfile
 bun run scripts:check
 bun run scripts:build
+if [[ -f buf.yaml ]]; then
+  bun run proto:lint
+  bun run proto:generate
+  git diff --exit-code -- src/web/src/gen
+fi
 node --check dist/node-scripts/scripts/check-latest-ci.js
 node --check dist/node-scripts/scripts/cleanup-ghcr-package-versions.js
 node --check dist/node-scripts/scripts/github-actions-guard.js

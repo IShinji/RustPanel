@@ -1,0 +1,7 @@
+version: v1
+
+plugins:
+  - plugin: es
+    out: src/web/src/gen
+    opt:
+      - target=ts

@@ -5,3 +5,4 @@ deploy/github-runner/.env
 dist/
 node_modules/
 github-runner/.env
+target/
