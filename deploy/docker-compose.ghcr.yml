@@ -4,13 +4,33 @@ services:
     container_name: rustpanel-backend
     restart: always
     environment:
+      RUSTPANEL_ENV: production
       RUSTPANEL_BACKEND_ADDR: 0.0.0.0:8080
+      RUSTPANEL_ADMIN_USERNAME: ${RUSTPANEL_ADMIN_USERNAME:-admin}
+      RUSTPANEL_ADMIN_PASSWORD: ${RUSTPANEL_ADMIN_PASSWORD:?RUSTPANEL_ADMIN_PASSWORD is required}
+      RUSTPANEL_JWT_SECRET: ${RUSTPANEL_JWT_SECRET:?RUSTPANEL_JWT_SECRET is required}
       RUSTPANEL_ALLOWED_ORIGINS: ${RUSTPANEL_ALLOWED_ORIGINS:-}
+      RUSTPANEL_AUDIT_ROOT: /data/audit
+      RUSTPANEL_APPSTORE_ROOT: /data/appstore
+      RUSTPANEL_CLUSTER_ROOT: /data/cluster
+      RUSTPANEL_CRON_ROOT: /data/cron
+      RUSTPANEL_DOCKER_COMPOSE_ROOT: /data/compose
+      RUSTPANEL_FILE_STATE_ROOT: /data/files
+      RUSTPANEL_FS_ROOT: ${RUSTPANEL_FS_ROOT:-/host}
+      RUSTPANEL_SECURITY_ROOT: /data/security
+      RUSTPANEL_SITE_STATE_ROOT: /data/site
+      RUSTPANEL_CERT_ROOT: /data/certs
+      RUSTPANEL_ACME_CHALLENGE_ROOT: /data/acme
     ports:
-      - "127.0.0.1:${RUSTPANEL_API_PORT:-18080}:8080"
+      - "${RUSTPANEL_BIND_HOST:-127.0.0.1}:${RUSTPANEL_API_PORT:-18080}:8080"
+    volumes:
+      - ${RUSTPANEL_DATA_DIR:-/www/wwwroot/rustpanel/data}:/data
+      - /:/host:rw
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - rustpanel-net
 
 networks:
   rustpanel-net:
+    name: rustpanel-net
     driver: bridge

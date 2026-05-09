@@ -6,6 +6,27 @@
 
 ## 前置环境依赖
 
+如果只是部署到 Linux 服务器，可直接使用一键安装脚本，脚本会自动准备 Docker 并启动 GHCR 镜像：
+
+```bash
+url=https://raw.githubusercontent.com/IShinji/RustPanel/main/deploy/install.sh;if command -v curl >/dev/null 2>&1;then curl -fsSL "$url" -o rustpanel-install.sh;else wget -O rustpanel-install.sh "$url";fi;sudo bash rustpanel-install.sh
+```
+
+常见参数：
+
+```bash
+sudo bash rustpanel-install.sh --port 18888 --origin https://panel.example.com
+sudo bash rustpanel-install.sh --bind 127.0.0.1 --skip-docker-install
+```
+
+默认安装目录是 `/www/wwwroot/rustpanel`，配置文件是 `/www/wwwroot/rustpanel/.env`，后续升级可执行：
+
+```bash
+sudo bash /www/wwwroot/rustpanel/deploy/update.sh
+```
+
+以下依赖仅用于本地开发：
+
 开始之前，请确保你的开发环境安装了以下工具：
 
 1. **Rust 工具链**: 用于编译后端核心与生成二进制文件。
