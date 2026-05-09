@@ -20,6 +20,10 @@ message CertificateItem {
   string private_key_path = 3;
   uint64 expires_at_seconds = 4;
   CertificateState state = 5;
+  string group = 6;
+  int64 days_until_expiry = 7;
+  bool auto_renew_enabled = 8;
+  string warning_level = 9;
 }
 
 // RequestCertificateRequest 表示申请证书请求。
@@ -44,6 +48,41 @@ message RevokeCertificateResponse {
   Response status = 1;
 }
 
+// ListCertificatesRequest 表示证书统一视图请求。
+message ListCertificatesRequest {}
+
+// ListCertificatesResponse 返回当前托管证书和过期预警。
+message ListCertificatesResponse {
+  Response status = 1;
+  repeated CertificateItem certificates = 2;
+}
+
+// ImportCertificateRequest 表示手动导入商用或自备证书请求。
+message ImportCertificateRequest {
+  string domain = 1;
+  string group = 2;
+  string certificate_pem = 3;
+  string private_key_pem = 4;
+}
+
+// ImportCertificateResponse 返回导入后的证书。
+message ImportCertificateResponse {
+  Response status = 1;
+  CertificateItem certificate = 2;
+}
+
+// RenewCertificateRequest 表示立即续签证书请求。
+message RenewCertificateRequest {
+  string domain = 1;
+}
+
+// RenewCertificateResponse 返回续签后的证书。
+message RenewCertificateResponse {
+  Response status = 1;
+  CertificateItem certificate = 2;
+  string output = 3;
+}
+
 // WatchCertificateProgressRequest 表示证书进度订阅请求。
 message WatchCertificateProgressRequest {
   string domain = 1;
@@ -60,5 +99,8 @@ message WatchCertificateProgressResponse {
 service SslService {
   rpc RequestCertificate(RequestCertificateRequest) returns (RequestCertificateResponse);
   rpc RevokeCertificate(RevokeCertificateRequest) returns (RevokeCertificateResponse);
+  rpc ListCertificates(ListCertificatesRequest) returns (ListCertificatesResponse);
+  rpc ImportCertificate(ImportCertificateRequest) returns (ImportCertificateResponse);
+  rpc RenewCertificate(RenewCertificateRequest) returns (RenewCertificateResponse);
   rpc WatchCertificateProgress(WatchCertificateProgressRequest) returns (stream WatchCertificateProgressResponse);
 }

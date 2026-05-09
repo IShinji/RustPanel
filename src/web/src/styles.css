@@ -406,6 +406,16 @@ button {
   width: 100%;
 }
 
+.pem-input {
+  border: 1px solid #ccd7da;
+  border-radius: 6px;
+  min-height: 96px;
+  margin-bottom: 10px;
+  padding: 10px;
+  resize: vertical;
+  width: 100%;
+}
+
 .backup-actions {
   margin-bottom: 12px;
 }

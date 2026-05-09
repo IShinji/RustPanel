@@ -64,6 +64,7 @@ import {
   WafRuleKind
 } from "./gen/rustpanel/v1/security_pb";
 import { SiteItem } from "./gen/rustpanel/v1/site_pb";
+import { CertificateItem } from "./gen/rustpanel/v1/ssl_pb";
 import { createRpcClients } from "./lib/rpc";
 import { formatBytes, formatDuration, formatPercent, safeError } from "./lib/format";
 import { useMonitorStore } from "./store/monitor";
@@ -1191,13 +1192,19 @@ function DockerApps({ clients }: { clients: Clients }) {
 
 function SitesSsl({ clients }: { clients: Clients }) {
   const [sites, setSites] = useState<SiteItem[]>([]);
+  const [certificates, setCertificates] = useState<CertificateItem[]>([]);
   const [form, setForm] = useState({ name: "demo", domains: "example.com", root: "/var/www/html", proxyTarget: "" });
   const [sslDomain, setSslDomain] = useState("example.com");
+  const [importForm, setImportForm] = useState({ domain: "example.com", group: "default", certificatePem: "", privateKeyPem: "" });
   const [status, setStatus] = useState("");
 
   const load = async () => {
-    const response = await clients.site.listSites({});
-    setSites(response.sites);
+    const [siteResponse, certResponse] = await Promise.all([
+      clients.site.listSites({}),
+      clients.ssl.listCertificates({})
+    ]);
+    setSites(siteResponse.sites);
+    setCertificates(certResponse.certificates);
   };
 
   useEffect(() => {
@@ -1218,6 +1225,19 @@ function SitesSsl({ clients }: { clients: Clients }) {
   const requestSsl = async () => {
     const response = await clients.ssl.requestCertificate({ domain: sslDomain, email: "admin@example.com" });
     setStatus(response.certificate ? `${response.certificate.domain} 已签发` : "证书申请已提交");
+    await load();
+  };
+
+  const importCertificate = async () => {
+    const response = await clients.ssl.importCertificate(importForm);
+    setStatus(response.certificate ? `${response.certificate.domain} 已导入` : "证书已导入");
+    await load();
+  };
+
+  const renewCertificate = async (certificate: CertificateItem) => {
+    const response = await clients.ssl.renewCertificate({ domain: certificate.domain });
+    setStatus(response.output || `${certificate.domain} 已续签`);
+    await load();
   };
 
   return (
@@ -1245,6 +1265,25 @@ function SitesSsl({ clients }: { clients: Clients }) {
         <small>{status}</small>
       </div>
 
+      <div className="panel">
+        <div className="panel-title"><FileUp size={18} /><span>手动导入</span></div>
+        <Input label="域名" value={importForm.domain} onChange={(domain) => setImportForm({ ...importForm, domain })} />
+        <Input label="分组" value={importForm.group} onChange={(group) => setImportForm({ ...importForm, group })} />
+        <textarea
+          className="pem-input"
+          onChange={(event) => setImportForm({ ...importForm, certificatePem: event.target.value })}
+          placeholder="-----BEGIN CERTIFICATE-----"
+          value={importForm.certificatePem}
+        />
+        <textarea
+          className="pem-input"
+          onChange={(event) => setImportForm({ ...importForm, privateKeyPem: event.target.value })}
+          placeholder="-----BEGIN PRIVATE KEY-----"
+          value={importForm.privateKeyPem}
+        />
+        <button onClick={() => void importCertificate()} type="button"><FileUp size={15} />导入</button>
+      </div>
+
       <div className="panel wide-panel">
         <div className="panel-title"><Server size={18} /><span>站点列表</span></div>
         {sites.map((site) => (
@@ -1256,6 +1295,23 @@ function SitesSsl({ clients }: { clients: Clients }) {
             <StatusPill label={site.sslEnabled ? "SSL" : "HTTP"} tone={site.sslEnabled ? "good" : "muted"} />
           </div>
         ))}
+      </div>
+
+      <div className="panel full-span">
+        <div className="panel-title"><ShieldCheck size={18} /><span>证书统一视图</span></div>
+        <div className="table-list">
+          {certificates.map((certificate) => (
+            <div className="table-row" key={certificate.domain}>
+              <div>
+                <strong>{certificate.domain}</strong>
+                <small>{certificate.group || "default"} · {certificate.certificatePath}</small>
+              </div>
+              <StatusPill label={`${certificate.daysUntilExpiry} 天`} tone={certificate.warningLevel === "ok" ? "good" : "danger"} />
+              <IconButton label="续签" icon={RotateCw} onClick={() => void renewCertificate(certificate)} />
+            </div>
+          ))}
+          {!certificates.length && <div className="empty-state">暂无证书</div>}
+        </div>
       </div>
     </section>
   );

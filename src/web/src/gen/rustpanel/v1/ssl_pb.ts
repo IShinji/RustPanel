@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/ssl.proto.
  */
 export const file_rustpanel_v1_ssl: GenFile = /*@__PURE__*/
-  fileDesc("ChZydXN0cGFuZWwvdjEvc3NsLnByb3RvEgxydXN0cGFuZWwudjEioAEKD0NlcnRpZmljYXRlSXRlbRIOCgZkb21haW4YASABKAkSGAoQY2VydGlmaWNhdGVfcGF0aBgCIAEoCRIYChBwcml2YXRlX2tleV9wYXRoGAMgASgJEhoKEmV4cGlyZXNfYXRfc2Vjb25kcxgEIAEoBBItCgVzdGF0ZRgFIAEoDjIeLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZVN0YXRlIjoKGVJlcXVlc3RDZXJ0aWZpY2F0ZVJlcXVlc3QSDgoGZG9tYWluGAEgASgJEg0KBWVtYWlsGAIgASgJIngKGlJlcXVlc3RDZXJ0aWZpY2F0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIyCgtjZXJ0aWZpY2F0ZRgCIAEoCzIdLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZUl0ZW0iKgoYUmV2b2tlQ2VydGlmaWNhdGVSZXF1ZXN0Eg4KBmRvbWFpbhgBIAEoCSJDChlSZXZva2VDZXJ0aWZpY2F0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIxCh9XYXRjaENlcnRpZmljYXRlUHJvZ3Jlc3NSZXF1ZXN0Eg4KBmRvbWFpbhgBIAEoCSKPAQogV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjIKC2NlcnRpZmljYXRlGAIgASgLMh0ucnVzdHBhbmVsLnYxLkNlcnRpZmljYXRlSXRlbRIPCgdtZXNzYWdlGAMgASgJKq8BChBDZXJ0aWZpY2F0ZVN0YXRlEiEKHUNFUlRJRklDQVRFX1NUQVRFX1VOU1BFQ0lGSUVEEAASHQoZQ0VSVElGSUNBVEVfU1RBVEVfUEVORElORxABEhwKGENFUlRJRklDQVRFX1NUQVRFX0lTU1VFRBACEh0KGUNFUlRJRklDQVRFX1NUQVRFX1JFVk9LRUQQAxIcChhDRVJUSUZJQ0FURV9TVEFURV9GQUlMRUQQBDLYAgoKU3NsU2VydmljZRJnChJSZXF1ZXN0Q2VydGlmaWNhdGUSJy5ydXN0cGFuZWwudjEuUmVxdWVzdENlcnRpZmljYXRlUmVxdWVzdBooLnJ1c3RwYW5lbC52MS5SZXF1ZXN0Q2VydGlmaWNhdGVSZXNwb25zZRJkChFSZXZva2VDZXJ0aWZpY2F0ZRImLnJ1c3RwYW5lbC52MS5SZXZva2VDZXJ0aWZpY2F0ZVJlcXVlc3QaJy5ydXN0cGFuZWwudjEuUmV2b2tlQ2VydGlmaWNhdGVSZXNwb25zZRJ7ChhXYXRjaENlcnRpZmljYXRlUHJvZ3Jlc3MSLS5ydXN0cGFuZWwudjEuV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVxdWVzdBouLnJ1c3RwYW5lbC52MS5XYXRjaENlcnRpZmljYXRlUHJvZ3Jlc3NSZXNwb25zZTABYgZwcm90bzM", [file_rustpanel_v1_common]);
+  fileDesc("ChZydXN0cGFuZWwvdjEvc3NsLnByb3RvEgxydXN0cGFuZWwudjEi/QEKD0NlcnRpZmljYXRlSXRlbRIOCgZkb21haW4YASABKAkSGAoQY2VydGlmaWNhdGVfcGF0aBgCIAEoCRIYChBwcml2YXRlX2tleV9wYXRoGAMgASgJEhoKEmV4cGlyZXNfYXRfc2Vjb25kcxgEIAEoBBItCgVzdGF0ZRgFIAEoDjIeLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZVN0YXRlEg0KBWdyb3VwGAYgASgJEhkKEWRheXNfdW50aWxfZXhwaXJ5GAcgASgDEhoKEmF1dG9fcmVuZXdfZW5hYmxlZBgIIAEoCBIVCg13YXJuaW5nX2xldmVsGAkgASgJIjoKGVJlcXVlc3RDZXJ0aWZpY2F0ZVJlcXVlc3QSDgoGZG9tYWluGAEgASgJEg0KBWVtYWlsGAIgASgJIngKGlJlcXVlc3RDZXJ0aWZpY2F0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIyCgtjZXJ0aWZpY2F0ZRgCIAEoCzIdLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZUl0ZW0iKgoYUmV2b2tlQ2VydGlmaWNhdGVSZXF1ZXN0Eg4KBmRvbWFpbhgBIAEoCSJDChlSZXZva2VDZXJ0aWZpY2F0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIZChdMaXN0Q2VydGlmaWNhdGVzUmVxdWVzdCJ3ChhMaXN0Q2VydGlmaWNhdGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjMKDGNlcnRpZmljYXRlcxgCIAMoCzIdLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZUl0ZW0iawoYSW1wb3J0Q2VydGlmaWNhdGVSZXF1ZXN0Eg4KBmRvbWFpbhgBIAEoCRINCgVncm91cBgCIAEoCRIXCg9jZXJ0aWZpY2F0ZV9wZW0YAyABKAkSFwoPcHJpdmF0ZV9rZXlfcGVtGAQgASgJIncKGUltcG9ydENlcnRpZmljYXRlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjIKC2NlcnRpZmljYXRlGAIgASgLMh0ucnVzdHBhbmVsLnYxLkNlcnRpZmljYXRlSXRlbSIpChdSZW5ld0NlcnRpZmljYXRlUmVxdWVzdBIOCgZkb21haW4YASABKAkihgEKGFJlbmV3Q2VydGlmaWNhdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USMgoLY2VydGlmaWNhdGUYAiABKAsyHS5ydXN0cGFuZWwudjEuQ2VydGlmaWNhdGVJdGVtEg4KBm91dHB1dBgDIAEoCSIxCh9XYXRjaENlcnRpZmljYXRlUHJvZ3Jlc3NSZXF1ZXN0Eg4KBmRvbWFpbhgBIAEoCSKPAQogV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjIKC2NlcnRpZmljYXRlGAIgASgLMh0ucnVzdHBhbmVsLnYxLkNlcnRpZmljYXRlSXRlbRIPCgdtZXNzYWdlGAMgASgJKq8BChBDZXJ0aWZpY2F0ZVN0YXRlEiEKHUNFUlRJRklDQVRFX1NUQVRFX1VOU1BFQ0lGSUVEEAASHQoZQ0VSVElGSUNBVEVfU1RBVEVfUEVORElORxABEhwKGENFUlRJRklDQVRFX1NUQVRFX0lTU1VFRBACEh0KGUNFUlRJRklDQVRFX1NUQVRFX1JFVk9LRUQQAxIcChhDRVJUSUZJQ0FURV9TVEFURV9GQUlMRUQQBDKEBQoKU3NsU2VydmljZRJnChJSZXF1ZXN0Q2VydGlmaWNhdGUSJy5ydXN0cGFuZWwudjEuUmVxdWVzdENlcnRpZmljYXRlUmVxdWVzdBooLnJ1c3RwYW5lbC52MS5SZXF1ZXN0Q2VydGlmaWNhdGVSZXNwb25zZRJkChFSZXZva2VDZXJ0aWZpY2F0ZRImLnJ1c3RwYW5lbC52MS5SZXZva2VDZXJ0aWZpY2F0ZVJlcXVlc3QaJy5ydXN0cGFuZWwudjEuUmV2b2tlQ2VydGlmaWNhdGVSZXNwb25zZRJhChBMaXN0Q2VydGlmaWNhdGVzEiUucnVzdHBhbmVsLnYxLkxpc3RDZXJ0aWZpY2F0ZXNSZXF1ZXN0GiYucnVzdHBhbmVsLnYxLkxpc3RDZXJ0aWZpY2F0ZXNSZXNwb25zZRJkChFJbXBvcnRDZXJ0aWZpY2F0ZRImLnJ1c3RwYW5lbC52MS5JbXBvcnRDZXJ0aWZpY2F0ZVJlcXVlc3QaJy5ydXN0cGFuZWwudjEuSW1wb3J0Q2VydGlmaWNhdGVSZXNwb25zZRJhChBSZW5ld0NlcnRpZmljYXRlEiUucnVzdHBhbmVsLnYxLlJlbmV3Q2VydGlmaWNhdGVSZXF1ZXN0GiYucnVzdHBhbmVsLnYxLlJlbmV3Q2VydGlmaWNhdGVSZXNwb25zZRJ7ChhXYXRjaENlcnRpZmljYXRlUHJvZ3Jlc3MSLS5ydXN0cGFuZWwudjEuV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVxdWVzdBouLnJ1c3RwYW5lbC52MS5XYXRjaENlcnRpZmljYXRlUHJvZ3Jlc3NSZXNwb25zZTABYgZwcm90bzM", [file_rustpanel_v1_common]);
 
 /**
  * CertificateItem 描述一个站点证书。
@@ -44,6 +44,26 @@ export type CertificateItem = Message<"rustpanel.v1.CertificateItem"> & {
    * @generated from field: rustpanel.v1.CertificateState state = 5;
    */
   state: CertificateState;
+
+  /**
+   * @generated from field: string group = 6;
+   */
+  group: string;
+
+  /**
+   * @generated from field: int64 days_until_expiry = 7;
+   */
+  daysUntilExpiry: bigint;
+
+  /**
+   * @generated from field: bool auto_renew_enabled = 8;
+   */
+  autoRenewEnabled: boolean;
+
+  /**
+   * @generated from field: string warning_level = 9;
+   */
+  warningLevel: string;
 };
 
 /**
@@ -140,6 +160,151 @@ export const RevokeCertificateResponseSchema: GenMessage<RevokeCertificateRespon
   messageDesc(file_rustpanel_v1_ssl, 4);
 
 /**
+ * ListCertificatesRequest 表示证书统一视图请求。
+ *
+ * @generated from message rustpanel.v1.ListCertificatesRequest
+ */
+export type ListCertificatesRequest = Message<"rustpanel.v1.ListCertificatesRequest"> & {
+};
+
+/**
+ * Describes the message rustpanel.v1.ListCertificatesRequest.
+ * Use `create(ListCertificatesRequestSchema)` to create a new message.
+ */
+export const ListCertificatesRequestSchema: GenMessage<ListCertificatesRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_ssl, 5);
+
+/**
+ * ListCertificatesResponse 返回当前托管证书和过期预警。
+ *
+ * @generated from message rustpanel.v1.ListCertificatesResponse
+ */
+export type ListCertificatesResponse = Message<"rustpanel.v1.ListCertificatesResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.CertificateItem certificates = 2;
+   */
+  certificates: CertificateItem[];
+};
+
+/**
+ * Describes the message rustpanel.v1.ListCertificatesResponse.
+ * Use `create(ListCertificatesResponseSchema)` to create a new message.
+ */
+export const ListCertificatesResponseSchema: GenMessage<ListCertificatesResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_ssl, 6);
+
+/**
+ * ImportCertificateRequest 表示手动导入商用或自备证书请求。
+ *
+ * @generated from message rustpanel.v1.ImportCertificateRequest
+ */
+export type ImportCertificateRequest = Message<"rustpanel.v1.ImportCertificateRequest"> & {
+  /**
+   * @generated from field: string domain = 1;
+   */
+  domain: string;
+
+  /**
+   * @generated from field: string group = 2;
+   */
+  group: string;
+
+  /**
+   * @generated from field: string certificate_pem = 3;
+   */
+  certificatePem: string;
+
+  /**
+   * @generated from field: string private_key_pem = 4;
+   */
+  privateKeyPem: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.ImportCertificateRequest.
+ * Use `create(ImportCertificateRequestSchema)` to create a new message.
+ */
+export const ImportCertificateRequestSchema: GenMessage<ImportCertificateRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_ssl, 7);
+
+/**
+ * ImportCertificateResponse 返回导入后的证书。
+ *
+ * @generated from message rustpanel.v1.ImportCertificateResponse
+ */
+export type ImportCertificateResponse = Message<"rustpanel.v1.ImportCertificateResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.CertificateItem certificate = 2;
+   */
+  certificate?: CertificateItem | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.ImportCertificateResponse.
+ * Use `create(ImportCertificateResponseSchema)` to create a new message.
+ */
+export const ImportCertificateResponseSchema: GenMessage<ImportCertificateResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_ssl, 8);
+
+/**
+ * RenewCertificateRequest 表示立即续签证书请求。
+ *
+ * @generated from message rustpanel.v1.RenewCertificateRequest
+ */
+export type RenewCertificateRequest = Message<"rustpanel.v1.RenewCertificateRequest"> & {
+  /**
+   * @generated from field: string domain = 1;
+   */
+  domain: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.RenewCertificateRequest.
+ * Use `create(RenewCertificateRequestSchema)` to create a new message.
+ */
+export const RenewCertificateRequestSchema: GenMessage<RenewCertificateRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_ssl, 9);
+
+/**
+ * RenewCertificateResponse 返回续签后的证书。
+ *
+ * @generated from message rustpanel.v1.RenewCertificateResponse
+ */
+export type RenewCertificateResponse = Message<"rustpanel.v1.RenewCertificateResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.CertificateItem certificate = 2;
+   */
+  certificate?: CertificateItem | undefined;
+
+  /**
+   * @generated from field: string output = 3;
+   */
+  output: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.RenewCertificateResponse.
+ * Use `create(RenewCertificateResponseSchema)` to create a new message.
+ */
+export const RenewCertificateResponseSchema: GenMessage<RenewCertificateResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_ssl, 10);
+
+/**
  * WatchCertificateProgressRequest 表示证书进度订阅请求。
  *
  * @generated from message rustpanel.v1.WatchCertificateProgressRequest
@@ -156,7 +321,7 @@ export type WatchCertificateProgressRequest = Message<"rustpanel.v1.WatchCertifi
  * Use `create(WatchCertificateProgressRequestSchema)` to create a new message.
  */
 export const WatchCertificateProgressRequestSchema: GenMessage<WatchCertificateProgressRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_ssl, 5);
+  messageDesc(file_rustpanel_v1_ssl, 11);
 
 /**
  * WatchCertificateProgressResponse 返回证书进度事件。
@@ -185,7 +350,7 @@ export type WatchCertificateProgressResponse = Message<"rustpanel.v1.WatchCertif
  * Use `create(WatchCertificateProgressResponseSchema)` to create a new message.
  */
 export const WatchCertificateProgressResponseSchema: GenMessage<WatchCertificateProgressResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_ssl, 6);
+  messageDesc(file_rustpanel_v1_ssl, 12);
 
 /**
  * CertificateState 描述证书状态。
@@ -246,6 +411,30 @@ export const SslService: GenService<{
     methodKind: "unary";
     input: typeof RevokeCertificateRequestSchema;
     output: typeof RevokeCertificateResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SslService.ListCertificates
+   */
+  listCertificates: {
+    methodKind: "unary";
+    input: typeof ListCertificatesRequestSchema;
+    output: typeof ListCertificatesResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SslService.ImportCertificate
+   */
+  importCertificate: {
+    methodKind: "unary";
+    input: typeof ImportCertificateRequestSchema;
+    output: typeof ImportCertificateResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SslService.RenewCertificate
+   */
+  renewCertificate: {
+    methodKind: "unary";
+    input: typeof RenewCertificateRequestSchema;
+    output: typeof RenewCertificateResponseSchema;
   },
   /**
    * @generated from rpc rustpanel.v1.SslService.WatchCertificateProgress

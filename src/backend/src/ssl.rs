@@ -15,6 +15,8 @@ use crate::{
     ok_response,
     proto::rustpanel::v1::{
         ssl_service_server::SslService, CertificateItem, CertificateState,
+        ImportCertificateRequest, ImportCertificateResponse, ListCertificatesRequest,
+        ListCertificatesResponse, RenewCertificateRequest, RenewCertificateResponse,
         RequestCertificateRequest, RequestCertificateResponse, RevokeCertificateRequest,
         RevokeCertificateResponse, WatchCertificateProgressRequest,
         WatchCertificateProgressResponse,
@@ -93,6 +95,69 @@ impl SslService for SslServiceImpl {
         }))
     }
 
+    async fn list_certificates(
+        &self,
+        _request: Request<ListCertificatesRequest>,
+    ) -> Result<GrpcResponse<ListCertificatesResponse>, Status> {
+        Ok(GrpcResponse::new(ListCertificatesResponse {
+            status: Some(ok_response("ok")),
+            certificates: list_certificates().await?,
+        }))
+    }
+
+    async fn import_certificate(
+        &self,
+        request: Request<ImportCertificateRequest>,
+    ) -> Result<GrpcResponse<ImportCertificateResponse>, Status> {
+        let request = request.into_inner();
+        validate_domain(&request.domain)?;
+        validate_pem(&request.certificate_pem, "CERTIFICATE")?;
+        validate_pem(&request.private_key_pem, "PRIVATE KEY")?;
+        let cert_dir = domain_cert_dir(&request.domain);
+        tokio::fs::create_dir_all(&cert_dir)
+            .await
+            .map_err(io_status)?;
+        let cert_path = cert_dir.join("fullchain.pem");
+        let key_path = cert_dir.join("privkey.pem");
+        tokio::fs::write(&cert_path, request.certificate_pem)
+            .await
+            .map_err(io_status)?;
+        tokio::fs::write(&key_path, request.private_key_pem)
+            .await
+            .map_err(io_status)?;
+        if !request.group.trim().is_empty() {
+            tokio::fs::write(cert_dir.join("rustpanel-group"), request.group.trim())
+                .await
+                .map_err(io_status)?;
+        }
+        let certificate = certificate_item(&request.domain, CertificateState::Issued).await?;
+        let _ = reload_nginx().await;
+
+        Ok(GrpcResponse::new(ImportCertificateResponse {
+            status: Some(ok_response("certificate imported")),
+            certificate: Some(certificate),
+        }))
+    }
+
+    async fn renew_certificate(
+        &self,
+        request: Request<RenewCertificateRequest>,
+    ) -> Result<GrpcResponse<RenewCertificateResponse>, Status> {
+        let domain = request.into_inner().domain;
+        validate_domain(&domain)?;
+        let certificate = issue_certificate(&domain).await?;
+        let reload_output = reload_nginx()
+            .await
+            .map(|_| "nginx reloaded".to_owned())
+            .unwrap_or_else(|error| error.message().to_owned());
+
+        Ok(GrpcResponse::new(RenewCertificateResponse {
+            status: Some(ok_response("certificate renewed")),
+            certificate: Some(certificate),
+            output: reload_output,
+        }))
+    }
+
     async fn watch_certificate_progress(
         &self,
         request: Request<WatchCertificateProgressRequest>,
@@ -138,13 +203,85 @@ async fn issue_certificate(domain: &str) -> Result<CertificateItem, Status> {
         create_self_signed_certificate(domain, &cert_path, &key_path).await?;
     }
 
+    certificate_item(domain, CertificateState::Issued).await
+}
+
+async fn list_certificates() -> Result<Vec<CertificateItem>, Status> {
+    let mut certificates = Vec::new();
+    let mut entries = match tokio::fs::read_dir(cert_root()).await {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(certificates),
+        Err(error) => return Err(io_status(error)),
+    };
+    while let Some(entry) = entries.next_entry().await.map_err(io_status)? {
+        let path = entry.path();
+        if !entry.file_type().await.map_err(io_status)?.is_dir() {
+            continue;
+        }
+        let Some(domain) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if validate_domain(domain).is_ok() {
+            certificates.push(certificate_item(domain, CertificateState::Issued).await?);
+        }
+    }
+    certificates.sort_by_key(|certificate| certificate.expires_at_seconds);
+    Ok(certificates)
+}
+
+async fn certificate_item(
+    domain: &str,
+    state: CertificateState,
+) -> Result<CertificateItem, Status> {
+    let cert_dir = domain_cert_dir(domain);
+    let cert_path = cert_dir.join("fullchain.pem");
+    let key_path = cert_dir.join("privkey.pem");
+    let expires_at_seconds = certificate_expiry(&cert_path)
+        .await
+        .unwrap_or_else(|_| current_timestamp() + 90 * 24 * 60 * 60);
+    let days_until_expiry = days_until(expires_at_seconds);
+    let group = tokio::fs::read_to_string(cert_dir.join("rustpanel-group"))
+        .await
+        .unwrap_or_else(|_| "default".to_owned())
+        .trim()
+        .to_owned();
+
     Ok(CertificateItem {
         domain: domain.to_owned(),
         certificate_path: cert_path.to_string_lossy().to_string(),
         private_key_path: key_path.to_string_lossy().to_string(),
-        expires_at_seconds: current_timestamp() + 90 * 24 * 60 * 60,
-        state: CertificateState::Issued.into(),
+        expires_at_seconds,
+        state: state.into(),
+        group,
+        days_until_expiry,
+        auto_renew_enabled: true,
+        warning_level: warning_level(days_until_expiry).to_owned(),
     })
+}
+
+async fn certificate_expiry(cert_path: &PathBuf) -> Result<u64, Status> {
+    let output = tokio::process::Command::new("openssl")
+        .arg("x509")
+        .arg("-enddate")
+        .arg("-noout")
+        .arg("-in")
+        .arg(cert_path)
+        .output()
+        .await
+        .map_err(io_status)?;
+    if !output.status.success() {
+        return Err(Status::internal(
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let value = text
+        .trim()
+        .strip_prefix("notAfter=")
+        .ok_or_else(|| Status::internal("openssl enddate output is invalid"))?;
+    let parsed =
+        chrono::NaiveDateTime::parse_from_str(value, "%b %e %H:%M:%S %Y GMT").map_err(io_status)?;
+    Ok(parsed.and_utc().timestamp().max(0) as u64)
 }
 
 async fn prepare_challenge_root() -> Result<(), Status> {
@@ -225,6 +362,10 @@ fn send_progress(
                 .to_string(),
             expires_at_seconds: current_timestamp() + 90 * 24 * 60 * 60,
             state: state.into(),
+            group: "default".to_owned(),
+            days_until_expiry: 90,
+            auto_renew_enabled: true,
+            warning_level: "ok".to_owned(),
         }),
         message: message.to_owned(),
     });
@@ -240,6 +381,45 @@ fn validate_domain(domain: &str) -> Result<(), Status> {
         Ok(())
     } else {
         Err(Status::invalid_argument("valid domain is required"))
+    }
+}
+
+fn validate_pem(content: &str, marker: &str) -> Result<(), Status> {
+    let valid = if marker == "PRIVATE KEY" {
+        content.contains("-----BEGIN ")
+            && content.contains("PRIVATE KEY-----")
+            && content.contains("-----END ")
+    } else {
+        content.contains(&format!("-----BEGIN {marker}-----"))
+            && content.contains(&format!("-----END {marker}-----"))
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(Status::invalid_argument(format!(
+            "valid PEM {marker} is required"
+        )))
+    }
+}
+
+fn days_until(expires_at_seconds: u64) -> i64 {
+    let now = current_timestamp();
+    if expires_at_seconds >= now {
+        ((expires_at_seconds - now) / 86_400) as i64
+    } else {
+        -(((now - expires_at_seconds) / 86_400) as i64)
+    }
+}
+
+fn warning_level(days: i64) -> &'static str {
+    if days <= 1 {
+        "critical"
+    } else if days <= 7 {
+        "danger"
+    } else if days <= 30 {
+        "warning"
+    } else {
+        "ok"
     }
 }
 
@@ -278,5 +458,28 @@ mod tests {
     fn validates_dns_name_shape() {
         assert!(validate_domain("example.com").is_ok());
         assert!(validate_domain("../example.com").is_err());
+    }
+
+    #[test]
+    fn maps_certificate_warning_levels() {
+        assert_eq!(warning_level(31), "ok");
+        assert_eq!(warning_level(30), "warning");
+        assert_eq!(warning_level(7), "danger");
+        assert_eq!(warning_level(1), "critical");
+    }
+
+    #[test]
+    fn validates_imported_pem_shapes() {
+        assert!(validate_pem(
+            "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----",
+            "CERTIFICATE"
+        )
+        .is_ok());
+        assert!(validate_pem(
+            "-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----",
+            "PRIVATE KEY"
+        )
+        .is_ok());
+        assert!(validate_pem("nope", "CERTIFICATE").is_err());
     }
 }
