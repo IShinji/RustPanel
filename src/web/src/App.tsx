@@ -63,7 +63,7 @@ import {
   WafRule,
   WafRuleKind
 } from "./gen/rustpanel/v1/security_pb";
-import { SiteItem } from "./gen/rustpanel/v1/site_pb";
+import { ReverseProxyRule, RewriteTemplate, SiteItem } from "./gen/rustpanel/v1/site_pb";
 import { CertificateItem } from "./gen/rustpanel/v1/ssl_pb";
 import { createRpcClients } from "./lib/rpc";
 import { formatBytes, formatDuration, formatPercent, safeError } from "./lib/format";
@@ -1193,18 +1193,37 @@ function DockerApps({ clients }: { clients: Clients }) {
 function SitesSsl({ clients }: { clients: Clients }) {
   const [sites, setSites] = useState<SiteItem[]>([]);
   const [certificates, setCertificates] = useState<CertificateItem[]>([]);
+  const [rewriteTemplates, setRewriteTemplates] = useState<RewriteTemplate[]>([]);
+  const [rewriteContent, setRewriteContent] = useState("");
+  const [proxyRules, setProxyRules] = useState<ReverseProxyRule[]>([]);
   const [form, setForm] = useState({ name: "demo", domains: "example.com", root: "/var/www/html", proxyTarget: "" });
   const [sslDomain, setSslDomain] = useState("example.com");
   const [importForm, setImportForm] = useState({ domain: "example.com", group: "default", certificatePem: "", privateKeyPem: "" });
+  const [proxyForm, setProxyForm] = useState({
+    name: "api",
+    domain: "example.com",
+    pathPrefix: "/api/",
+    targets: "http://127.0.0.1:3000,http://127.0.0.1:3001",
+    method: "least_conn",
+    cacheEnabled: false,
+    rateLimit: 120
+  });
   const [status, setStatus] = useState("");
 
   const load = async () => {
-    const [siteResponse, certResponse] = await Promise.all([
+    const [siteResponse, certResponse, templateResponse, proxyResponse] = await Promise.all([
       clients.site.listSites({}),
-      clients.ssl.listCertificates({})
+      clients.ssl.listCertificates({}),
+      clients.site.listRewriteTemplates({}),
+      clients.site.listReverseProxyRules({})
     ]);
     setSites(siteResponse.sites);
     setCertificates(certResponse.certificates);
+    setRewriteTemplates(templateResponse.templates);
+    if (!rewriteContent && templateResponse.templates[0]) {
+      setRewriteContent(templateResponse.templates[0].content);
+    }
+    setProxyRules(proxyResponse.rules);
   };
 
   useEffect(() => {
@@ -1237,6 +1256,36 @@ function SitesSsl({ clients }: { clients: Clients }) {
   const renewCertificate = async (certificate: CertificateItem) => {
     const response = await clients.ssl.renewCertificate({ domain: certificate.domain });
     setStatus(response.output || `${certificate.domain} 已续签`);
+    await load();
+  };
+
+  const saveReverseProxy = async () => {
+    const targets = proxyForm.targets
+      .split(",")
+      .map((target) => target.trim())
+      .filter(Boolean)
+      .map((url) => ({ url, weight: 1, healthy: true }));
+    await clients.site.upsertReverseProxyRule({
+      rule: {
+        id: "",
+        name: proxyForm.name,
+        domain: proxyForm.domain,
+        pathPrefix: proxyForm.pathPrefix,
+        targets,
+        loadBalanceMethod: proxyForm.method,
+        cacheEnabled: proxyForm.cacheEnabled,
+        rateLimitPerMinute: proxyForm.rateLimit,
+        enabled: true,
+        configPath: "",
+        createdAtSeconds: 0n,
+        updatedAtSeconds: 0n
+      }
+    });
+    await load();
+  };
+
+  const deleteReverseProxy = async (rule: ReverseProxyRule) => {
+    await clients.site.deleteReverseProxyRule({ id: rule.id });
     await load();
   };
 
@@ -1284,6 +1333,42 @@ function SitesSsl({ clients }: { clients: Clients }) {
         <button onClick={() => void importCertificate()} type="button"><FileUp size={15} />导入</button>
       </div>
 
+      <div className="panel">
+        <div className="panel-title"><FileText size={18} /><span>伪静态模板</span></div>
+        <SelectRow
+          label="模板"
+          value={0}
+          onChange={(index) => setRewriteContent(rewriteTemplates[Number(index)]?.content ?? "")}
+          options={rewriteTemplates.map((template, index) => [index, template.name])}
+        />
+        <textarea
+          className="pem-input code-input"
+          onChange={(event) => setRewriteContent(event.target.value)}
+          value={rewriteContent}
+        />
+      </div>
+
+      <div className="panel">
+        <div className="panel-title"><Globe size={18} /><span>反向代理</span></div>
+        <Input label="名称" value={proxyForm.name} onChange={(name) => setProxyForm({ ...proxyForm, name })} />
+        <Input label="域名" value={proxyForm.domain} onChange={(domain) => setProxyForm({ ...proxyForm, domain })} />
+        <Input label="路径" value={proxyForm.pathPrefix} onChange={(pathPrefix) => setProxyForm({ ...proxyForm, pathPrefix })} />
+        <Input label="目标" value={proxyForm.targets} onChange={(targets) => setProxyForm({ ...proxyForm, targets })} />
+        <SelectRow
+          label="均衡"
+          value={["round_robin", "least_conn", "ip_hash"].indexOf(proxyForm.method)}
+          onChange={(index) => setProxyForm({ ...proxyForm, method: ["round_robin", "least_conn", "ip_hash"][Number(index)] })}
+          options={[
+            [0, "轮询"],
+            [1, "最少连接"],
+            [2, "IP Hash"]
+          ]}
+        />
+        <ToggleRow label="缓存" checked={proxyForm.cacheEnabled} onChange={(cacheEnabled) => setProxyForm({ ...proxyForm, cacheEnabled })} />
+        <NumberInput label="限速/分钟" value={proxyForm.rateLimit} onChange={(rateLimit) => setProxyForm({ ...proxyForm, rateLimit })} />
+        <button onClick={() => void saveReverseProxy()} type="button"><Save size={15} />保存反代</button>
+      </div>
+
       <div className="panel wide-panel">
         <div className="panel-title"><Server size={18} /><span>站点列表</span></div>
         {sites.map((site) => (
@@ -1311,6 +1396,23 @@ function SitesSsl({ clients }: { clients: Clients }) {
             </div>
           ))}
           {!certificates.length && <div className="empty-state">暂无证书</div>}
+        </div>
+      </div>
+
+      <div className="panel full-span">
+        <div className="panel-title"><Globe size={18} /><span>反代规则</span></div>
+        <div className="table-list">
+          {proxyRules.map((rule) => (
+            <div className="table-row" key={rule.id}>
+              <div>
+                <strong>{rule.name} · {rule.domain}{rule.pathPrefix}</strong>
+                <small>{rule.loadBalanceMethod || "round_robin"} · {rule.targets.map((target) => target.url).join(", ")}</small>
+              </div>
+              <StatusPill label={rule.enabled ? "启用" : "停用"} tone={rule.enabled ? "good" : "muted"} />
+              <IconButton label="删除" icon={Trash2} onClick={() => void deleteReverseProxy(rule)} />
+            </div>
+          ))}
+          {!proxyRules.length && <div className="empty-state">暂无反代规则</div>}
         </div>
       </div>
     </section>

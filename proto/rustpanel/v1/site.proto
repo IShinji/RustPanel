@@ -14,6 +14,37 @@ message SiteItem {
   string config_path = 6;
 }
 
+// RewriteTemplate 描述内置伪静态模板。
+message RewriteTemplate {
+  string id = 1;
+  string name = 2;
+  string stack = 3;
+  string content = 4;
+}
+
+// UpstreamTarget 描述一个反向代理或负载均衡目标。
+message UpstreamTarget {
+  string url = 1;
+  uint32 weight = 2;
+  bool healthy = 3;
+}
+
+// ReverseProxyRule 描述一条图形化反向代理规则。
+message ReverseProxyRule {
+  string id = 1;
+  string name = 2;
+  string domain = 3;
+  string path_prefix = 4;
+  repeated UpstreamTarget targets = 5;
+  string load_balance_method = 6;
+  bool cache_enabled = 7;
+  uint32 rate_limit_per_minute = 8;
+  bool enabled = 9;
+  string config_path = 10;
+  uint64 created_at_seconds = 11;
+  uint64 updated_at_seconds = 12;
+}
+
 // ListSitesRequest 表示站点列表请求。
 message ListSitesRequest {}
 
@@ -48,9 +79,66 @@ message ReloadNginxResponse {
   string output = 2;
 }
 
+// ListRewriteTemplatesRequest 表示伪静态模板列表请求。
+message ListRewriteTemplatesRequest {}
+
+// ListRewriteTemplatesResponse 返回内置伪静态模板。
+message ListRewriteTemplatesResponse {
+  Response status = 1;
+  repeated RewriteTemplate templates = 2;
+}
+
+// RenderRewriteTemplateRequest 表示模板预览请求。
+message RenderRewriteTemplateRequest {
+  string template_id = 1;
+  string custom_content = 2;
+}
+
+// RenderRewriteTemplateResponse 返回伪静态配置片段。
+message RenderRewriteTemplateResponse {
+  Response status = 1;
+  string rendered_config = 2;
+}
+
+// ListReverseProxyRulesRequest 表示反向代理规则列表请求。
+message ListReverseProxyRulesRequest {}
+
+// ListReverseProxyRulesResponse 返回反向代理规则。
+message ListReverseProxyRulesResponse {
+  Response status = 1;
+  repeated ReverseProxyRule rules = 2;
+}
+
+// UpsertReverseProxyRuleRequest 表示创建或更新反向代理规则请求。
+message UpsertReverseProxyRuleRequest {
+  ReverseProxyRule rule = 1;
+}
+
+// UpsertReverseProxyRuleResponse 返回保存后的反向代理规则。
+message UpsertReverseProxyRuleResponse {
+  Response status = 1;
+  ReverseProxyRule rule = 2;
+  string rendered_config = 3;
+}
+
+// DeleteReverseProxyRuleRequest 表示删除反向代理规则请求。
+message DeleteReverseProxyRuleRequest {
+  string id = 1;
+}
+
+// DeleteReverseProxyRuleResponse 返回删除结果。
+message DeleteReverseProxyRuleResponse {
+  Response status = 1;
+}
+
 // SiteService 提供站点与反向代理配置能力。
 service SiteService {
   rpc ListSites(ListSitesRequest) returns (ListSitesResponse);
   rpc CreateSite(CreateSiteRequest) returns (CreateSiteResponse);
   rpc ReloadNginx(ReloadNginxRequest) returns (ReloadNginxResponse);
+  rpc ListRewriteTemplates(ListRewriteTemplatesRequest) returns (ListRewriteTemplatesResponse);
+  rpc RenderRewriteTemplate(RenderRewriteTemplateRequest) returns (RenderRewriteTemplateResponse);
+  rpc ListReverseProxyRules(ListReverseProxyRulesRequest) returns (ListReverseProxyRulesResponse);
+  rpc UpsertReverseProxyRule(UpsertReverseProxyRuleRequest) returns (UpsertReverseProxyRuleResponse);
+  rpc DeleteReverseProxyRule(DeleteReverseProxyRuleRequest) returns (DeleteReverseProxyRuleResponse);
 }

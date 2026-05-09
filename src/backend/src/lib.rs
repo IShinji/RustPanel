@@ -206,7 +206,7 @@ fn multiplex_service_with_auth(
         .add_service(FileSystemServiceServer::new(file_service))
         .add_service(DockerServiceServer::new(docker::DockerServiceImpl))
         .add_service(AppStoreServiceServer::new(appstore::AppStoreServiceImpl))
-        .add_service(SiteServiceServer::new(site::SiteServiceImpl))
+        .add_service(SiteServiceServer::new(site::SiteServiceImpl::new()))
         .add_service(SslServiceServer::new(ssl::SslServiceImpl::default()))
         .add_service(DatabaseServiceServer::new(database::DatabaseServiceImpl))
         .add_service(CronServiceServer::new(cron::CronServiceImpl::new()))

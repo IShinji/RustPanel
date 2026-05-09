@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/site.proto.
  */
 export const file_rustpanel_v1_site: GenFile = /*@__PURE__*/
-  fileDesc("ChdydXN0cGFuZWwvdjEvc2l0ZS5wcm90bxIMcnVzdHBhbmVsLnYxIncKCFNpdGVJdGVtEgwKBG5hbWUYASABKAkSDwoHZG9tYWlucxgCIAMoCRIMCgRyb290GAMgASgJEhQKDHByb3h5X3RhcmdldBgEIAEoCRITCgtzc2xfZW5hYmxlZBgFIAEoCBITCgtjb25maWdfcGF0aBgGIAEoCSISChBMaXN0U2l0ZXNSZXF1ZXN0ImIKEUxpc3RTaXRlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIlCgVzaXRlcxgCIAMoCzIWLnJ1c3RwYW5lbC52MS5TaXRlSXRlbSJrChFDcmVhdGVTaXRlUmVxdWVzdBIMCgRuYW1lGAEgASgJEg8KB2RvbWFpbnMYAiADKAkSDAoEcm9vdBgDIAEoCRIUCgxwcm94eV90YXJnZXQYBCABKAkSEwoLc3NsX2VuYWJsZWQYBSABKAgiewoSQ3JlYXRlU2l0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIkCgRzaXRlGAIgASgLMhYucnVzdHBhbmVsLnYxLlNpdGVJdGVtEhcKD3JlbmRlcmVkX2NvbmZpZxgDIAEoCSIUChJSZWxvYWROZ2lueFJlcXVlc3QiTQoTUmVsb2FkTmdpbnhSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USDgoGb3V0cHV0GAIgASgJMoACCgtTaXRlU2VydmljZRJMCglMaXN0U2l0ZXMSHi5ydXN0cGFuZWwudjEuTGlzdFNpdGVzUmVxdWVzdBofLnJ1c3RwYW5lbC52MS5MaXN0U2l0ZXNSZXNwb25zZRJPCgpDcmVhdGVTaXRlEh8ucnVzdHBhbmVsLnYxLkNyZWF0ZVNpdGVSZXF1ZXN0GiAucnVzdHBhbmVsLnYxLkNyZWF0ZVNpdGVSZXNwb25zZRJSCgtSZWxvYWROZ2lueBIgLnJ1c3RwYW5lbC52MS5SZWxvYWROZ2lueFJlcXVlc3QaIS5ydXN0cGFuZWwudjEuUmVsb2FkTmdpbnhSZXNwb25zZWIGcHJvdG8z", [file_rustpanel_v1_common]);
+  fileDesc("ChdydXN0cGFuZWwvdjEvc2l0ZS5wcm90bxIMcnVzdHBhbmVsLnYxIncKCFNpdGVJdGVtEgwKBG5hbWUYASABKAkSDwoHZG9tYWlucxgCIAMoCRIMCgRyb290GAMgASgJEhQKDHByb3h5X3RhcmdldBgEIAEoCRITCgtzc2xfZW5hYmxlZBgFIAEoCBITCgtjb25maWdfcGF0aBgGIAEoCSJLCg9SZXdyaXRlVGVtcGxhdGUSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRINCgVzdGFjaxgDIAEoCRIPCgdjb250ZW50GAQgASgJIj4KDlVwc3RyZWFtVGFyZ2V0EgsKA3VybBgBIAEoCRIOCgZ3ZWlnaHQYAiABKA0SDwoHaGVhbHRoeRgDIAEoCCKxAgoQUmV2ZXJzZVByb3h5UnVsZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg4KBmRvbWFpbhgDIAEoCRITCgtwYXRoX3ByZWZpeBgEIAEoCRItCgd0YXJnZXRzGAUgAygLMhwucnVzdHBhbmVsLnYxLlVwc3RyZWFtVGFyZ2V0EhsKE2xvYWRfYmFsYW5jZV9tZXRob2QYBiABKAkSFQoNY2FjaGVfZW5hYmxlZBgHIAEoCBIdChVyYXRlX2xpbWl0X3Blcl9taW51dGUYCCABKA0SDwoHZW5hYmxlZBgJIAEoCBITCgtjb25maWdfcGF0aBgKIAEoCRIaChJjcmVhdGVkX2F0X3NlY29uZHMYCyABKAQSGgoSdXBkYXRlZF9hdF9zZWNvbmRzGAwgASgEIhIKEExpc3RTaXRlc1JlcXVlc3QiYgoRTGlzdFNpdGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiUKBXNpdGVzGAIgAygLMhYucnVzdHBhbmVsLnYxLlNpdGVJdGVtImsKEUNyZWF0ZVNpdGVSZXF1ZXN0EgwKBG5hbWUYASABKAkSDwoHZG9tYWlucxgCIAMoCRIMCgRyb290GAMgASgJEhQKDHByb3h5X3RhcmdldBgEIAEoCRITCgtzc2xfZW5hYmxlZBgFIAEoCCJ7ChJDcmVhdGVTaXRlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiQKBHNpdGUYAiABKAsyFi5ydXN0cGFuZWwudjEuU2l0ZUl0ZW0SFwoPcmVuZGVyZWRfY29uZmlnGAMgASgJIhQKElJlbG9hZE5naW54UmVxdWVzdCJNChNSZWxvYWROZ2lueFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIOCgZvdXRwdXQYAiABKAkiHQobTGlzdFJld3JpdGVUZW1wbGF0ZXNSZXF1ZXN0IngKHExpc3RSZXdyaXRlVGVtcGxhdGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjAKCXRlbXBsYXRlcxgCIAMoCzIdLnJ1c3RwYW5lbC52MS5SZXdyaXRlVGVtcGxhdGUiSwocUmVuZGVyUmV3cml0ZVRlbXBsYXRlUmVxdWVzdBITCgt0ZW1wbGF0ZV9pZBgBIAEoCRIWCg5jdXN0b21fY29udGVudBgCIAEoCSJgCh1SZW5kZXJSZXdyaXRlVGVtcGxhdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USFwoPcmVuZGVyZWRfY29uZmlnGAIgASgJIh4KHExpc3RSZXZlcnNlUHJveHlSdWxlc1JlcXVlc3QidgodTGlzdFJldmVyc2VQcm94eVJ1bGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEi0KBXJ1bGVzGAIgAygLMh4ucnVzdHBhbmVsLnYxLlJldmVyc2VQcm94eVJ1bGUiTQodVXBzZXJ0UmV2ZXJzZVByb3h5UnVsZVJlcXVlc3QSLAoEcnVsZRgBIAEoCzIeLnJ1c3RwYW5lbC52MS5SZXZlcnNlUHJveHlSdWxlIo8BCh5VcHNlcnRSZXZlcnNlUHJveHlSdWxlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiwKBHJ1bGUYAiABKAsyHi5ydXN0cGFuZWwudjEuUmV2ZXJzZVByb3h5UnVsZRIXCg9yZW5kZXJlZF9jb25maWcYAyABKAkiKwodRGVsZXRlUmV2ZXJzZVByb3h5UnVsZVJlcXVlc3QSCgoCaWQYASABKAkiSAoeRGVsZXRlUmV2ZXJzZVByb3h5UnVsZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZTK9BgoLU2l0ZVNlcnZpY2USTAoJTGlzdFNpdGVzEh4ucnVzdHBhbmVsLnYxLkxpc3RTaXRlc1JlcXVlc3QaHy5ydXN0cGFuZWwudjEuTGlzdFNpdGVzUmVzcG9uc2USTwoKQ3JlYXRlU2l0ZRIfLnJ1c3RwYW5lbC52MS5DcmVhdGVTaXRlUmVxdWVzdBogLnJ1c3RwYW5lbC52MS5DcmVhdGVTaXRlUmVzcG9uc2USUgoLUmVsb2FkTmdpbngSIC5ydXN0cGFuZWwudjEuUmVsb2FkTmdpbnhSZXF1ZXN0GiEucnVzdHBhbmVsLnYxLlJlbG9hZE5naW54UmVzcG9uc2USbQoUTGlzdFJld3JpdGVUZW1wbGF0ZXMSKS5ydXN0cGFuZWwudjEuTGlzdFJld3JpdGVUZW1wbGF0ZXNSZXF1ZXN0GioucnVzdHBhbmVsLnYxLkxpc3RSZXdyaXRlVGVtcGxhdGVzUmVzcG9uc2UScAoVUmVuZGVyUmV3cml0ZVRlbXBsYXRlEioucnVzdHBhbmVsLnYxLlJlbmRlclJld3JpdGVUZW1wbGF0ZVJlcXVlc3QaKy5ydXN0cGFuZWwudjEuUmVuZGVyUmV3cml0ZVRlbXBsYXRlUmVzcG9uc2UScAoVTGlzdFJldmVyc2VQcm94eVJ1bGVzEioucnVzdHBhbmVsLnYxLkxpc3RSZXZlcnNlUHJveHlSdWxlc1JlcXVlc3QaKy5ydXN0cGFuZWwudjEuTGlzdFJldmVyc2VQcm94eVJ1bGVzUmVzcG9uc2UScwoWVXBzZXJ0UmV2ZXJzZVByb3h5UnVsZRIrLnJ1c3RwYW5lbC52MS5VcHNlcnRSZXZlcnNlUHJveHlSdWxlUmVxdWVzdBosLnJ1c3RwYW5lbC52MS5VcHNlcnRSZXZlcnNlUHJveHlSdWxlUmVzcG9uc2UScwoWRGVsZXRlUmV2ZXJzZVByb3h5UnVsZRIrLnJ1c3RwYW5lbC52MS5EZWxldGVSZXZlcnNlUHJveHlSdWxlUmVxdWVzdBosLnJ1c3RwYW5lbC52MS5EZWxldGVSZXZlcnNlUHJveHlSdWxlUmVzcG9uc2ViBnByb3RvMw", [file_rustpanel_v1_common]);
 
 /**
  * SiteItem 描述一个站点配置。
@@ -59,6 +59,143 @@ export const SiteItemSchema: GenMessage<SiteItem> = /*@__PURE__*/
   messageDesc(file_rustpanel_v1_site, 0);
 
 /**
+ * RewriteTemplate 描述内置伪静态模板。
+ *
+ * @generated from message rustpanel.v1.RewriteTemplate
+ */
+export type RewriteTemplate = Message<"rustpanel.v1.RewriteTemplate"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string stack = 3;
+   */
+  stack: string;
+
+  /**
+   * @generated from field: string content = 4;
+   */
+  content: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.RewriteTemplate.
+ * Use `create(RewriteTemplateSchema)` to create a new message.
+ */
+export const RewriteTemplateSchema: GenMessage<RewriteTemplate> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 1);
+
+/**
+ * UpstreamTarget 描述一个反向代理或负载均衡目标。
+ *
+ * @generated from message rustpanel.v1.UpstreamTarget
+ */
+export type UpstreamTarget = Message<"rustpanel.v1.UpstreamTarget"> & {
+  /**
+   * @generated from field: string url = 1;
+   */
+  url: string;
+
+  /**
+   * @generated from field: uint32 weight = 2;
+   */
+  weight: number;
+
+  /**
+   * @generated from field: bool healthy = 3;
+   */
+  healthy: boolean;
+};
+
+/**
+ * Describes the message rustpanel.v1.UpstreamTarget.
+ * Use `create(UpstreamTargetSchema)` to create a new message.
+ */
+export const UpstreamTargetSchema: GenMessage<UpstreamTarget> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 2);
+
+/**
+ * ReverseProxyRule 描述一条图形化反向代理规则。
+ *
+ * @generated from message rustpanel.v1.ReverseProxyRule
+ */
+export type ReverseProxyRule = Message<"rustpanel.v1.ReverseProxyRule"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string domain = 3;
+   */
+  domain: string;
+
+  /**
+   * @generated from field: string path_prefix = 4;
+   */
+  pathPrefix: string;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.UpstreamTarget targets = 5;
+   */
+  targets: UpstreamTarget[];
+
+  /**
+   * @generated from field: string load_balance_method = 6;
+   */
+  loadBalanceMethod: string;
+
+  /**
+   * @generated from field: bool cache_enabled = 7;
+   */
+  cacheEnabled: boolean;
+
+  /**
+   * @generated from field: uint32 rate_limit_per_minute = 8;
+   */
+  rateLimitPerMinute: number;
+
+  /**
+   * @generated from field: bool enabled = 9;
+   */
+  enabled: boolean;
+
+  /**
+   * @generated from field: string config_path = 10;
+   */
+  configPath: string;
+
+  /**
+   * @generated from field: uint64 created_at_seconds = 11;
+   */
+  createdAtSeconds: bigint;
+
+  /**
+   * @generated from field: uint64 updated_at_seconds = 12;
+   */
+  updatedAtSeconds: bigint;
+};
+
+/**
+ * Describes the message rustpanel.v1.ReverseProxyRule.
+ * Use `create(ReverseProxyRuleSchema)` to create a new message.
+ */
+export const ReverseProxyRuleSchema: GenMessage<ReverseProxyRule> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 3);
+
+/**
  * ListSitesRequest 表示站点列表请求。
  *
  * @generated from message rustpanel.v1.ListSitesRequest
@@ -71,7 +208,7 @@ export type ListSitesRequest = Message<"rustpanel.v1.ListSitesRequest"> & {
  * Use `create(ListSitesRequestSchema)` to create a new message.
  */
 export const ListSitesRequestSchema: GenMessage<ListSitesRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 1);
+  messageDesc(file_rustpanel_v1_site, 4);
 
 /**
  * ListSitesResponse 返回站点列表。
@@ -95,7 +232,7 @@ export type ListSitesResponse = Message<"rustpanel.v1.ListSitesResponse"> & {
  * Use `create(ListSitesResponseSchema)` to create a new message.
  */
 export const ListSitesResponseSchema: GenMessage<ListSitesResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 2);
+  messageDesc(file_rustpanel_v1_site, 5);
 
 /**
  * CreateSiteRequest 表示创建站点请求。
@@ -134,7 +271,7 @@ export type CreateSiteRequest = Message<"rustpanel.v1.CreateSiteRequest"> & {
  * Use `create(CreateSiteRequestSchema)` to create a new message.
  */
 export const CreateSiteRequestSchema: GenMessage<CreateSiteRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 3);
+  messageDesc(file_rustpanel_v1_site, 6);
 
 /**
  * CreateSiteResponse 返回创建站点结果。
@@ -163,7 +300,7 @@ export type CreateSiteResponse = Message<"rustpanel.v1.CreateSiteResponse"> & {
  * Use `create(CreateSiteResponseSchema)` to create a new message.
  */
 export const CreateSiteResponseSchema: GenMessage<CreateSiteResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 4);
+  messageDesc(file_rustpanel_v1_site, 7);
 
 /**
  * ReloadNginxRequest 表示 Nginx 配置测试和重载请求。
@@ -178,7 +315,7 @@ export type ReloadNginxRequest = Message<"rustpanel.v1.ReloadNginxRequest"> & {
  * Use `create(ReloadNginxRequestSchema)` to create a new message.
  */
 export const ReloadNginxRequestSchema: GenMessage<ReloadNginxRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 5);
+  messageDesc(file_rustpanel_v1_site, 8);
 
 /**
  * ReloadNginxResponse 返回 Nginx 重载结果。
@@ -202,7 +339,219 @@ export type ReloadNginxResponse = Message<"rustpanel.v1.ReloadNginxResponse"> & 
  * Use `create(ReloadNginxResponseSchema)` to create a new message.
  */
 export const ReloadNginxResponseSchema: GenMessage<ReloadNginxResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 6);
+  messageDesc(file_rustpanel_v1_site, 9);
+
+/**
+ * ListRewriteTemplatesRequest 表示伪静态模板列表请求。
+ *
+ * @generated from message rustpanel.v1.ListRewriteTemplatesRequest
+ */
+export type ListRewriteTemplatesRequest = Message<"rustpanel.v1.ListRewriteTemplatesRequest"> & {
+};
+
+/**
+ * Describes the message rustpanel.v1.ListRewriteTemplatesRequest.
+ * Use `create(ListRewriteTemplatesRequestSchema)` to create a new message.
+ */
+export const ListRewriteTemplatesRequestSchema: GenMessage<ListRewriteTemplatesRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 10);
+
+/**
+ * ListRewriteTemplatesResponse 返回内置伪静态模板。
+ *
+ * @generated from message rustpanel.v1.ListRewriteTemplatesResponse
+ */
+export type ListRewriteTemplatesResponse = Message<"rustpanel.v1.ListRewriteTemplatesResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.RewriteTemplate templates = 2;
+   */
+  templates: RewriteTemplate[];
+};
+
+/**
+ * Describes the message rustpanel.v1.ListRewriteTemplatesResponse.
+ * Use `create(ListRewriteTemplatesResponseSchema)` to create a new message.
+ */
+export const ListRewriteTemplatesResponseSchema: GenMessage<ListRewriteTemplatesResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 11);
+
+/**
+ * RenderRewriteTemplateRequest 表示模板预览请求。
+ *
+ * @generated from message rustpanel.v1.RenderRewriteTemplateRequest
+ */
+export type RenderRewriteTemplateRequest = Message<"rustpanel.v1.RenderRewriteTemplateRequest"> & {
+  /**
+   * @generated from field: string template_id = 1;
+   */
+  templateId: string;
+
+  /**
+   * @generated from field: string custom_content = 2;
+   */
+  customContent: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.RenderRewriteTemplateRequest.
+ * Use `create(RenderRewriteTemplateRequestSchema)` to create a new message.
+ */
+export const RenderRewriteTemplateRequestSchema: GenMessage<RenderRewriteTemplateRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 12);
+
+/**
+ * RenderRewriteTemplateResponse 返回伪静态配置片段。
+ *
+ * @generated from message rustpanel.v1.RenderRewriteTemplateResponse
+ */
+export type RenderRewriteTemplateResponse = Message<"rustpanel.v1.RenderRewriteTemplateResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: string rendered_config = 2;
+   */
+  renderedConfig: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.RenderRewriteTemplateResponse.
+ * Use `create(RenderRewriteTemplateResponseSchema)` to create a new message.
+ */
+export const RenderRewriteTemplateResponseSchema: GenMessage<RenderRewriteTemplateResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 13);
+
+/**
+ * ListReverseProxyRulesRequest 表示反向代理规则列表请求。
+ *
+ * @generated from message rustpanel.v1.ListReverseProxyRulesRequest
+ */
+export type ListReverseProxyRulesRequest = Message<"rustpanel.v1.ListReverseProxyRulesRequest"> & {
+};
+
+/**
+ * Describes the message rustpanel.v1.ListReverseProxyRulesRequest.
+ * Use `create(ListReverseProxyRulesRequestSchema)` to create a new message.
+ */
+export const ListReverseProxyRulesRequestSchema: GenMessage<ListReverseProxyRulesRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 14);
+
+/**
+ * ListReverseProxyRulesResponse 返回反向代理规则。
+ *
+ * @generated from message rustpanel.v1.ListReverseProxyRulesResponse
+ */
+export type ListReverseProxyRulesResponse = Message<"rustpanel.v1.ListReverseProxyRulesResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.ReverseProxyRule rules = 2;
+   */
+  rules: ReverseProxyRule[];
+};
+
+/**
+ * Describes the message rustpanel.v1.ListReverseProxyRulesResponse.
+ * Use `create(ListReverseProxyRulesResponseSchema)` to create a new message.
+ */
+export const ListReverseProxyRulesResponseSchema: GenMessage<ListReverseProxyRulesResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 15);
+
+/**
+ * UpsertReverseProxyRuleRequest 表示创建或更新反向代理规则请求。
+ *
+ * @generated from message rustpanel.v1.UpsertReverseProxyRuleRequest
+ */
+export type UpsertReverseProxyRuleRequest = Message<"rustpanel.v1.UpsertReverseProxyRuleRequest"> & {
+  /**
+   * @generated from field: rustpanel.v1.ReverseProxyRule rule = 1;
+   */
+  rule?: ReverseProxyRule | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.UpsertReverseProxyRuleRequest.
+ * Use `create(UpsertReverseProxyRuleRequestSchema)` to create a new message.
+ */
+export const UpsertReverseProxyRuleRequestSchema: GenMessage<UpsertReverseProxyRuleRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 16);
+
+/**
+ * UpsertReverseProxyRuleResponse 返回保存后的反向代理规则。
+ *
+ * @generated from message rustpanel.v1.UpsertReverseProxyRuleResponse
+ */
+export type UpsertReverseProxyRuleResponse = Message<"rustpanel.v1.UpsertReverseProxyRuleResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.ReverseProxyRule rule = 2;
+   */
+  rule?: ReverseProxyRule | undefined;
+
+  /**
+   * @generated from field: string rendered_config = 3;
+   */
+  renderedConfig: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.UpsertReverseProxyRuleResponse.
+ * Use `create(UpsertReverseProxyRuleResponseSchema)` to create a new message.
+ */
+export const UpsertReverseProxyRuleResponseSchema: GenMessage<UpsertReverseProxyRuleResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 17);
+
+/**
+ * DeleteReverseProxyRuleRequest 表示删除反向代理规则请求。
+ *
+ * @generated from message rustpanel.v1.DeleteReverseProxyRuleRequest
+ */
+export type DeleteReverseProxyRuleRequest = Message<"rustpanel.v1.DeleteReverseProxyRuleRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.DeleteReverseProxyRuleRequest.
+ * Use `create(DeleteReverseProxyRuleRequestSchema)` to create a new message.
+ */
+export const DeleteReverseProxyRuleRequestSchema: GenMessage<DeleteReverseProxyRuleRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 18);
+
+/**
+ * DeleteReverseProxyRuleResponse 返回删除结果。
+ *
+ * @generated from message rustpanel.v1.DeleteReverseProxyRuleResponse
+ */
+export type DeleteReverseProxyRuleResponse = Message<"rustpanel.v1.DeleteReverseProxyRuleResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.DeleteReverseProxyRuleResponse.
+ * Use `create(DeleteReverseProxyRuleResponseSchema)` to create a new message.
+ */
+export const DeleteReverseProxyRuleResponseSchema: GenMessage<DeleteReverseProxyRuleResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 19);
 
 /**
  * SiteService 提供站点与反向代理配置能力。
@@ -233,6 +582,46 @@ export const SiteService: GenService<{
     methodKind: "unary";
     input: typeof ReloadNginxRequestSchema;
     output: typeof ReloadNginxResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SiteService.ListRewriteTemplates
+   */
+  listRewriteTemplates: {
+    methodKind: "unary";
+    input: typeof ListRewriteTemplatesRequestSchema;
+    output: typeof ListRewriteTemplatesResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SiteService.RenderRewriteTemplate
+   */
+  renderRewriteTemplate: {
+    methodKind: "unary";
+    input: typeof RenderRewriteTemplateRequestSchema;
+    output: typeof RenderRewriteTemplateResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SiteService.ListReverseProxyRules
+   */
+  listReverseProxyRules: {
+    methodKind: "unary";
+    input: typeof ListReverseProxyRulesRequestSchema;
+    output: typeof ListReverseProxyRulesResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SiteService.UpsertReverseProxyRule
+   */
+  upsertReverseProxyRule: {
+    methodKind: "unary";
+    input: typeof UpsertReverseProxyRuleRequestSchema;
+    output: typeof UpsertReverseProxyRuleResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SiteService.DeleteReverseProxyRule
+   */
+  deleteReverseProxyRule: {
+    methodKind: "unary";
+    input: typeof DeleteReverseProxyRuleRequestSchema;
+    output: typeof DeleteReverseProxyRuleResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_rustpanel_v1_site, 0);

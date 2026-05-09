@@ -416,6 +416,11 @@ button {
   width: 100%;
 }
 
+.code-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  min-height: 180px;
+}
+
 .backup-actions {
   margin-bottom: 12px;
 }
