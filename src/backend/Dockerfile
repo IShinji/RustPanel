@@ -12,6 +12,14 @@ ENV SCCACHE_DIR=/sccache
 ENV SCCACHE_CACHE_SIZE=50G
 ENV CARGO_INCREMENTAL=0
 
+FROM oven/bun:1.3.13 AS web-builder
+WORKDIR /app/src/web
+COPY src/web/package.json src/web/bun.lock ./
+RUN --mount=type=cache,id=bun-web-install-v1,target=/root/.bun/install/cache,sharing=locked \
+    bun install --frozen-lockfile
+COPY src/web ./
+RUN bun run build
+
 FROM chef AS planner
 COPY Cargo.toml Cargo.lock ./
 COPY proto ./proto
@@ -27,6 +35,7 @@ RUN --mount=type=cache,id=rust-sccache-v1,target=/sccache,sharing=locked \
 
 FROM ci-deps AS ci-checks
 COPY . .
+COPY --from=web-builder /app/src/web/dist /app/src/web/dist
 WORKDIR /app/src/backend
 RUN cargo fmt --check
 RUN --mount=type=cache,id=rust-sccache-v1,target=/sccache,sharing=locked \
@@ -49,6 +58,7 @@ RUN --mount=type=cache,id=rust-sccache-v1,target=/sccache,sharing=locked \
     --mount=type=cache,id=rust-cargo-git-v1,target=/usr/local/cargo/git,sharing=locked \
     cargo chef cook --release --locked --recipe-path recipe.json
 COPY . .
+COPY --from=web-builder /app/src/web/dist /app/src/web/dist
 WORKDIR /app/src/backend
 RUN --mount=type=cache,id=rust-sccache-v1,target=/sccache,sharing=locked \
     --mount=type=cache,id=rust-cargo-registry-v1,target=/usr/local/cargo/registry,sharing=locked \

@@ -67,6 +67,10 @@ if (fs.existsSync(dockerfilePath)) {
   const dockerfile = fs.readFileSync(dockerfilePath, 'utf8')
   for (const required of [
     '# syntax=docker/dockerfile:1.7',
+    'FROM oven/bun:1.3.13 AS web-builder',
+    'bun install --frozen-lockfile',
+    'bun run build',
+    'COPY --from=web-builder /app/src/web/dist /app/src/web/dist',
     'cargo install sccache --version 0.15.0 --locked',
     'cargo install cargo-chef --locked',
     'FROM chef AS planner',
