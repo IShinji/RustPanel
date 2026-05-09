@@ -1,0 +1,16 @@
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/ishinji/rustpanel-backend:latest}
+    container_name: rustpanel-backend
+    restart: always
+    environment:
+      RUSTPANEL_BACKEND_ADDR: 0.0.0.0:8080
+      RUSTPANEL_ALLOWED_ORIGINS: ${RUSTPANEL_ALLOWED_ORIGINS:-}
+    ports:
+      - "127.0.0.1:${RUSTPANEL_API_PORT:-18080}:8080"
+    networks:
+      - rustpanel-net
+
+networks:
+  rustpanel-net:
+    driver: bridge
