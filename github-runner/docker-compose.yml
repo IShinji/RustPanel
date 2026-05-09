@@ -1,0 +1,48 @@
+services:
+  rustpanel-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        RUNNER_VERSION: ${RUNNER_VERSION:-2.334.0}
+    image: rustpanel/github-runner:2.334.0
+    container_name: rustpanel-github-runner
+    restart: unless-stopped
+    environment:
+      GITHUB_REPOSITORY_URL: ${GITHUB_REPOSITORY_URL:-https://github.com/IShinji/RustPanel}
+      GITHUB_RUNNER_TOKEN: ${GITHUB_RUNNER_TOKEN:?Set GITHUB_RUNNER_TOKEN in github-runner/.env}
+      GITHUB_RUNNER_NAME: ${GITHUB_RUNNER_NAME:-Shinji-M4-RustPanel}
+      GITHUB_RUNNER_LABELS: ${GITHUB_RUNNER_LABELS:-m4-runner,rustpanel-runner}
+      GITHUB_RUNNER_WORKDIR: ${GITHUB_RUNNER_WORKDIR:-_work}
+      RUNNER_TOOL_CACHE: /cache/tool
+      RUSTC_WRAPPER: sccache
+      SCCACHE_DIR: /cache/sccache
+      SCCACHE_CACHE_SIZE: 50G
+      CARGO_INCREMENTAL: "0"
+      CARGO_HOME: /cache/cargo
+      RUSTUP_HOME: /cache/rustup
+      CARGO_SWEEP_AUTO_MAX_TARGET_GIB: "60"
+      BUILDKIT_CACHE_DIR: /cache/buildkit/rustpanel
+      RUSTPANEL_BUILDKIT_CACHE_DIR: /cache/buildkit/rustpanel
+    volumes:
+      - rustpanel-runner-data:/runner
+      - github-runner-cargo:/cache/cargo
+      - github-runner-rustup:/cache/rustup
+      - github-runner-sccache:/cache/sccache
+      - github-runner-tool:/cache/tool
+      - github-runner-buildkit:/cache/buildkit
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+
+volumes:
+  rustpanel-runner-data:
+    name: rustpanel-runner-data
+  github-runner-cargo:
+    name: github-runner-cargo
+  github-runner-rustup:
+    name: github-runner-rustup
+  github-runner-sccache:
+    name: github-runner-sccache
+  github-runner-tool:
+    name: github-runner-tool
+  github-runner-buildkit:
+    name: github-runner-buildkit
