@@ -13,7 +13,7 @@ RUN cargo build --release --locked --bins
 
 FROM debian:bookworm-slim
 WORKDIR /app
-COPY --from=builder /app/src/backend/target/release/rustpanel-backend /app/rustpanel-backend
+COPY --from=builder /app/target/release/rustpanel-backend /app/rustpanel-backend
 ENV RUSTPANEL_BACKEND_ADDR=0.0.0.0:8080
 EXPOSE 8080
 CMD ["/app/rustpanel-backend"]
