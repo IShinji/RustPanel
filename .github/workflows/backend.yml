@@ -49,6 +49,12 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Prepare image repository
+        if: steps.backend-crate.outputs.exists == 'true'
+        id: image_ref
+        run: |
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "image_repository=ghcr.io/${owner_lc}/rustpanel-backend" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v6
         if: steps.backend-crate.outputs.exists == 'true'
         with:
@@ -71,7 +77,7 @@ jobs:
         id: backend-cache
         env:
           LOCAL_CACHE_DEST: ${{ env.BUILDKIT_CACHE_ROOT }}/${{ env.BACKEND_IMAGE_CACHE_FAMILY }}/${{ env.BUILDKIT_CACHE_PROJECT }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}
-          REGISTRY_CACHE: ghcr.io/${{ github.repository_owner }}/rustpanel-backend:buildcache
+          REGISTRY_CACHE: ${{ steps.image_ref.outputs.image_repository }}:buildcache
         run: |
           node dist/node-scripts/scripts/collect-buildkit-cache-imports.js \
             --cache-root "$BUILDKIT_CACHE_ROOT" \
@@ -110,7 +116,9 @@ jobs:
           file: src/backend/Dockerfile
           platforms: ${{ env.BACKEND_IMAGE_PLATFORM }}
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/rustpanel-backend:latest,ghcr.io/${{ github.repository_owner }}/rustpanel-backend:sha-${{ github.sha }}
+          tags: |
+            ${{ steps.image_ref.outputs.image_repository }}:latest
+            ${{ steps.image_ref.outputs.image_repository }}:sha-${{ github.sha }}
           cache-from: ${{ steps.backend-cache.outputs.cache-from }}
           cache-to: ${{ steps.backend-cache.outputs.cache-to }}
       - name: Promote backend image BuildKit cache
