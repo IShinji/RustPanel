@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// WorkloadState 描述轻量进程托管状态。
+enum WorkloadState {
+  WORKLOAD_STATE_UNSPECIFIED = 0;
+  WORKLOAD_STATE_STOPPED = 1;
+  WORKLOAD_STATE_RUNNING = 2;
+  WORKLOAD_STATE_FAILED = 3;
+}
+
+// WorkloadItem 描述一个 micro 工作负载。
+message WorkloadItem {
+  string id = 1;
+  string name = 2;
+  string command = 3;
+  string cwd = 4;
+  repeated string env = 5;
+  bool autostart = 6;
+  uint64 memory_limit_mb = 7;
+  uint64 log_limit_bytes = 8;
+  uint32 restart_limit = 9;
+  string schedule_cron = 10;
+  WorkloadState state = 11;
+  int32 pid = 12;
+  string log_path = 13;
+  string last_message = 14;
+  uint64 updated_at_seconds = 15;
+}
+
+message ListWorkloadsRequest {}
+
+message ListWorkloadsResponse {
+  Response status = 1;
+  repeated WorkloadItem workloads = 2;
+}
+
+message UpsertWorkloadRequest {
+  WorkloadItem workload = 1;
+}
+
+message UpsertWorkloadResponse {
+  Response status = 1;
+  WorkloadItem workload = 2;
+}
+
+message StartWorkloadRequest {
+  string id = 1;
+}
+
+message StartWorkloadResponse {
+  Response status = 1;
+  WorkloadItem workload = 2;
+}
+
+message StopWorkloadRequest {
+  string id = 1;
+}
+
+message StopWorkloadResponse {
+  Response status = 1;
+  WorkloadItem workload = 2;
+}
+
+message DeleteWorkloadRequest {
+  string id = 1;
+}
+
+message DeleteWorkloadResponse {
+  Response status = 1;
+}
+
+message GetWorkloadLogRequest {
+  string id = 1;
+  uint64 max_bytes = 2;
+}
+
+message GetWorkloadLogResponse {
+  Response status = 1;
+  string content = 2;
+}
+
+// WorkloadService 提供低内存常驻进程与定时任务托管能力。
+service WorkloadService {
+  rpc ListWorkloads(ListWorkloadsRequest) returns (ListWorkloadsResponse);
+  rpc UpsertWorkload(UpsertWorkloadRequest) returns (UpsertWorkloadResponse);
+  rpc StartWorkload(StartWorkloadRequest) returns (StartWorkloadResponse);
+  rpc StopWorkload(StopWorkloadRequest) returns (StopWorkloadResponse);
+  rpc DeleteWorkload(DeleteWorkloadRequest) returns (DeleteWorkloadResponse);
+  rpc GetWorkloadLog(GetWorkloadLogRequest) returns (GetWorkloadLogResponse);
+}

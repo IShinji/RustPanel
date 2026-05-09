@@ -10,10 +10,12 @@ import { DatabaseService } from "../gen/rustpanel/v1/db_pb";
 import { DockerService } from "../gen/rustpanel/v1/docker_pb";
 import { FileSystemService } from "../gen/rustpanel/v1/fs_pb";
 import { MonitorService } from "../gen/rustpanel/v1/monitor_pb";
+import { ProxyService } from "../gen/rustpanel/v1/proxy_pb";
 import { SecurityService } from "../gen/rustpanel/v1/security_pb";
 import { SiteService } from "../gen/rustpanel/v1/site_pb";
 import { SslService } from "../gen/rustpanel/v1/ssl_pb";
 import { SystemService } from "../gen/rustpanel/v1/system_pb";
+import { WorkloadService } from "../gen/rustpanel/v1/workload_pb";
 
 export function createRpcClients(baseUrl = window.location.origin) {
   const transport = createGrpcWebTransport({ baseUrl });
@@ -28,9 +30,11 @@ export function createRpcClients(baseUrl = window.location.origin) {
     docker: createClient(DockerService, transport),
     files: createClient(FileSystemService, transport),
     monitor: createClient(MonitorService, transport),
+    proxy: createClient(ProxyService, transport),
     security: createClient(SecurityService, transport),
     site: createClient(SiteService, transport),
     ssl: createClient(SslService, transport),
-    system: createClient(SystemService, transport)
+    system: createClient(SystemService, transport),
+    workload: createClient(WorkloadService, transport)
   };
 }

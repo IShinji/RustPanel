@@ -33,8 +33,28 @@ message GetSystemInfoResponse {
   string architecture = 5;
 }
 
+// RuntimeModule 描述一个运行时模块的启用状态。
+message RuntimeModule {
+  string id = 1;
+  string name = 2;
+  bool enabled = 3;
+  string reason = 4;
+  bool required = 5;
+}
+
+// ListRuntimeModulesRequest 表示运行模块列表请求。
+message ListRuntimeModulesRequest {}
+
+// ListRuntimeModulesResponse 返回运行模块列表。
+message ListRuntimeModulesResponse {
+  Response status = 1;
+  repeated RuntimeModule modules = 2;
+  string profile = 3;
+}
+
 // SystemService 提供系统守护进程的基础探测能力。
 service SystemService {
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
   rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
+  rpc ListRuntimeModules(ListRuntimeModulesRequest) returns (ListRuntimeModulesResponse);
 }

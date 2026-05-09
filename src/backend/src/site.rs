@@ -20,6 +20,9 @@ use crate::{
 
 const DEFAULT_NGINX_SITES_DIR: &str = "/etc/nginx/sites-enabled";
 const DEFAULT_SITE_STATE_ROOT: &str = "/tmp/rustpanel/site";
+const SITE_ENGINE_ENV: &str = "RUSTPANEL_SITE_ENGINE";
+const SITE_ENGINE_BUILTIN: &str = "builtin";
+const SITE_ENGINE_NGINX: &str = "nginx";
 const NGINX_TEMPLATE: &str = r#"server {
     listen 80;
     server_name {{ domains | join(sep=" ") }};
@@ -79,7 +82,7 @@ impl SiteService for SiteServiceImpl {
         &self,
         _request: Request<ListSitesRequest>,
     ) -> Result<GrpcResponse<ListSitesResponse>, Status> {
-        let sites = list_site_configs().await?;
+        let sites = list_site_configs(&self.store).await?;
 
         Ok(GrpcResponse::new(ListSitesResponse {
             status: Some(ok_response("ok")),
@@ -93,6 +96,17 @@ impl SiteService for SiteServiceImpl {
     ) -> Result<GrpcResponse<CreateSiteResponse>, Status> {
         let request = request.into_inner();
         validate_site_request(&request)?;
+        let engine = site_engine(&request.engine);
+        if engine == SITE_ENGINE_BUILTIN {
+            let site = self.store.upsert_builtin_site(request).await?;
+            return Ok(GrpcResponse::new(CreateSiteResponse {
+                status: Some(ok_response("builtin site created")),
+                site: Some(site),
+                rendered_config: String::new(),
+            }));
+        }
+
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
         let rendered_config = render_site_config(&request)?;
         let config_path =
             nginx_sites_dir().join(format!("rustpanel-{}.conf", safe_name(&request.name)?));
@@ -109,6 +123,9 @@ impl SiteService for SiteServiceImpl {
             proxy_target: request.proxy_target,
             ssl_enabled: request.ssl_enabled,
             config_path: config_path.to_string_lossy().to_string(),
+            engine,
+            public_path: String::new(),
+            listen_addr: request.listen_addr,
         };
 
         Ok(GrpcResponse::new(CreateSiteResponse {
@@ -122,6 +139,7 @@ impl SiteService for SiteServiceImpl {
         &self,
         _request: Request<ReloadNginxRequest>,
     ) -> Result<GrpcResponse<ReloadNginxResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
         let test = tokio::process::Command::new("nginx")
             .arg("-t")
             .output()
@@ -210,6 +228,7 @@ impl SiteService for SiteServiceImpl {
         &self,
         request: Request<UpsertReverseProxyRuleRequest>,
     ) -> Result<GrpcResponse<UpsertReverseProxyRuleResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
         let mut rule = request
             .into_inner()
             .rule
@@ -271,8 +290,13 @@ impl SiteService for SiteServiceImpl {
     }
 }
 
-async fn list_site_configs() -> Result<Vec<SiteItem>, Status> {
+async fn list_site_configs(store: &SiteStore) -> Result<Vec<SiteItem>, Status> {
     let mut sites = Vec::new();
+    sites.extend(store.load_builtin_sites().await?);
+    if !crate::runtime::from_env().is_enabled(crate::runtime::MODULE_SITES) {
+        return Ok(sites);
+    }
+
     let mut entries = match tokio::fs::read_dir(nginx_sites_dir()).await {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(sites),
@@ -292,6 +316,9 @@ async fn list_site_configs() -> Result<Vec<SiteItem>, Status> {
                 proxy_target: String::new(),
                 ssl_enabled: false,
                 config_path: path.to_string_lossy().to_string(),
+                engine: SITE_ENGINE_NGINX.to_owned(),
+                public_path: String::new(),
+                listen_addr: String::new(),
             });
         }
     }
@@ -334,6 +361,100 @@ impl SiteStore {
 
     fn proxy_rules_path(&self) -> PathBuf {
         self.root.join("reverse-proxy-rules.json")
+    }
+
+    async fn load_builtin_sites(&self) -> Result<Vec<SiteItem>, Status> {
+        match tokio::fs::read_to_string(self.sites_path()).await {
+            Ok(content) => serde_json::from_str::<Vec<StoredSite>>(&content)
+                .map_err(io_status)
+                .map(|sites| sites.into_iter().map(StoredSite::into_proto).collect()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(io_status(error)),
+        }
+    }
+
+    async fn save_builtin_sites(&self, sites: &[SiteItem]) -> Result<(), Status> {
+        tokio::fs::create_dir_all(self.root.as_ref())
+            .await
+            .map_err(io_status)?;
+        let stored = sites
+            .iter()
+            .cloned()
+            .map(StoredSite::from_proto)
+            .collect::<Vec<_>>();
+        let content = serde_json::to_string_pretty(&stored).map_err(io_status)?;
+        tokio::fs::write(self.sites_path(), content)
+            .await
+            .map_err(io_status)
+    }
+
+    async fn upsert_builtin_site(&self, request: CreateSiteRequest) -> Result<SiteItem, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_STATIC_SITES)?;
+        let name = safe_name(&request.name)?;
+        let mut sites = self.load_builtin_sites().await?;
+        let site = SiteItem {
+            name: name.clone(),
+            domains: request.domains,
+            root: request.root,
+            proxy_target: String::new(),
+            ssl_enabled: false,
+            config_path: self.sites_path().to_string_lossy().to_string(),
+            engine: SITE_ENGINE_BUILTIN.to_owned(),
+            public_path: format!("/sites/{name}/"),
+            listen_addr: request.listen_addr,
+        };
+        sites.retain(|stored| stored.name != site.name);
+        sites.push(site.clone());
+        self.save_builtin_sites(&sites).await?;
+
+        Ok(site)
+    }
+
+    fn sites_path(&self) -> PathBuf {
+        self.root.join("sites.json")
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct StoredSite {
+    name: String,
+    domains: Vec<String>,
+    root: String,
+    proxy_target: String,
+    ssl_enabled: bool,
+    config_path: String,
+    engine: String,
+    public_path: String,
+    listen_addr: String,
+}
+
+impl StoredSite {
+    fn from_proto(site: SiteItem) -> Self {
+        Self {
+            name: site.name,
+            domains: site.domains,
+            root: site.root,
+            proxy_target: site.proxy_target,
+            ssl_enabled: site.ssl_enabled,
+            config_path: site.config_path,
+            engine: site.engine,
+            public_path: site.public_path,
+            listen_addr: site.listen_addr,
+        }
+    }
+
+    fn into_proto(self) -> SiteItem {
+        SiteItem {
+            name: self.name,
+            domains: self.domains,
+            root: self.root,
+            proxy_target: self.proxy_target,
+            ssl_enabled: self.ssl_enabled,
+            config_path: self.config_path,
+            engine: self.engine,
+            public_path: self.public_path,
+            listen_addr: self.listen_addr,
+        }
     }
 }
 
@@ -569,15 +690,78 @@ fn validate_proxy_target(target: &str) -> Result<(), Status> {
 
 fn validate_site_request(request: &CreateSiteRequest) -> Result<(), Status> {
     safe_name(&request.name)?;
-    if request.domains.is_empty() {
+    let engine = site_engine(&request.engine);
+    if engine != SITE_ENGINE_BUILTIN && request.domains.is_empty() {
         return Err(Status::invalid_argument("at least one domain is required"));
     }
-    if request.root.trim().is_empty() && request.proxy_target.trim().is_empty() {
+    if request.root.trim().is_empty()
+        && (engine == SITE_ENGINE_BUILTIN || request.proxy_target.trim().is_empty())
+    {
         return Err(Status::invalid_argument(
             "either static root or proxy target is required",
         ));
     }
     Ok(())
+}
+
+pub async fn builtin_site_file(path: &str) -> Result<Option<PathBuf>, Status> {
+    crate::runtime::ensure_module_enabled(crate::runtime::MODULE_STATIC_SITES)?;
+    let mut parts = path.trim_start_matches('/').splitn(2, '/');
+    let Some(name) = parts.next().filter(|name| !name.is_empty()) else {
+        return Ok(None);
+    };
+    let name = safe_name(name)?;
+    let relative = parts.next().unwrap_or_default();
+    let store = SiteStore::from_env();
+    let Some(site) = store
+        .load_builtin_sites()
+        .await?
+        .into_iter()
+        .find(|site| site.name == name && site.engine == SITE_ENGINE_BUILTIN)
+    else {
+        return Ok(None);
+    };
+    let root = PathBuf::from(site.root);
+    let root = tokio::fs::canonicalize(&root).await.map_err(io_status)?;
+    let relative = safe_relative_path(relative);
+    let mut candidate = root.join(relative);
+    if candidate.is_dir() {
+        candidate = candidate.join("index.html");
+    }
+    if tokio::fs::metadata(&candidate).await.is_err() {
+        candidate = root.join("index.html");
+    }
+    let candidate = tokio::fs::canonicalize(candidate)
+        .await
+        .map_err(io_status)?;
+    if !candidate.starts_with(&root) {
+        return Err(Status::permission_denied("site path escapes site root"));
+    }
+
+    Ok(Some(candidate))
+}
+
+fn safe_relative_path(path: &str) -> PathBuf {
+    let mut result = PathBuf::new();
+    for segment in path.split('/') {
+        if segment.is_empty() || segment == "." || segment == ".." {
+            continue;
+        }
+        result.push(segment);
+    }
+    result
+}
+
+fn site_engine(request_engine: &str) -> String {
+    let value = if request_engine.trim().is_empty() {
+        env::var(SITE_ENGINE_ENV).unwrap_or_else(|_| SITE_ENGINE_NGINX.to_owned())
+    } else {
+        request_engine.to_owned()
+    };
+    match value.trim().to_ascii_lowercase().as_str() {
+        SITE_ENGINE_BUILTIN => SITE_ENGINE_BUILTIN.to_owned(),
+        _ => SITE_ENGINE_NGINX.to_owned(),
+    }
 }
 
 fn safe_name(name: &str) -> Result<String, Status> {
@@ -630,6 +814,8 @@ mod tests {
             root: String::new(),
             proxy_target: "http://127.0.0.1:3000".to_owned(),
             ssl_enabled: true,
+            engine: SITE_ENGINE_NGINX.to_owned(),
+            listen_addr: String::new(),
         })
         .expect("config");
 

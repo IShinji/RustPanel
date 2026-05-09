@@ -30,6 +30,7 @@ impl AppStoreService for AppStoreServiceImpl {
         &self,
         _request: Request<ListAppTemplatesRequest>,
     ) -> Result<GrpcResponse<ListAppTemplatesResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_APPSTORE)?;
         Ok(GrpcResponse::new(ListAppTemplatesResponse {
             status: Some(ok_response("ok")),
             templates: app_templates(),
@@ -40,6 +41,7 @@ impl AppStoreService for AppStoreServiceImpl {
         &self,
         request: Request<DeployAppRequest>,
     ) -> Result<GrpcResponse<DeployAppResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_APPSTORE)?;
         let request = request.into_inner();
         let template = app_templates()
             .into_iter()
@@ -90,6 +92,7 @@ impl AppStoreService for AppStoreServiceImpl {
         &self,
         _request: Request<ListInstalledAppsRequest>,
     ) -> Result<GrpcResponse<ListInstalledAppsResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_APPSTORE)?;
         Ok(GrpcResponse::new(ListInstalledAppsResponse {
             status: Some(ok_response("ok")),
             apps: list_installed_apps().await?,
@@ -100,6 +103,7 @@ impl AppStoreService for AppStoreServiceImpl {
         &self,
         request: Request<UninstallAppRequest>,
     ) -> Result<GrpcResponse<UninstallAppResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_APPSTORE)?;
         let app_name = sanitize_app_name(&request.into_inner().app_name)?;
         let app_dir = appstore_root().join(&app_name);
         let compose_path = app_dir.join("docker-compose.yml");
@@ -120,6 +124,7 @@ impl AppStoreService for AppStoreServiceImpl {
         &self,
         request: Request<UpdateAppRequest>,
     ) -> Result<GrpcResponse<UpdateAppResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_APPSTORE)?;
         let request = request.into_inner();
         let app_name = sanitize_app_name(&request.app_name)?;
         let mut app = load_installed_app(&app_name).await?;

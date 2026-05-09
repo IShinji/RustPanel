@@ -73,3 +73,6 @@ COPY --from=builder /app/target/release/rustpanel-backend /app/rustpanel-backend
 ENV RUSTPANEL_BACKEND_ADDR=0.0.0.0:8080
 EXPOSE 8080
 CMD ["/app/rustpanel-backend"]
+
+FROM scratch AS binary-export
+COPY --from=builder /app/target/release/rustpanel-backend /rustpanel-backend

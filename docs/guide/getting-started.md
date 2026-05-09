@@ -17,6 +17,7 @@ url=https://raw.githubusercontent.com/IShinji/RustPanel/main/deploy/install.sh;i
 ```bash
 sudo bash rustpanel-install.sh --port 18888 --origin https://panel.example.com
 sudo bash rustpanel-install.sh --bind 127.0.0.1 --skip-docker-install
+sudo bash rustpanel-install.sh --profile micro --assume-recommended
 ```
 
 默认安装目录是 `/www/wwwroot/rustpanel`，配置文件是 `/www/wwwroot/rustpanel/.env`，后续升级可执行：
@@ -24,6 +25,14 @@ sudo bash rustpanel-install.sh --bind 127.0.0.1 --skip-docker-install
 ```bash
 sudo bash /www/wwwroot/rustpanel/deploy/update.sh
 ```
+
+在 NAT IPv4、OpenVZ、128MB RAM 这类极限环境中，建议先执行：
+
+```bash
+sudo bash rustpanel-install.sh --dry-run
+```
+
+如果安装器推荐 `micro`，会走二进制裸跑模式并启用内置静态托管、轻量进程托管和用户态代理；Docker 应用商店、Nginx 站点、SSL 自动化等重模块会默认禁用。
 
 以下依赖仅用于本地开发：
 

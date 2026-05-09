@@ -6,7 +6,7 @@ use axum::{
     body::{Body, Bytes},
     extract::{
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
-        Multipart, Query, Request, State,
+        Multipart, Path as AxumPath, Query, Request, State,
     },
     http::{header::CONTENT_TYPE, HeaderValue, Response as HttpResponse, StatusCode},
     response::sse::{Event, KeepAlive},
@@ -36,10 +36,13 @@ pub mod database;
 pub mod docker;
 pub mod files;
 pub mod monitor;
+pub mod proxy;
+pub mod runtime;
 pub mod security;
 pub mod site;
 pub mod ssl;
 pub mod terminal;
+pub mod workload;
 
 mod assets;
 pub mod proto {
@@ -60,13 +63,16 @@ use proto::rustpanel::v1::{
     docker_service_server::DockerServiceServer,
     file_system_service_server::FileSystemServiceServer,
     monitor_service_server::MonitorServiceServer,
+    proxy_service_server::ProxyServiceServer,
     security_service_server::SecurityServiceServer,
     site_service_server::SiteServiceServer,
     ssl_service_server::SslServiceServer,
     system_service_server::{SystemService, SystemServiceServer},
     terminal_service_server::TerminalServiceServer,
+    workload_service_server::WorkloadServiceServer,
     GetSystemInfoRequest, GetSystemInfoResponse, HealthCheckRequest, HealthCheckResponse,
-    HealthStatus, Response, SystemStatus, TerminalResize,
+    HealthStatus, ListRuntimeModulesRequest, ListRuntimeModulesResponse, Response, SystemStatus,
+    TerminalResize,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -95,6 +101,19 @@ impl SystemService for SystemServiceImpl {
             operating_system: env::consts::OS.to_owned(),
             kernel_version: "unknown".to_owned(),
             architecture: env::consts::ARCH.to_owned(),
+        }))
+    }
+
+    async fn list_runtime_modules(
+        &self,
+        _request: GrpcRequest<ListRuntimeModulesRequest>,
+    ) -> Result<GrpcResponse<ListRuntimeModulesResponse>, Status> {
+        let modules = runtime::from_env();
+
+        Ok(GrpcResponse::new(ListRuntimeModulesResponse {
+            status: Some(ok_response("ok")),
+            modules: modules.statuses().into_iter().map(Into::into).collect(),
+            profile: modules.profile().to_owned(),
         }))
     }
 }
@@ -164,6 +183,7 @@ fn http_router_with_state(state: HttpState) -> Router {
         .route("/api/fs/upload/chunk", post(http_file_upload_chunk))
         .route("/api/fs/download", get(http_file_download))
         .route("/api/terminal/ws", get(http_terminal_ws))
+        .route("/sites/*path", get(http_builtin_static_site))
         .fallback(static_fallback)
         .with_state(state)
 }
@@ -217,6 +237,10 @@ fn multiplex_service_with_auth(
         .add_service(SslServiceServer::new(ssl::SslServiceImpl::default()))
         .add_service(DatabaseServiceServer::new(database::DatabaseServiceImpl))
         .add_service(CronServiceServer::new(cron::CronServiceImpl::new()))
+        .add_service(WorkloadServiceServer::new(
+            workload::WorkloadServiceImpl::new(),
+        ))
+        .add_service(ProxyServiceServer::new(proxy::ProxyServiceImpl::new()))
         .into_service();
 
     service_fn(move |request: Request| {
@@ -459,6 +483,32 @@ async fn http_terminal_ws(
         .as_deref()
         .and_then(|path| state.files.resolve_existing(path).ok());
     upgrade.on_upgrade(move |socket| handle_terminal_socket(socket, cwd))
+}
+
+async fn http_builtin_static_site(
+    AxumPath(path): AxumPath<String>,
+) -> Result<AxumResponse, HttpError> {
+    let Some(file_path) = site::builtin_site_file(&path)
+        .await
+        .map_err(HttpError::from_status)?
+    else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let file = tokio::fs::File::open(&file_path)
+        .await
+        .map_err(HttpError::internal)?;
+    let content_type = mime_guess::from_path(&file_path)
+        .first_or_octet_stream()
+        .to_string();
+    let body = Body::from_stream(ReaderStream::new(file));
+    let response = HttpResponse::builder()
+        .status(StatusCode::OK)
+        .header(CONTENT_TYPE, content_type)
+        .header("cache-control", "public, max-age=60")
+        .body(body)
+        .map_err(HttpError::internal)?;
+
+    Ok(response)
 }
 
 async fn handle_terminal_socket(socket: WebSocket, cwd: Option<std::path::PathBuf>) {

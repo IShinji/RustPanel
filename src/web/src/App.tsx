@@ -52,6 +52,7 @@ import { CronRunState, CronTask, CronTaskState } from "./gen/rustpanel/v1/cron_p
 import { ComposeProject, ContainerItem, ImageItem } from "./gen/rustpanel/v1/docker_pb";
 import { ArchiveFormat, FileItem, FileKind, RecycleBinItem, SearchMatch } from "./gen/rustpanel/v1/fs_pb";
 import { ProcessResourceSnapshot, SystemStatus } from "./gen/rustpanel/v1/monitor_pb";
+import { ProxyInstance, ProxyState, VpnCapability } from "./gen/rustpanel/v1/proxy_pb";
 import {
   FirewallAction,
   FirewallBackend,
@@ -67,12 +68,15 @@ import {
 } from "./gen/rustpanel/v1/security_pb";
 import { ReverseProxyRule, RewriteTemplate, SiteItem } from "./gen/rustpanel/v1/site_pb";
 import { CertificateItem } from "./gen/rustpanel/v1/ssl_pb";
+import { RuntimeModule } from "./gen/rustpanel/v1/system_pb";
+import { WorkloadItem, WorkloadState } from "./gen/rustpanel/v1/workload_pb";
 import { createRpcClients } from "./lib/rpc";
 import { formatBytes, formatDuration, formatPercent, safeError } from "./lib/format";
 import { useMonitorStore } from "./store/monitor";
 
 type Clients = ReturnType<typeof createRpcClients>;
-type TabId = "dashboard" | "security" | "terminal" | "files" | "docker" | "sites" | "database" | "cron" | "cluster";
+type TabId = "dashboard" | "micro" | "security" | "terminal" | "files" | "docker" | "sites" | "database" | "cron" | "cluster";
+type NavTab = { id: TabId; label: string; icon: typeof Activity; modules?: string[] };
 type MonitorRange = "1h" | "24h" | "7d" | "custom";
 type ChartPoint = {
   time: string;
@@ -100,6 +104,21 @@ type ImageRollbackForm = {
 type ComposeForm = {
   name: string;
   composeYaml: string;
+};
+type WorkloadForm = {
+  name: string;
+  command: string;
+  cwd: string;
+  memoryLimitMb: string;
+};
+type MicroSiteForm = {
+  name: string;
+  root: string;
+};
+type ProxyForm = {
+  name: string;
+  listenPort: string;
+  password: string;
 };
 type ClusterPairForm = {
   name: string;
@@ -202,6 +221,21 @@ const defaultComposeForm: ComposeForm = {
     restart: unless-stopped
 `
 };
+const defaultWorkloadForm: WorkloadForm = {
+  name: "rust-crawler",
+  command: "./crawler",
+  cwd: "/root",
+  memoryLimitMb: "32"
+};
+const defaultMicroSiteForm: MicroSiteForm = {
+  name: "site",
+  root: "/var/www/site"
+};
+const defaultProxyForm: ProxyForm = {
+  name: "ss-8388",
+  listenPort: "8388",
+  password: "change-me"
+};
 const defaultClusterPairForm: ClusterPairForm = {
   name: "node-1",
   endpoint: "local",
@@ -271,21 +305,45 @@ const defaultSshKeyForm: SshKeyForm = {
   algorithm: SshKeyAlgorithm.ED25519
 };
 
-const tabs: Array<{ id: TabId; label: string; icon: typeof Activity }> = [
+const tabs: NavTab[] = [
   { id: "dashboard", label: "仪表盘", icon: Activity },
-  { id: "security", label: "安全", icon: Shield },
-  { id: "terminal", label: "终端", icon: TerminalSquare },
-  { id: "files", label: "文件", icon: Folder },
-  { id: "docker", label: "容器", icon: Boxes },
-  { id: "sites", label: "站点", icon: Globe },
-  { id: "database", label: "数据库", icon: Database },
-  { id: "cron", label: "计划任务", icon: Clock },
-  { id: "cluster", label: "集群/审计", icon: ShieldAlert }
+  { id: "micro", label: "Micro", icon: Power, modules: ["static-sites", "workloads", "proxy"] },
+  { id: "security", label: "安全", icon: Shield, modules: ["security"] },
+  { id: "terminal", label: "终端", icon: TerminalSquare, modules: ["terminal"] },
+  { id: "files", label: "文件", icon: Folder, modules: ["files"] },
+  { id: "docker", label: "容器", icon: Boxes, modules: ["docker", "appstore"] },
+  { id: "sites", label: "站点", icon: Globe, modules: ["sites", "ssl"] },
+  { id: "database", label: "数据库", icon: Database, modules: ["database"] },
+  { id: "cron", label: "计划任务", icon: Clock, modules: ["cron"] },
+  { id: "cluster", label: "集群/审计", icon: ShieldAlert, modules: ["cluster"] }
 ];
 
 export default function App() {
   const [active, setActive] = useState<TabId>("dashboard");
   const [terminalCwd, setTerminalCwd] = useState("/");
+  const [modules, setModules] = useState<RuntimeModule[]>([]);
+  const enabledModules = useMemo(
+    () => new Set(modules.filter((module) => module.enabled).map((module) => module.id)),
+    [modules]
+  );
+  const visibleTabs = useMemo(
+    () => tabs.filter((tab) => !tab.modules || !modules.length || tab.modules.some((module) => enabledModules.has(module))),
+    [enabledModules, modules.length]
+  );
+
+  useEffect(() => {
+    clients.system.listRuntimeModules({}).then((response) => {
+      setModules(response.modules);
+    }).catch(() => {
+      setModules([]);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.id === active)) {
+      setActive("dashboard");
+    }
+  }, [active, visibleTabs]);
 
   return (
     <div className="app-shell">
@@ -295,7 +353,7 @@ export default function App() {
           <span>RustPanel</span>
         </div>
         <nav className="nav-list">
-          {tabs.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
@@ -314,6 +372,7 @@ export default function App() {
 
       <main className="workspace">
         {active === "dashboard" && <Dashboard clients={clients} />}
+        {active === "micro" && <MicroPanel clients={clients} />}
         {active === "security" && <SecurityPanel clients={clients} />}
         {active === "terminal" && <TerminalPanel cwd={terminalCwd} />}
         {active === "files" && <FileManager clients={clients} openTerminal={(cwd) => { setTerminalCwd(cwd); setActive("terminal"); }} />}
@@ -1750,6 +1809,254 @@ function DockerApps({ clients }: { clients: Clients }) {
       <div className="panel log-panel">
         <div className="panel-title"><TerminalSquare size={18} /><span>容器日志</span></div>
         <pre>{logLines.join("")}</pre>
+      </div>
+    </section>
+  );
+}
+
+function MicroPanel({ clients }: { clients: Clients }) {
+  const [sites, setSites] = useState<SiteItem[]>([]);
+  const [workloads, setWorkloads] = useState<WorkloadItem[]>([]);
+  const [proxies, setProxies] = useState<ProxyInstance[]>([]);
+  const [vpnCapabilities, setVpnCapabilities] = useState<VpnCapability[]>([]);
+  const [siteForm, setSiteForm] = useState<MicroSiteForm>(defaultMicroSiteForm);
+  const [workloadForm, setWorkloadForm] = useState<WorkloadForm>(defaultWorkloadForm);
+  const [proxyForm, setProxyForm] = useState<ProxyForm>(defaultProxyForm);
+  const [log, setLog] = useState("");
+  const [status, setStatus] = useState("");
+
+  const load = async () => {
+    try {
+      const [siteResponse, workloadResponse, proxyResponse, vpnResponse] = await Promise.all([
+        clients.site.listSites({}),
+        clients.workload.listWorkloads({}),
+        clients.proxy.listProxyInstances({}),
+        clients.proxy.detectVpnCapabilities({})
+      ]);
+      setSites(siteResponse.sites.filter((site) => site.engine === "builtin"));
+      setWorkloads(workloadResponse.workloads);
+      setProxies(proxyResponse.instances);
+      setVpnCapabilities(vpnResponse.capabilities);
+      setStatus(vpnResponse.summary);
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const createSite = async () => {
+    try {
+      await clients.site.createSite({
+        name: siteForm.name,
+        domains: [],
+        root: siteForm.root,
+        proxyTarget: "",
+        sslEnabled: false,
+        engine: "builtin",
+        listenAddr: ""
+      });
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const saveWorkload = async () => {
+    try {
+      await clients.workload.upsertWorkload({
+        workload: {
+          id: "",
+          name: workloadForm.name,
+          command: workloadForm.command,
+          cwd: workloadForm.cwd,
+          env: [],
+          autostart: true,
+          memoryLimitMb: BigInt(Math.max(1, Number(workloadForm.memoryLimitMb || 32))),
+          logLimitBytes: 5n * 1024n * 1024n,
+          restartLimit: 3,
+          scheduleCron: "",
+          state: WorkloadState.STOPPED,
+          pid: 0,
+          logPath: "",
+          lastMessage: "",
+          updatedAtSeconds: 0n
+        }
+      });
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const startWorkload = async (workload: WorkloadItem) => {
+    await clients.workload.startWorkload({ id: workload.id });
+    await load();
+  };
+
+  const stopWorkload = async (workload: WorkloadItem) => {
+    await clients.workload.stopWorkload({ id: workload.id });
+    await load();
+  };
+
+  const readWorkloadLog = async (workload: WorkloadItem) => {
+    const response = await clients.workload.getWorkloadLog({ id: workload.id, maxBytes: 64n * 1024n });
+    setLog(response.content);
+  };
+
+  const saveProxy = async () => {
+    try {
+      await clients.proxy.upsertProxyInstance({
+        instance: {
+          id: "",
+          name: proxyForm.name,
+          templateId: "shadowsocks-rust",
+          listenHost: "0.0.0.0",
+          listenPort: Math.max(1, Number(proxyForm.listenPort || 8388)),
+          method: "",
+          password: proxyForm.password,
+          state: ProxyState.STOPPED,
+          pid: 0,
+          logPath: "",
+          lastMessage: "",
+          updatedAtSeconds: 0n
+        }
+      });
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const startProxy = async (proxy: ProxyInstance) => {
+    try {
+      await clients.proxy.startProxyInstance({ id: proxy.id });
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const stopProxy = async (proxy: ProxyInstance) => {
+    await clients.proxy.stopProxyInstance({ id: proxy.id });
+    await load();
+  };
+
+  const readProxyLog = async (proxy: ProxyInstance) => {
+    const response = await clients.proxy.getProxyLog({ id: proxy.id, maxBytes: 64n * 1024n });
+    setLog(response.content);
+  };
+
+  return (
+    <section className="page-grid">
+      <header className="section-header full-span">
+        <div>
+          <h1>Micro 极限模式</h1>
+          <p>{status || `${sites.length} 个静态站点 · ${workloads.length} 个任务 · ${proxies.length} 个代理`}</p>
+        </div>
+        <IconButton label="刷新" icon={RefreshCw} onClick={() => void load()} />
+      </header>
+
+      <div className="panel">
+        <div className="panel-title"><Globe size={18} /><span>内置静态托管</span></div>
+        <Input label="名称" value={siteForm.name} onChange={(name) => setSiteForm({ ...siteForm, name })} />
+        <Input label="目录" value={siteForm.root} onChange={(root) => setSiteForm({ ...siteForm, root })} />
+        <button onClick={() => void createSite()} type="button"><Save size={15} />创建</button>
+      </div>
+
+      <div className="panel wide-panel">
+        <div className="panel-title"><FileText size={18} /><span>静态站点</span></div>
+        <div className="table-list compact-list">
+          {sites.map((site) => (
+            <div className="table-row" key={site.name}>
+              <div>
+                <strong>{site.name}</strong>
+                <small>{site.root} · {site.publicPath}</small>
+              </div>
+              <StatusPill label="builtin" tone="good" />
+            </div>
+          ))}
+          {!sites.length && <div className="empty-state">暂无内置静态站点</div>}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-title"><TerminalSquare size={18} /><span>Rust 爬虫/进程</span></div>
+        <Input label="名称" value={workloadForm.name} onChange={(name) => setWorkloadForm({ ...workloadForm, name })} />
+        <Input label="命令" value={workloadForm.command} onChange={(command) => setWorkloadForm({ ...workloadForm, command })} />
+        <Input label="目录" value={workloadForm.cwd} onChange={(cwd) => setWorkloadForm({ ...workloadForm, cwd })} />
+        <Input label="内存 MB" value={workloadForm.memoryLimitMb} onChange={(memoryLimitMb) => setWorkloadForm({ ...workloadForm, memoryLimitMb })} />
+        <button onClick={() => void saveWorkload()} type="button"><Save size={15} />保存</button>
+      </div>
+
+      <div className="panel wide-panel">
+        <div className="panel-title"><Power size={18} /><span>托管任务</span></div>
+        <div className="table-list">
+          {workloads.map((workload) => (
+            <div className="table-row" key={workload.id}>
+              <div>
+                <strong>{workload.name}</strong>
+                <small>PID {workload.pid || "-"} · {workload.command} · {Number(workload.memoryLimitMb)}MB</small>
+              </div>
+              <StatusPill label={WorkloadState[workload.state]} tone={workload.state === WorkloadState.RUNNING ? "good" : "muted"} />
+              <div className="row-actions">
+                <IconButton label="启动" icon={Play} onClick={() => void startWorkload(workload)} />
+                <IconButton label="停止" icon={Square} onClick={() => void stopWorkload(workload)} />
+                <IconButton label="日志" icon={TerminalSquare} onClick={() => void readWorkloadLog(workload)} />
+              </div>
+            </div>
+          ))}
+          {!workloads.length && <div className="empty-state">暂无托管任务</div>}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-title"><ShieldCheck size={18} /><span>shadowsocks-rust</span></div>
+        <Input label="名称" value={proxyForm.name} onChange={(name) => setProxyForm({ ...proxyForm, name })} />
+        <Input label="端口" value={proxyForm.listenPort} onChange={(listenPort) => setProxyForm({ ...proxyForm, listenPort })} />
+        <Input label="密码" value={proxyForm.password} onChange={(password) => setProxyForm({ ...proxyForm, password })} />
+        <button onClick={() => void saveProxy()} type="button"><Save size={15} />保存</button>
+      </div>
+
+      <div className="panel wide-panel">
+        <div className="panel-title"><ShieldCheck size={18} /><span>代理实例</span></div>
+        <div className="table-list">
+          {proxies.map((proxy) => (
+            <div className="table-row" key={proxy.id}>
+              <div>
+                <strong>{proxy.name}</strong>
+                <small>{proxy.templateId} · {proxy.listenHost}:{proxy.listenPort} · PID {proxy.pid || "-"}</small>
+              </div>
+              <StatusPill label={ProxyState[proxy.state]} tone={proxy.state === ProxyState.RUNNING ? "good" : "muted"} />
+              <div className="row-actions">
+                <IconButton label="启动" icon={Play} onClick={() => void startProxy(proxy)} />
+                <IconButton label="停止" icon={Square} onClick={() => void stopProxy(proxy)} />
+                <IconButton label="日志" icon={TerminalSquare} onClick={() => void readProxyLog(proxy)} />
+              </div>
+            </div>
+          ))}
+          {!proxies.length && <div className="empty-state">暂无代理实例</div>}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-title"><ShieldAlert size={18} /><span>VPN 能力探测</span></div>
+        <div className="table-list compact-list">
+          {vpnCapabilities.map((capability) => (
+            <div className="key-row" key={capability.id}>
+              <strong>{capability.name}</strong>
+              <small>{capability.reason}</small>
+              <StatusPill label={capability.available ? "可用" : "不可用"} tone={capability.available ? "good" : "danger"} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel log-panel">
+        <div className="panel-title"><TerminalSquare size={18} /><span>Micro 日志</span></div>
+        <pre>{log || "暂无日志"}</pre>
       </div>
     </section>
   );

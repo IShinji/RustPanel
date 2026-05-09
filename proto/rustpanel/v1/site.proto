@@ -12,6 +12,9 @@ message SiteItem {
   string proxy_target = 4;
   bool ssl_enabled = 5;
   string config_path = 6;
+  string engine = 7;
+  string public_path = 8;
+  string listen_addr = 9;
 }
 
 // RewriteTemplate 描述内置伪静态模板。
@@ -61,6 +64,8 @@ message CreateSiteRequest {
   string root = 3;
   string proxy_target = 4;
   bool ssl_enabled = 5;
+  string engine = 6;
+  string listen_addr = 7;
 }
 
 // CreateSiteResponse 返回创建站点结果。

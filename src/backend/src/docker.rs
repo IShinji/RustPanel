@@ -383,6 +383,7 @@ impl DockerService for DockerServiceImpl {
         &self,
         _request: Request<ListComposeProjectsRequest>,
     ) -> Result<GrpcResponse<ListComposeProjectsResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_DOCKER)?;
         let projects = list_compose_projects_from_disk().await?;
 
         Ok(GrpcResponse::new(ListComposeProjectsResponse {
@@ -395,6 +396,7 @@ impl DockerService for DockerServiceImpl {
         &self,
         request: Request<UpsertComposeProjectRequest>,
     ) -> Result<GrpcResponse<UpsertComposeProjectResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_DOCKER)?;
         let request = request.into_inner();
         let name = sanitize_project_name(&request.name)?;
         validate_compose_yaml(&request.compose_yaml)?;
@@ -417,6 +419,7 @@ impl DockerService for DockerServiceImpl {
         &self,
         request: Request<DeployComposeProjectRequest>,
     ) -> Result<GrpcResponse<DeployComposeProjectResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_DOCKER)?;
         let name = sanitize_project_name(&request.into_inner().name)?;
         let compose_path = compose_path(&name);
         ensure_compose_exists(&compose_path).await?;
@@ -435,6 +438,7 @@ impl DockerService for DockerServiceImpl {
         &self,
         request: Request<RemoveComposeProjectRequest>,
     ) -> Result<GrpcResponse<RemoveComposeProjectResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_DOCKER)?;
         let request = request.into_inner();
         let name = sanitize_project_name(&request.name)?;
         let compose_path = compose_path(&name);
@@ -486,6 +490,7 @@ impl DockerService for DockerServiceImpl {
 }
 
 fn docker_client() -> Result<Docker, Status> {
+    crate::runtime::ensure_module_enabled(crate::runtime::MODULE_DOCKER)?;
     Docker::connect_with_local_defaults().map_err(docker_status)
 }
 

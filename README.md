@@ -35,6 +35,17 @@ url=https://raw.githubusercontent.com/IShinji/RustPanel/main/deploy/install.sh;i
 ```bash
 sudo bash rustpanel-install.sh --port 18888 --origin https://panel.example.com
 sudo bash rustpanel-install.sh --bind 127.0.0.1 --port 18080
+sudo bash rustpanel-install.sh --profile micro --assume-recommended
+```
+
+### Micro 极限模式
+
+`micro` 档位面向 128MB RAM、2GB 磁盘、NAT IPv4、OpenVZ 这类极限小鸡。安装器会先探测内存、磁盘、虚拟化和 Docker 能力，并在低配或 OpenVZ 环境下推荐二进制裸跑模式，默认启用内置静态托管、轻量任务托管和用户态代理，禁用 Docker、应用商店、Nginx 站点和 SSL 自动化。
+
+安装前可先查看建议：
+
+```bash
+sudo bash rustpanel-install.sh --dry-run
 ```
 
 请参阅完整使用指南：[入门指南 (Getting Started)](docs/guide/getting-started.md)

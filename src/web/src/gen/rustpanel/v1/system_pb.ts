@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/system.proto.
  */
 export const file_rustpanel_v1_system: GenFile = /*@__PURE__*/
-  fileDesc("ChlydXN0cGFuZWwvdjEvc3lzdGVtLnByb3RvEgxydXN0cGFuZWwudjEiegoTSGVhbHRoQ2hlY2tSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USKgoGaGVhbHRoGAIgASgOMhoucnVzdHBhbmVsLnYxLkhlYWx0aFN0YXR1cxIPCgd2ZXJzaW9uGAMgASgJIhQKEkhlYWx0aENoZWNrUmVxdWVzdCIWChRHZXRTeXN0ZW1JbmZvUmVxdWVzdCKZAQoVR2V0U3lzdGVtSW5mb1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIQCghob3N0bmFtZRgCIAEoCRIYChBvcGVyYXRpbmdfc3lzdGVtGAMgASgJEhYKDmtlcm5lbF92ZXJzaW9uGAQgASgJEhQKDGFyY2hpdGVjdHVyZRgFIAEoCSpnCgxIZWFsdGhTdGF0dXMSHQoZSEVBTFRIX1NUQVRVU19VTlNQRUNJRklFRBAAEhkKFUhFQUxUSF9TVEFUVVNfU0VSVklORxABEh0KGUhFQUxUSF9TVEFUVVNfTk9UX1NFUlZJTkcQAjK9AQoNU3lzdGVtU2VydmljZRJSCgtIZWFsdGhDaGVjaxIgLnJ1c3RwYW5lbC52MS5IZWFsdGhDaGVja1JlcXVlc3QaIS5ydXN0cGFuZWwudjEuSGVhbHRoQ2hlY2tSZXNwb25zZRJYCg1HZXRTeXN0ZW1JbmZvEiIucnVzdHBhbmVsLnYxLkdldFN5c3RlbUluZm9SZXF1ZXN0GiMucnVzdHBhbmVsLnYxLkdldFN5c3RlbUluZm9SZXNwb25zZWIGcHJvdG8z", [file_rustpanel_v1_common]);
+  fileDesc("ChlydXN0cGFuZWwvdjEvc3lzdGVtLnByb3RvEgxydXN0cGFuZWwudjEiegoTSGVhbHRoQ2hlY2tSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USKgoGaGVhbHRoGAIgASgOMhoucnVzdHBhbmVsLnYxLkhlYWx0aFN0YXR1cxIPCgd2ZXJzaW9uGAMgASgJIhQKEkhlYWx0aENoZWNrUmVxdWVzdCIWChRHZXRTeXN0ZW1JbmZvUmVxdWVzdCKZAQoVR2V0U3lzdGVtSW5mb1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIQCghob3N0bmFtZRgCIAEoCRIYChBvcGVyYXRpbmdfc3lzdGVtGAMgASgJEhYKDmtlcm5lbF92ZXJzaW9uGAQgASgJEhQKDGFyY2hpdGVjdHVyZRgFIAEoCSJcCg1SdW50aW1lTW9kdWxlEgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSDwoHZW5hYmxlZBgDIAEoCBIOCgZyZWFzb24YBCABKAkSEAoIcmVxdWlyZWQYBSABKAgiGwoZTGlzdFJ1bnRpbWVNb2R1bGVzUmVxdWVzdCKDAQoaTGlzdFJ1bnRpbWVNb2R1bGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiwKB21vZHVsZXMYAiADKAsyGy5ydXN0cGFuZWwudjEuUnVudGltZU1vZHVsZRIPCgdwcm9maWxlGAMgASgJKmcKDEhlYWx0aFN0YXR1cxIdChlIRUFMVEhfU1RBVFVTX1VOU1BFQ0lGSUVEEAASGQoVSEVBTFRIX1NUQVRVU19TRVJWSU5HEAESHQoZSEVBTFRIX1NUQVRVU19OT1RfU0VSVklORxACMqYCCg1TeXN0ZW1TZXJ2aWNlElIKC0hlYWx0aENoZWNrEiAucnVzdHBhbmVsLnYxLkhlYWx0aENoZWNrUmVxdWVzdBohLnJ1c3RwYW5lbC52MS5IZWFsdGhDaGVja1Jlc3BvbnNlElgKDUdldFN5c3RlbUluZm8SIi5ydXN0cGFuZWwudjEuR2V0U3lzdGVtSW5mb1JlcXVlc3QaIy5ydXN0cGFuZWwudjEuR2V0U3lzdGVtSW5mb1Jlc3BvbnNlEmcKEkxpc3RSdW50aW1lTW9kdWxlcxInLnJ1c3RwYW5lbC52MS5MaXN0UnVudGltZU1vZHVsZXNSZXF1ZXN0GigucnVzdHBhbmVsLnYxLkxpc3RSdW50aW1lTW9kdWxlc1Jlc3BvbnNlYgZwcm90bzM", [file_rustpanel_v1_common]);
 
 /**
  * HealthCheckResponse 返回基础健康检查结果。
@@ -113,6 +113,89 @@ export const GetSystemInfoResponseSchema: GenMessage<GetSystemInfoResponse> = /*
   messageDesc(file_rustpanel_v1_system, 3);
 
 /**
+ * RuntimeModule 描述一个运行时模块的启用状态。
+ *
+ * @generated from message rustpanel.v1.RuntimeModule
+ */
+export type RuntimeModule = Message<"rustpanel.v1.RuntimeModule"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * @generated from field: bool enabled = 3;
+   */
+  enabled: boolean;
+
+  /**
+   * @generated from field: string reason = 4;
+   */
+  reason: string;
+
+  /**
+   * @generated from field: bool required = 5;
+   */
+  required: boolean;
+};
+
+/**
+ * Describes the message rustpanel.v1.RuntimeModule.
+ * Use `create(RuntimeModuleSchema)` to create a new message.
+ */
+export const RuntimeModuleSchema: GenMessage<RuntimeModule> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_system, 4);
+
+/**
+ * ListRuntimeModulesRequest 表示运行模块列表请求。
+ *
+ * @generated from message rustpanel.v1.ListRuntimeModulesRequest
+ */
+export type ListRuntimeModulesRequest = Message<"rustpanel.v1.ListRuntimeModulesRequest"> & {
+};
+
+/**
+ * Describes the message rustpanel.v1.ListRuntimeModulesRequest.
+ * Use `create(ListRuntimeModulesRequestSchema)` to create a new message.
+ */
+export const ListRuntimeModulesRequestSchema: GenMessage<ListRuntimeModulesRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_system, 5);
+
+/**
+ * ListRuntimeModulesResponse 返回运行模块列表。
+ *
+ * @generated from message rustpanel.v1.ListRuntimeModulesResponse
+ */
+export type ListRuntimeModulesResponse = Message<"rustpanel.v1.ListRuntimeModulesResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.RuntimeModule modules = 2;
+   */
+  modules: RuntimeModule[];
+
+  /**
+   * @generated from field: string profile = 3;
+   */
+  profile: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.ListRuntimeModulesResponse.
+ * Use `create(ListRuntimeModulesResponseSchema)` to create a new message.
+ */
+export const ListRuntimeModulesResponseSchema: GenMessage<ListRuntimeModulesResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_system, 6);
+
+/**
  * HealthStatus 描述守护进程当前健康状态。
  *
  * @generated from enum rustpanel.v1.HealthStatus
@@ -161,6 +244,14 @@ export const SystemService: GenService<{
     methodKind: "unary";
     input: typeof GetSystemInfoRequestSchema;
     output: typeof GetSystemInfoResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SystemService.ListRuntimeModules
+   */
+  listRuntimeModules: {
+    methodKind: "unary";
+    input: typeof ListRuntimeModulesRequestSchema;
+    output: typeof ListRuntimeModulesResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_rustpanel_v1_system, 0);

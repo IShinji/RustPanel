@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
   deployments: write
 
@@ -159,3 +159,39 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - if: steps.backend-crate.outputs.exists != 'true'
         run: echo "src/backend/Cargo.toml not found; skipping backend image build."
+
+  build-backend-binary:
+    if: github.event_name != 'pull_request'
+    needs: verify
+    runs-on: [self-hosted, Linux, ARM64, m4-runner, rustpanel-runner]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+        with:
+          name: rustpanel-backend-binary-builder
+          keep-state: true
+          cleanup: false
+          cache-binary: false
+      - name: Build linux/amd64 backend binary
+        run: |
+          rm -rf dist/backend-binary dist/release
+          mkdir -p dist/backend-binary dist/release
+          docker buildx build \
+            --builder rustpanel-backend-binary-builder \
+            --platform linux/amd64 \
+            --target binary-export \
+            --output type=local,dest=dist/backend-binary \
+            -f src/backend/Dockerfile .
+          tar -C dist/backend-binary -czf dist/release/rustpanel-backend-linux-amd64.tar.gz rustpanel-backend
+      - name: Publish micro binary release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view micro-latest >/dev/null 2>&1; then
+            gh release upload micro-latest dist/release/rustpanel-backend-linux-amd64.tar.gz --clobber
+          else
+            gh release create micro-latest dist/release/rustpanel-backend-linux-amd64.tar.gz \
+              --title "RustPanel micro latest" \
+              --notes "Automated linux/amd64 binary for RustPanel micro installs." \
+              --latest=false
+          fi

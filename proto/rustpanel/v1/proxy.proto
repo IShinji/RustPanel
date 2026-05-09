@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// ProxyState 描述用户态代理状态。
+enum ProxyState {
+  PROXY_STATE_UNSPECIFIED = 0;
+  PROXY_STATE_STOPPED = 1;
+  PROXY_STATE_RUNNING = 2;
+  PROXY_STATE_FAILED = 3;
+}
+
+// ProxyTemplate 描述 micro 档位可用的代理模板。
+message ProxyTemplate {
+  string id = 1;
+  string name = 2;
+  string runtime = 3;
+  string description = 4;
+  uint32 default_port = 5;
+}
+
+// ProxyInstance 描述一个托管代理实例。
+message ProxyInstance {
+  string id = 1;
+  string name = 2;
+  string template_id = 3;
+  string listen_host = 4;
+  uint32 listen_port = 5;
+  string method = 6;
+  string password = 7;
+  ProxyState state = 8;
+  int32 pid = 9;
+  string log_path = 10;
+  string last_message = 11;
+  uint64 updated_at_seconds = 12;
+}
+
+// VpnCapability 描述真 VPN 所需能力探测结果。
+message VpnCapability {
+  string id = 1;
+  string name = 2;
+  bool available = 3;
+  string reason = 4;
+}
+
+message ListProxyTemplatesRequest {}
+
+message ListProxyTemplatesResponse {
+  Response status = 1;
+  repeated ProxyTemplate templates = 2;
+}
+
+message ListProxyInstancesRequest {}
+
+message ListProxyInstancesResponse {
+  Response status = 1;
+  repeated ProxyInstance instances = 2;
+}
+
+message UpsertProxyInstanceRequest {
+  ProxyInstance instance = 1;
+}
+
+message UpsertProxyInstanceResponse {
+  Response status = 1;
+  ProxyInstance instance = 2;
+}
+
+message StartProxyInstanceRequest {
+  string id = 1;
+}
+
+message StartProxyInstanceResponse {
+  Response status = 1;
+  ProxyInstance instance = 2;
+}
+
+message StopProxyInstanceRequest {
+  string id = 1;
+}
+
+message StopProxyInstanceResponse {
+  Response status = 1;
+  ProxyInstance instance = 2;
+}
+
+message DeleteProxyInstanceRequest {
+  string id = 1;
+}
+
+message DeleteProxyInstanceResponse {
+  Response status = 1;
+}
+
+message GetProxyLogRequest {
+  string id = 1;
+  uint64 max_bytes = 2;
+}
+
+message GetProxyLogResponse {
+  Response status = 1;
+  string content = 2;
+}
+
+message DetectVpnCapabilitiesRequest {}
+
+message DetectVpnCapabilitiesResponse {
+  Response status = 1;
+  repeated VpnCapability capabilities = 2;
+  bool vpn_recommended = 3;
+  string summary = 4;
+}
+
+// ProxyService 提供 micro 档位用户态代理与 VPN 能力探测。
+service ProxyService {
+  rpc ListProxyTemplates(ListProxyTemplatesRequest) returns (ListProxyTemplatesResponse);
+  rpc ListProxyInstances(ListProxyInstancesRequest) returns (ListProxyInstancesResponse);
+  rpc UpsertProxyInstance(UpsertProxyInstanceRequest) returns (UpsertProxyInstanceResponse);
+  rpc StartProxyInstance(StartProxyInstanceRequest) returns (StartProxyInstanceResponse);
+  rpc StopProxyInstance(StopProxyInstanceRequest) returns (StopProxyInstanceResponse);
+  rpc DeleteProxyInstance(DeleteProxyInstanceRequest) returns (DeleteProxyInstanceResponse);
+  rpc GetProxyLog(GetProxyLogRequest) returns (GetProxyLogResponse);
+  rpc DetectVpnCapabilities(DetectVpnCapabilitiesRequest) returns (DetectVpnCapabilitiesResponse);
+}
