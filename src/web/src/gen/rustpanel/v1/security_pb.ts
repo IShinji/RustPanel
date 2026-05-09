@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/security.proto.
  */
 export const file_rustpanel_v1_security: GenFile = /*@__PURE__*/
-  fileDesc("ChtydXN0cGFuZWwvdjEvc2VjdXJpdHkucHJvdG8SDHJ1c3RwYW5lbC52MSLhAgoMRmlyZXdhbGxSdWxlEgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSMAoIcHJvdG9jb2wYAyABKA4yHi5ydXN0cGFuZWwudjEuRmlyZXdhbGxQcm90b2NvbBIsCgZhY3Rpb24YBCABKA4yHC5ydXN0cGFuZWwudjEuRmlyZXdhbGxBY3Rpb24SMgoJZGlyZWN0aW9uGAUgASgOMh8ucnVzdHBhbmVsLnYxLkZpcmV3YWxsRGlyZWN0aW9uEhIKCnBvcnRfc3RhcnQYBiABKA0SEAoIcG9ydF9lbmQYByABKA0SDgoGc291cmNlGAggASgJEhMKC2Rlc3RpbmF0aW9uGAkgASgJEg8KB2VuYWJsZWQYCiABKAgSDwoHY29tbWVudBgLIAEoCRIaChJjcmVhdGVkX2F0X3NlY29uZHMYDCABKAQSGgoSdXBkYXRlZF9hdF9zZWNvbmRzGA0gASgEIqMCCg9TZWN1cml0eU9wdGlvbnMSFAoMZGlzYWJsZV9waW5nGAEgASgIEh8KF3NjYW5fcHJvdGVjdGlvbl9lbmFibGVkGAIgASgIEhIKCnNjYW5fYnVyc3QYAyABKA0SGwoTc2Nhbl93aW5kb3dfc2Vjb25kcxgEIAEoDRI5ChJiYWNrZW5kX3ByZWZlcmVuY2UYBSABKA4yHS5ydXN0cGFuZWwudjEuRmlyZXdhbGxCYWNrZW5kEhoKEmxhc3RfYXBwbHlfbWVzc2FnZRgGIAEoCRIZChFwYW5lbF9hY2Nlc3NfcGF0aBgHIAEoCRIZChFwYW5lbF9saXN0ZW5fYWRkchgIIAEoCRIbChN0d29fZmFjdG9yX3JlcXVpcmVkGAkgASgIIoACCgtXYWZTZXR0aW5ncxIPCgdlbmFibGVkGAEgASgIEh0KFWNjX3Byb3RlY3Rpb25fZW5hYmxlZBgCIAEoCBIhChljYXB0Y2hhX2NoYWxsZW5nZV9lbmFibGVkGAMgASgIEhsKE3JlcXVlc3RzX3Blcl9taW51dGUYBCABKA0SDQoFYnVyc3QYBSABKA0SHgoWYmxvY2tfZHVyYXRpb25fc2Vjb25kcxgGIAEoDRIZChFuZ2lueF9jb25maWdfcGF0aBgHIAEoCRIbChNjaGFsbGVuZ2VfcGFnZV9wYXRoGAggASgJEhoKEmxhc3RfYXBwbHlfbWVzc2FnZRgJIAEoCSLNAQoHV2FmUnVsZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEicKBGtpbmQYAyABKA4yGS5ydXN0cGFuZWwudjEuV2FmUnVsZUtpbmQSDwoHcGF0dGVybhgEIAEoCRIPCgdlbmFibGVkGAUgASgIEhQKDHNjb3BlX2RvbWFpbhgGIAEoCRIPCgdjb21tZW50GAcgASgJEhoKEmNyZWF0ZWRfYXRfc2Vjb25kcxgIIAEoBBIaChJ1cGRhdGVkX2F0X3NlY29uZHMYCSABKAQi5wEKDldhZkF0dGFja0V2ZW50EgoKAmlkGAEgASgJEhEKCXNvdXJjZV9pcBgCIAEoCRIUCgxjb3VudHJ5X2NvZGUYAyABKAkSFAoMY291bnRyeV9uYW1lGAQgASgJEg8KB3J1bGVfaWQYBSABKAkSEQoJcnVsZV9uYW1lGAYgASgJEicKBGtpbmQYByABKA4yGS5ydXN0cGFuZWwudjEuV2FmUnVsZUtpbmQSDAoEcGF0aBgIIAEoCRISCgp1c2VyX2FnZW50GAkgASgJEhsKE29jY3VycmVkX2F0X3NlY29uZHMYCiABKAQiGgoYTGlzdEZpcmV3YWxsUnVsZXNSZXF1ZXN0Ip4BChlMaXN0RmlyZXdhbGxSdWxlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIpCgVydWxlcxgCIAMoCzIaLnJ1c3RwYW5lbC52MS5GaXJld2FsbFJ1bGUSLgoHb3B0aW9ucxgDIAEoCzIdLnJ1c3RwYW5lbC52MS5TZWN1cml0eU9wdGlvbnMiRQoZVXBzZXJ0RmlyZXdhbGxSdWxlUmVxdWVzdBIoCgRydWxlGAEgASgLMhoucnVzdHBhbmVsLnYxLkZpcmV3YWxsUnVsZSJuChpVcHNlcnRGaXJld2FsbFJ1bGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USKAoEcnVsZRgCIAEoCzIaLnJ1c3RwYW5lbC52MS5GaXJld2FsbFJ1bGUiJwoZRGVsZXRlRmlyZXdhbGxSdWxlUmVxdWVzdBIKCgJpZBgBIAEoCSJEChpEZWxldGVGaXJld2FsbFJ1bGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiPAodU2V0RmlyZXdhbGxSdWxlRW5hYmxlZFJlcXVlc3QSCgoCaWQYASABKAkSDwoHZW5hYmxlZBgCIAEoCCJyCh5TZXRGaXJld2FsbFJ1bGVFbmFibGVkUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEigKBHJ1bGUYAiABKAsyGi5ydXN0cGFuZWwudjEuRmlyZXdhbGxSdWxlIk4KHFVwZGF0ZVNlY3VyaXR5T3B0aW9uc1JlcXVlc3QSLgoHb3B0aW9ucxgBIAEoCzIdLnJ1c3RwYW5lbC52MS5TZWN1cml0eU9wdGlvbnMidwodVXBkYXRlU2VjdXJpdHlPcHRpb25zUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEi4KB29wdGlvbnMYAiABKAsyHS5ydXN0cGFuZWwudjEuU2VjdXJpdHlPcHRpb25zIhwKGkV4cG9ydEZpcmV3YWxsUnVsZXNSZXF1ZXN0IloKG0V4cG9ydEZpcmV3YWxsUnVsZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USEwoLYmFja3VwX2pzb24YAiABKAkiSwoaSW1wb3J0RmlyZXdhbGxSdWxlc1JlcXVlc3QSEwoLYmFja3VwX2pzb24YASABKAkSGAoQcmVwbGFjZV9leGlzdGluZxgCIAEoCCKgAQobSW1wb3J0RmlyZXdhbGxSdWxlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIpCgVydWxlcxgCIAMoCzIaLnJ1c3RwYW5lbC52MS5GaXJld2FsbFJ1bGUSLgoHb3B0aW9ucxgDIAEoCzIdLnJ1c3RwYW5lbC52MS5TZWN1cml0eU9wdGlvbnMiFwoVR2V0V2FmU2V0dGluZ3NSZXF1ZXN0IpMBChZHZXRXYWZTZXR0aW5nc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIrCghzZXR0aW5ncxgCIAEoCzIZLnJ1c3RwYW5lbC52MS5XYWZTZXR0aW5ncxIkCgVydWxlcxgDIAMoCzIVLnJ1c3RwYW5lbC52MS5XYWZSdWxlIkcKGFVwZGF0ZVdhZlNldHRpbmdzUmVxdWVzdBIrCghzZXR0aW5ncxgBIAEoCzIZLnJ1c3RwYW5lbC52MS5XYWZTZXR0aW5ncyJwChlVcGRhdGVXYWZTZXR0aW5nc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIrCghzZXR0aW5ncxgCIAEoCzIZLnJ1c3RwYW5lbC52MS5XYWZTZXR0aW5ncyI7ChRVcHNlcnRXYWZSdWxlUmVxdWVzdBIjCgRydWxlGAEgASgLMhUucnVzdHBhbmVsLnYxLldhZlJ1bGUiZAoVVXBzZXJ0V2FmUnVsZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIjCgRydWxlGAIgASgLMhUucnVzdHBhbmVsLnYxLldhZlJ1bGUiIgoURGVsZXRlV2FmUnVsZVJlcXVlc3QSCgoCaWQYASABKAkiPwoVRGVsZXRlV2FmUnVsZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIrChpMaXN0V2FmQXR0YWNrRXZlbnRzUmVxdWVzdBINCgVsaW1pdBgBIAEoDSJzChtMaXN0V2FmQXR0YWNrRXZlbnRzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiwKBmV2ZW50cxgCIAMoCzIcLnJ1c3RwYW5lbC52MS5XYWZBdHRhY2tFdmVudCqHAQoQRmlyZXdhbGxQcm90b2NvbBIhCh1GSVJFV0FMTF9QUk9UT0NPTF9VTlNQRUNJRklFRBAAEhkKFUZJUkVXQUxMX1BST1RPQ09MX1RDUBABEhkKFUZJUkVXQUxMX1BST1RPQ09MX1VEUBACEhoKFkZJUkVXQUxMX1BST1RPQ09MX0lDTVAQAyqCAQoORmlyZXdhbGxBY3Rpb24SHwobRklSRVdBTExfQUNUSU9OX1VOU1BFQ0lGSUVEEAASGQoVRklSRVdBTExfQUNUSU9OX0FMTE9XEAESGAoURklSRVdBTExfQUNUSU9OX0RFTlkQAhIaChZGSVJFV0FMTF9BQ1RJT05fUkVKRUNUEAMqeAoRRmlyZXdhbGxEaXJlY3Rpb24SIgoeRklSRVdBTExfRElSRUNUSU9OX1VOU1BFQ0lGSUVEEAASHgoaRklSRVdBTExfRElSRUNUSU9OX0lOQk9VTkQQARIfChtGSVJFV0FMTF9ESVJFQ1RJT05fT1VUQk9VTkQQAiqMAQoPRmlyZXdhbGxCYWNrZW5kEiAKHEZJUkVXQUxMX0JBQ0tFTkRfVU5TUEVDSUZJRUQQABIYChRGSVJFV0FMTF9CQUNLRU5EX1VGVxABEh4KGkZJUkVXQUxMX0JBQ0tFTkRfRklSRVdBTExEEAISHQoZRklSRVdBTExfQkFDS0VORF9JUFRBQkxFUxADKrABCgtXYWZSdWxlS2luZBIdChlXQUZfUlVMRV9LSU5EX1VOU1BFQ0lGSUVEEAASFAoQV0FGX1JVTEVfS0lORF9DQxABEh8KG1dBRl9SVUxFX0tJTkRfU1FMX0lOSkVDVElPThACEhUKEVdBRl9SVUxFX0tJTkRfWFNTEAMSGQoVV0FGX1JVTEVfS0lORF9LRVlXT1JEEAQSGQoVV0FGX1JVTEVfS0lORF9TQ0FOTkVSEAUy6wkKD1NlY3VyaXR5U2VydmljZRJkChFMaXN0RmlyZXdhbGxSdWxlcxImLnJ1c3RwYW5lbC52MS5MaXN0RmlyZXdhbGxSdWxlc1JlcXVlc3QaJy5ydXN0cGFuZWwudjEuTGlzdEZpcmV3YWxsUnVsZXNSZXNwb25zZRJnChJVcHNlcnRGaXJld2FsbFJ1bGUSJy5ydXN0cGFuZWwudjEuVXBzZXJ0RmlyZXdhbGxSdWxlUmVxdWVzdBooLnJ1c3RwYW5lbC52MS5VcHNlcnRGaXJld2FsbFJ1bGVSZXNwb25zZRJnChJEZWxldGVGaXJld2FsbFJ1bGUSJy5ydXN0cGFuZWwudjEuRGVsZXRlRmlyZXdhbGxSdWxlUmVxdWVzdBooLnJ1c3RwYW5lbC52MS5EZWxldGVGaXJld2FsbFJ1bGVSZXNwb25zZRJzChZTZXRGaXJld2FsbFJ1bGVFbmFibGVkEisucnVzdHBhbmVsLnYxLlNldEZpcmV3YWxsUnVsZUVuYWJsZWRSZXF1ZXN0GiwucnVzdHBhbmVsLnYxLlNldEZpcmV3YWxsUnVsZUVuYWJsZWRSZXNwb25zZRJwChVVcGRhdGVTZWN1cml0eU9wdGlvbnMSKi5ydXN0cGFuZWwudjEuVXBkYXRlU2VjdXJpdHlPcHRpb25zUmVxdWVzdBorLnJ1c3RwYW5lbC52MS5VcGRhdGVTZWN1cml0eU9wdGlvbnNSZXNwb25zZRJqChNFeHBvcnRGaXJld2FsbFJ1bGVzEigucnVzdHBhbmVsLnYxLkV4cG9ydEZpcmV3YWxsUnVsZXNSZXF1ZXN0GikucnVzdHBhbmVsLnYxLkV4cG9ydEZpcmV3YWxsUnVsZXNSZXNwb25zZRJqChNJbXBvcnRGaXJld2FsbFJ1bGVzEigucnVzdHBhbmVsLnYxLkltcG9ydEZpcmV3YWxsUnVsZXNSZXF1ZXN0GikucnVzdHBhbmVsLnYxLkltcG9ydEZpcmV3YWxsUnVsZXNSZXNwb25zZRJbCg5HZXRXYWZTZXR0aW5ncxIjLnJ1c3RwYW5lbC52MS5HZXRXYWZTZXR0aW5nc1JlcXVlc3QaJC5ydXN0cGFuZWwudjEuR2V0V2FmU2V0dGluZ3NSZXNwb25zZRJkChFVcGRhdGVXYWZTZXR0aW5ncxImLnJ1c3RwYW5lbC52MS5VcGRhdGVXYWZTZXR0aW5nc1JlcXVlc3QaJy5ydXN0cGFuZWwudjEuVXBkYXRlV2FmU2V0dGluZ3NSZXNwb25zZRJYCg1VcHNlcnRXYWZSdWxlEiIucnVzdHBhbmVsLnYxLlVwc2VydFdhZlJ1bGVSZXF1ZXN0GiMucnVzdHBhbmVsLnYxLlVwc2VydFdhZlJ1bGVSZXNwb25zZRJYCg1EZWxldGVXYWZSdWxlEiIucnVzdHBhbmVsLnYxLkRlbGV0ZVdhZlJ1bGVSZXF1ZXN0GiMucnVzdHBhbmVsLnYxLkRlbGV0ZVdhZlJ1bGVSZXNwb25zZRJqChNMaXN0V2FmQXR0YWNrRXZlbnRzEigucnVzdHBhbmVsLnYxLkxpc3RXYWZBdHRhY2tFdmVudHNSZXF1ZXN0GikucnVzdHBhbmVsLnYxLkxpc3RXYWZBdHRhY2tFdmVudHNSZXNwb25zZWIGcHJvdG8z", [file_rustpanel_v1_common]);
+  fileDesc("ChtydXN0cGFuZWwvdjEvc2VjdXJpdHkucHJvdG8SDHJ1c3RwYW5lbC52MSLhAgoMRmlyZXdhbGxSdWxlEgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSMAoIcHJvdG9jb2wYAyABKA4yHi5ydXN0cGFuZWwudjEuRmlyZXdhbGxQcm90b2NvbBIsCgZhY3Rpb24YBCABKA4yHC5ydXN0cGFuZWwudjEuRmlyZXdhbGxBY3Rpb24SMgoJZGlyZWN0aW9uGAUgASgOMh8ucnVzdHBhbmVsLnYxLkZpcmV3YWxsRGlyZWN0aW9uEhIKCnBvcnRfc3RhcnQYBiABKA0SEAoIcG9ydF9lbmQYByABKA0SDgoGc291cmNlGAggASgJEhMKC2Rlc3RpbmF0aW9uGAkgASgJEg8KB2VuYWJsZWQYCiABKAgSDwoHY29tbWVudBgLIAEoCRIaChJjcmVhdGVkX2F0X3NlY29uZHMYDCABKAQSGgoSdXBkYXRlZF9hdF9zZWNvbmRzGA0gASgEIqMCCg9TZWN1cml0eU9wdGlvbnMSFAoMZGlzYWJsZV9waW5nGAEgASgIEh8KF3NjYW5fcHJvdGVjdGlvbl9lbmFibGVkGAIgASgIEhIKCnNjYW5fYnVyc3QYAyABKA0SGwoTc2Nhbl93aW5kb3dfc2Vjb25kcxgEIAEoDRI5ChJiYWNrZW5kX3ByZWZlcmVuY2UYBSABKA4yHS5ydXN0cGFuZWwudjEuRmlyZXdhbGxCYWNrZW5kEhoKEmxhc3RfYXBwbHlfbWVzc2FnZRgGIAEoCRIZChFwYW5lbF9hY2Nlc3NfcGF0aBgHIAEoCRIZChFwYW5lbF9saXN0ZW5fYWRkchgIIAEoCRIbChN0d29fZmFjdG9yX3JlcXVpcmVkGAkgASgIIoACCgtXYWZTZXR0aW5ncxIPCgdlbmFibGVkGAEgASgIEh0KFWNjX3Byb3RlY3Rpb25fZW5hYmxlZBgCIAEoCBIhChljYXB0Y2hhX2NoYWxsZW5nZV9lbmFibGVkGAMgASgIEhsKE3JlcXVlc3RzX3Blcl9taW51dGUYBCABKA0SDQoFYnVyc3QYBSABKA0SHgoWYmxvY2tfZHVyYXRpb25fc2Vjb25kcxgGIAEoDRIZChFuZ2lueF9jb25maWdfcGF0aBgHIAEoCRIbChNjaGFsbGVuZ2VfcGFnZV9wYXRoGAggASgJEhoKEmxhc3RfYXBwbHlfbWVzc2FnZRgJIAEoCSLNAQoHV2FmUnVsZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEicKBGtpbmQYAyABKA4yGS5ydXN0cGFuZWwudjEuV2FmUnVsZUtpbmQSDwoHcGF0dGVybhgEIAEoCRIPCgdlbmFibGVkGAUgASgIEhQKDHNjb3BlX2RvbWFpbhgGIAEoCRIPCgdjb21tZW50GAcgASgJEhoKEmNyZWF0ZWRfYXRfc2Vjb25kcxgIIAEoBBIaChJ1cGRhdGVkX2F0X3NlY29uZHMYCSABKAQi5wEKDldhZkF0dGFja0V2ZW50EgoKAmlkGAEgASgJEhEKCXNvdXJjZV9pcBgCIAEoCRIUCgxjb3VudHJ5X2NvZGUYAyABKAkSFAoMY291bnRyeV9uYW1lGAQgASgJEg8KB3J1bGVfaWQYBSABKAkSEQoJcnVsZV9uYW1lGAYgASgJEicKBGtpbmQYByABKA4yGS5ydXN0cGFuZWwudjEuV2FmUnVsZUtpbmQSDAoEcGF0aBgIIAEoCRISCgp1c2VyX2FnZW50GAkgASgJEhsKE29jY3VycmVkX2F0X3NlY29uZHMYCiABKAQi5QEKC1NzaFNldHRpbmdzEhcKD3NlcnZpY2VfZW5hYmxlZBgBIAEoCBIMCgRwb3J0GAIgASgNEh8KF3Bhc3N3b3JkX2xvZ2luX2Rpc2FibGVkGAMgASgIEhgKEGF1dG9fYmFuX2VuYWJsZWQYBCABKAgSHAoUZmFpbGVkX2F0dGVtcHRfbGltaXQYBSABKA0SJQodZmFpbGVkX2F0dGVtcHRfd2luZG93X3NlY29uZHMYBiABKA0SEwoLY29uZmlnX3BhdGgYByABKAkSGgoSbGFzdF9hcHBseV9tZXNzYWdlGAggASgJIpcBCg1Tc2hMb2dpbkV2ZW50EgoKAmlkGAEgASgJEhAKCHVzZXJuYW1lGAIgASgJEhEKCXNvdXJjZV9pcBgDIAEoCRISCgpzdWNjZXNzZnVsGAQgASgIEhMKC2F1dG9fYmFubmVkGAUgASgIEg8KB21lc3NhZ2UYBiABKAkSGwoTb2NjdXJyZWRfYXRfc2Vjb25kcxgHIAEoBCKiAQoKU3NoS2V5SXRlbRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEjAKCWFsZ29yaXRobRgDIAEoDjIdLnJ1c3RwYW5lbC52MS5Tc2hLZXlBbGdvcml0aG0SEgoKcHVibGljX2tleRgEIAEoCRIYChBwcml2YXRlX2tleV9wYXRoGAUgASgJEhoKEmNyZWF0ZWRfYXRfc2Vjb25kcxgGIAEoBCIaChhMaXN0RmlyZXdhbGxSdWxlc1JlcXVlc3QingEKGUxpc3RGaXJld2FsbFJ1bGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEikKBXJ1bGVzGAIgAygLMhoucnVzdHBhbmVsLnYxLkZpcmV3YWxsUnVsZRIuCgdvcHRpb25zGAMgASgLMh0ucnVzdHBhbmVsLnYxLlNlY3VyaXR5T3B0aW9ucyJFChlVcHNlcnRGaXJld2FsbFJ1bGVSZXF1ZXN0EigKBHJ1bGUYASABKAsyGi5ydXN0cGFuZWwudjEuRmlyZXdhbGxSdWxlIm4KGlVwc2VydEZpcmV3YWxsUnVsZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIoCgRydWxlGAIgASgLMhoucnVzdHBhbmVsLnYxLkZpcmV3YWxsUnVsZSInChlEZWxldGVGaXJld2FsbFJ1bGVSZXF1ZXN0EgoKAmlkGAEgASgJIkQKGkRlbGV0ZUZpcmV3YWxsUnVsZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSI8Ch1TZXRGaXJld2FsbFJ1bGVFbmFibGVkUmVxdWVzdBIKCgJpZBgBIAEoCRIPCgdlbmFibGVkGAIgASgIInIKHlNldEZpcmV3YWxsUnVsZUVuYWJsZWRSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USKAoEcnVsZRgCIAEoCzIaLnJ1c3RwYW5lbC52MS5GaXJld2FsbFJ1bGUiTgocVXBkYXRlU2VjdXJpdHlPcHRpb25zUmVxdWVzdBIuCgdvcHRpb25zGAEgASgLMh0ucnVzdHBhbmVsLnYxLlNlY3VyaXR5T3B0aW9ucyJ3Ch1VcGRhdGVTZWN1cml0eU9wdGlvbnNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLgoHb3B0aW9ucxgCIAEoCzIdLnJ1c3RwYW5lbC52MS5TZWN1cml0eU9wdGlvbnMiHAoaRXhwb3J0RmlyZXdhbGxSdWxlc1JlcXVlc3QiWgobRXhwb3J0RmlyZXdhbGxSdWxlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRITCgtiYWNrdXBfanNvbhgCIAEoCSJLChpJbXBvcnRGaXJld2FsbFJ1bGVzUmVxdWVzdBITCgtiYWNrdXBfanNvbhgBIAEoCRIYChByZXBsYWNlX2V4aXN0aW5nGAIgASgIIqABChtJbXBvcnRGaXJld2FsbFJ1bGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEikKBXJ1bGVzGAIgAygLMhoucnVzdHBhbmVsLnYxLkZpcmV3YWxsUnVsZRIuCgdvcHRpb25zGAMgASgLMh0ucnVzdHBhbmVsLnYxLlNlY3VyaXR5T3B0aW9ucyIXChVHZXRXYWZTZXR0aW5nc1JlcXVlc3QikwEKFkdldFdhZlNldHRpbmdzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEisKCHNldHRpbmdzGAIgASgLMhkucnVzdHBhbmVsLnYxLldhZlNldHRpbmdzEiQKBXJ1bGVzGAMgAygLMhUucnVzdHBhbmVsLnYxLldhZlJ1bGUiRwoYVXBkYXRlV2FmU2V0dGluZ3NSZXF1ZXN0EisKCHNldHRpbmdzGAEgASgLMhkucnVzdHBhbmVsLnYxLldhZlNldHRpbmdzInAKGVVwZGF0ZVdhZlNldHRpbmdzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEisKCHNldHRpbmdzGAIgASgLMhkucnVzdHBhbmVsLnYxLldhZlNldHRpbmdzIjsKFFVwc2VydFdhZlJ1bGVSZXF1ZXN0EiMKBHJ1bGUYASABKAsyFS5ydXN0cGFuZWwudjEuV2FmUnVsZSJkChVVcHNlcnRXYWZSdWxlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiMKBHJ1bGUYAiABKAsyFS5ydXN0cGFuZWwudjEuV2FmUnVsZSIiChREZWxldGVXYWZSdWxlUmVxdWVzdBIKCgJpZBgBIAEoCSI/ChVEZWxldGVXYWZSdWxlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlIisKGkxpc3RXYWZBdHRhY2tFdmVudHNSZXF1ZXN0Eg0KBWxpbWl0GAEgASgNInMKG0xpc3RXYWZBdHRhY2tFdmVudHNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLAoGZXZlbnRzGAIgAygLMhwucnVzdHBhbmVsLnYxLldhZkF0dGFja0V2ZW50IhcKFUdldFNzaFNldHRpbmdzUmVxdWVzdCKVAQoWR2V0U3NoU2V0dGluZ3NSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USKwoIc2V0dGluZ3MYAiABKAsyGS5ydXN0cGFuZWwudjEuU3NoU2V0dGluZ3MSJgoEa2V5cxgDIAMoCzIYLnJ1c3RwYW5lbC52MS5Tc2hLZXlJdGVtIkcKGFVwZGF0ZVNzaFNldHRpbmdzUmVxdWVzdBIrCghzZXR0aW5ncxgBIAEoCzIZLnJ1c3RwYW5lbC52MS5Tc2hTZXR0aW5ncyJwChlVcGRhdGVTc2hTZXR0aW5nc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIrCghzZXR0aW5ncxgCIAEoCzIZLnJ1c3RwYW5lbC52MS5Tc2hTZXR0aW5ncyJXChVHZW5lcmF0ZVNzaEtleVJlcXVlc3QSDAoEbmFtZRgBIAEoCRIwCglhbGdvcml0aG0YAiABKA4yHS5ydXN0cGFuZWwudjEuU3NoS2V5QWxnb3JpdGhtImcKFkdlbmVyYXRlU3NoS2V5UmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiUKA2tleRgCIAEoCzIYLnJ1c3RwYW5lbC52MS5Tc2hLZXlJdGVtIioKGUxpc3RTc2hMb2dpbkV2ZW50c1JlcXVlc3QSDQoFbGltaXQYASABKA0icQoaTGlzdFNzaExvZ2luRXZlbnRzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEisKBmV2ZW50cxgCIAMoCzIbLnJ1c3RwYW5lbC52MS5Tc2hMb2dpbkV2ZW50IkgKGlJlY29yZFNzaExvZ2luRXZlbnRSZXF1ZXN0EioKBWV2ZW50GAEgASgLMhsucnVzdHBhbmVsLnYxLlNzaExvZ2luRXZlbnQicQobUmVjb3JkU3NoTG9naW5FdmVudFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIqCgVldmVudBgCIAEoCzIbLnJ1c3RwYW5lbC52MS5Tc2hMb2dpbkV2ZW50KocBChBGaXJld2FsbFByb3RvY29sEiEKHUZJUkVXQUxMX1BST1RPQ09MX1VOU1BFQ0lGSUVEEAASGQoVRklSRVdBTExfUFJPVE9DT0xfVENQEAESGQoVRklSRVdBTExfUFJPVE9DT0xfVURQEAISGgoWRklSRVdBTExfUFJPVE9DT0xfSUNNUBADKoIBCg5GaXJld2FsbEFjdGlvbhIfChtGSVJFV0FMTF9BQ1RJT05fVU5TUEVDSUZJRUQQABIZChVGSVJFV0FMTF9BQ1RJT05fQUxMT1cQARIYChRGSVJFV0FMTF9BQ1RJT05fREVOWRACEhoKFkZJUkVXQUxMX0FDVElPTl9SRUpFQ1QQAyp4ChFGaXJld2FsbERpcmVjdGlvbhIiCh5GSVJFV0FMTF9ESVJFQ1RJT05fVU5TUEVDSUZJRUQQABIeChpGSVJFV0FMTF9ESVJFQ1RJT05fSU5CT1VORBABEh8KG0ZJUkVXQUxMX0RJUkVDVElPTl9PVVRCT1VORBACKowBCg9GaXJld2FsbEJhY2tlbmQSIAocRklSRVdBTExfQkFDS0VORF9VTlNQRUNJRklFRBAAEhgKFEZJUkVXQUxMX0JBQ0tFTkRfVUZXEAESHgoaRklSRVdBTExfQkFDS0VORF9GSVJFV0FMTEQQAhIdChlGSVJFV0FMTF9CQUNLRU5EX0lQVEFCTEVTEAMqsAEKC1dhZlJ1bGVLaW5kEh0KGVdBRl9SVUxFX0tJTkRfVU5TUEVDSUZJRUQQABIUChBXQUZfUlVMRV9LSU5EX0NDEAESHwobV0FGX1JVTEVfS0lORF9TUUxfSU5KRUNUSU9OEAISFQoRV0FGX1JVTEVfS0lORF9YU1MQAxIZChVXQUZfUlVMRV9LSU5EX0tFWVdPUkQQBBIZChVXQUZfUlVMRV9LSU5EX1NDQU5ORVIQBSpuCg9Tc2hLZXlBbGdvcml0aG0SIQodU1NIX0tFWV9BTEdPUklUSE1fVU5TUEVDSUZJRUQQABIZChVTU0hfS0VZX0FMR09SSVRITV9SU0EQARIdChlTU0hfS0VZX0FMR09SSVRITV9FRDI1NTE5EAIy4A0KD1NlY3VyaXR5U2VydmljZRJkChFMaXN0RmlyZXdhbGxSdWxlcxImLnJ1c3RwYW5lbC52MS5MaXN0RmlyZXdhbGxSdWxlc1JlcXVlc3QaJy5ydXN0cGFuZWwudjEuTGlzdEZpcmV3YWxsUnVsZXNSZXNwb25zZRJnChJVcHNlcnRGaXJld2FsbFJ1bGUSJy5ydXN0cGFuZWwudjEuVXBzZXJ0RmlyZXdhbGxSdWxlUmVxdWVzdBooLnJ1c3RwYW5lbC52MS5VcHNlcnRGaXJld2FsbFJ1bGVSZXNwb25zZRJnChJEZWxldGVGaXJld2FsbFJ1bGUSJy5ydXN0cGFuZWwudjEuRGVsZXRlRmlyZXdhbGxSdWxlUmVxdWVzdBooLnJ1c3RwYW5lbC52MS5EZWxldGVGaXJld2FsbFJ1bGVSZXNwb25zZRJzChZTZXRGaXJld2FsbFJ1bGVFbmFibGVkEisucnVzdHBhbmVsLnYxLlNldEZpcmV3YWxsUnVsZUVuYWJsZWRSZXF1ZXN0GiwucnVzdHBhbmVsLnYxLlNldEZpcmV3YWxsUnVsZUVuYWJsZWRSZXNwb25zZRJwChVVcGRhdGVTZWN1cml0eU9wdGlvbnMSKi5ydXN0cGFuZWwudjEuVXBkYXRlU2VjdXJpdHlPcHRpb25zUmVxdWVzdBorLnJ1c3RwYW5lbC52MS5VcGRhdGVTZWN1cml0eU9wdGlvbnNSZXNwb25zZRJqChNFeHBvcnRGaXJld2FsbFJ1bGVzEigucnVzdHBhbmVsLnYxLkV4cG9ydEZpcmV3YWxsUnVsZXNSZXF1ZXN0GikucnVzdHBhbmVsLnYxLkV4cG9ydEZpcmV3YWxsUnVsZXNSZXNwb25zZRJqChNJbXBvcnRGaXJld2FsbFJ1bGVzEigucnVzdHBhbmVsLnYxLkltcG9ydEZpcmV3YWxsUnVsZXNSZXF1ZXN0GikucnVzdHBhbmVsLnYxLkltcG9ydEZpcmV3YWxsUnVsZXNSZXNwb25zZRJbCg5HZXRXYWZTZXR0aW5ncxIjLnJ1c3RwYW5lbC52MS5HZXRXYWZTZXR0aW5nc1JlcXVlc3QaJC5ydXN0cGFuZWwudjEuR2V0V2FmU2V0dGluZ3NSZXNwb25zZRJkChFVcGRhdGVXYWZTZXR0aW5ncxImLnJ1c3RwYW5lbC52MS5VcGRhdGVXYWZTZXR0aW5nc1JlcXVlc3QaJy5ydXN0cGFuZWwudjEuVXBkYXRlV2FmU2V0dGluZ3NSZXNwb25zZRJYCg1VcHNlcnRXYWZSdWxlEiIucnVzdHBhbmVsLnYxLlVwc2VydFdhZlJ1bGVSZXF1ZXN0GiMucnVzdHBhbmVsLnYxLlVwc2VydFdhZlJ1bGVSZXNwb25zZRJYCg1EZWxldGVXYWZSdWxlEiIucnVzdHBhbmVsLnYxLkRlbGV0ZVdhZlJ1bGVSZXF1ZXN0GiMucnVzdHBhbmVsLnYxLkRlbGV0ZVdhZlJ1bGVSZXNwb25zZRJqChNMaXN0V2FmQXR0YWNrRXZlbnRzEigucnVzdHBhbmVsLnYxLkxpc3RXYWZBdHRhY2tFdmVudHNSZXF1ZXN0GikucnVzdHBhbmVsLnYxLkxpc3RXYWZBdHRhY2tFdmVudHNSZXNwb25zZRJbCg5HZXRTc2hTZXR0aW5ncxIjLnJ1c3RwYW5lbC52MS5HZXRTc2hTZXR0aW5nc1JlcXVlc3QaJC5ydXN0cGFuZWwudjEuR2V0U3NoU2V0dGluZ3NSZXNwb25zZRJkChFVcGRhdGVTc2hTZXR0aW5ncxImLnJ1c3RwYW5lbC52MS5VcGRhdGVTc2hTZXR0aW5nc1JlcXVlc3QaJy5ydXN0cGFuZWwudjEuVXBkYXRlU3NoU2V0dGluZ3NSZXNwb25zZRJbCg5HZW5lcmF0ZVNzaEtleRIjLnJ1c3RwYW5lbC52MS5HZW5lcmF0ZVNzaEtleVJlcXVlc3QaJC5ydXN0cGFuZWwudjEuR2VuZXJhdGVTc2hLZXlSZXNwb25zZRJnChJMaXN0U3NoTG9naW5FdmVudHMSJy5ydXN0cGFuZWwudjEuTGlzdFNzaExvZ2luRXZlbnRzUmVxdWVzdBooLnJ1c3RwYW5lbC52MS5MaXN0U3NoTG9naW5FdmVudHNSZXNwb25zZRJqChNSZWNvcmRTc2hMb2dpbkV2ZW50EigucnVzdHBhbmVsLnYxLlJlY29yZFNzaExvZ2luRXZlbnRSZXF1ZXN0GikucnVzdHBhbmVsLnYxLlJlY29yZFNzaExvZ2luRXZlbnRSZXNwb25zZWIGcHJvdG8z", [file_rustpanel_v1_common]);
 
 /**
  * FirewallRule 描述一条可视化防火墙规则。
@@ -335,6 +335,153 @@ export const WafAttackEventSchema: GenMessage<WafAttackEvent> = /*@__PURE__*/
   messageDesc(file_rustpanel_v1_security, 4);
 
 /**
+ * SshSettings 描述 SSH 服务加固配置。
+ *
+ * @generated from message rustpanel.v1.SshSettings
+ */
+export type SshSettings = Message<"rustpanel.v1.SshSettings"> & {
+  /**
+   * @generated from field: bool service_enabled = 1;
+   */
+  serviceEnabled: boolean;
+
+  /**
+   * @generated from field: uint32 port = 2;
+   */
+  port: number;
+
+  /**
+   * @generated from field: bool password_login_disabled = 3;
+   */
+  passwordLoginDisabled: boolean;
+
+  /**
+   * @generated from field: bool auto_ban_enabled = 4;
+   */
+  autoBanEnabled: boolean;
+
+  /**
+   * @generated from field: uint32 failed_attempt_limit = 5;
+   */
+  failedAttemptLimit: number;
+
+  /**
+   * @generated from field: uint32 failed_attempt_window_seconds = 6;
+   */
+  failedAttemptWindowSeconds: number;
+
+  /**
+   * @generated from field: string config_path = 7;
+   */
+  configPath: string;
+
+  /**
+   * @generated from field: string last_apply_message = 8;
+   */
+  lastApplyMessage: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.SshSettings.
+ * Use `create(SshSettingsSchema)` to create a new message.
+ */
+export const SshSettingsSchema: GenMessage<SshSettings> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 5);
+
+/**
+ * SshLoginEvent 描述一次 SSH 登录审计记录。
+ *
+ * @generated from message rustpanel.v1.SshLoginEvent
+ */
+export type SshLoginEvent = Message<"rustpanel.v1.SshLoginEvent"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string username = 2;
+   */
+  username: string;
+
+  /**
+   * @generated from field: string source_ip = 3;
+   */
+  sourceIp: string;
+
+  /**
+   * @generated from field: bool successful = 4;
+   */
+  successful: boolean;
+
+  /**
+   * @generated from field: bool auto_banned = 5;
+   */
+  autoBanned: boolean;
+
+  /**
+   * @generated from field: string message = 6;
+   */
+  message: string;
+
+  /**
+   * @generated from field: uint64 occurred_at_seconds = 7;
+   */
+  occurredAtSeconds: bigint;
+};
+
+/**
+ * Describes the message rustpanel.v1.SshLoginEvent.
+ * Use `create(SshLoginEventSchema)` to create a new message.
+ */
+export const SshLoginEventSchema: GenMessage<SshLoginEvent> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 6);
+
+/**
+ * SshKeyItem 描述一组 SSH 密钥。
+ *
+ * @generated from message rustpanel.v1.SshKeyItem
+ */
+export type SshKeyItem = Message<"rustpanel.v1.SshKeyItem"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * @generated from field: rustpanel.v1.SshKeyAlgorithm algorithm = 3;
+   */
+  algorithm: SshKeyAlgorithm;
+
+  /**
+   * @generated from field: string public_key = 4;
+   */
+  publicKey: string;
+
+  /**
+   * @generated from field: string private_key_path = 5;
+   */
+  privateKeyPath: string;
+
+  /**
+   * @generated from field: uint64 created_at_seconds = 6;
+   */
+  createdAtSeconds: bigint;
+};
+
+/**
+ * Describes the message rustpanel.v1.SshKeyItem.
+ * Use `create(SshKeyItemSchema)` to create a new message.
+ */
+export const SshKeyItemSchema: GenMessage<SshKeyItem> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 7);
+
+/**
  * ListFirewallRulesRequest 表示防火墙规则列表请求。
  *
  * @generated from message rustpanel.v1.ListFirewallRulesRequest
@@ -347,7 +494,7 @@ export type ListFirewallRulesRequest = Message<"rustpanel.v1.ListFirewallRulesRe
  * Use `create(ListFirewallRulesRequestSchema)` to create a new message.
  */
 export const ListFirewallRulesRequestSchema: GenMessage<ListFirewallRulesRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 5);
+  messageDesc(file_rustpanel_v1_security, 8);
 
 /**
  * ListFirewallRulesResponse 返回防火墙规则与全局安全开关。
@@ -376,7 +523,7 @@ export type ListFirewallRulesResponse = Message<"rustpanel.v1.ListFirewallRulesR
  * Use `create(ListFirewallRulesResponseSchema)` to create a new message.
  */
 export const ListFirewallRulesResponseSchema: GenMessage<ListFirewallRulesResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 6);
+  messageDesc(file_rustpanel_v1_security, 9);
 
 /**
  * UpsertFirewallRuleRequest 表示创建或更新规则请求。
@@ -395,7 +542,7 @@ export type UpsertFirewallRuleRequest = Message<"rustpanel.v1.UpsertFirewallRule
  * Use `create(UpsertFirewallRuleRequestSchema)` to create a new message.
  */
 export const UpsertFirewallRuleRequestSchema: GenMessage<UpsertFirewallRuleRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 7);
+  messageDesc(file_rustpanel_v1_security, 10);
 
 /**
  * UpsertFirewallRuleResponse 返回保存后的规则。
@@ -419,7 +566,7 @@ export type UpsertFirewallRuleResponse = Message<"rustpanel.v1.UpsertFirewallRul
  * Use `create(UpsertFirewallRuleResponseSchema)` to create a new message.
  */
 export const UpsertFirewallRuleResponseSchema: GenMessage<UpsertFirewallRuleResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 8);
+  messageDesc(file_rustpanel_v1_security, 11);
 
 /**
  * DeleteFirewallRuleRequest 表示删除规则请求。
@@ -438,7 +585,7 @@ export type DeleteFirewallRuleRequest = Message<"rustpanel.v1.DeleteFirewallRule
  * Use `create(DeleteFirewallRuleRequestSchema)` to create a new message.
  */
 export const DeleteFirewallRuleRequestSchema: GenMessage<DeleteFirewallRuleRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 9);
+  messageDesc(file_rustpanel_v1_security, 12);
 
 /**
  * DeleteFirewallRuleResponse 返回删除结果。
@@ -457,7 +604,7 @@ export type DeleteFirewallRuleResponse = Message<"rustpanel.v1.DeleteFirewallRul
  * Use `create(DeleteFirewallRuleResponseSchema)` to create a new message.
  */
 export const DeleteFirewallRuleResponseSchema: GenMessage<DeleteFirewallRuleResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 10);
+  messageDesc(file_rustpanel_v1_security, 13);
 
 /**
  * SetFirewallRuleEnabledRequest 表示启用或停用规则请求。
@@ -481,7 +628,7 @@ export type SetFirewallRuleEnabledRequest = Message<"rustpanel.v1.SetFirewallRul
  * Use `create(SetFirewallRuleEnabledRequestSchema)` to create a new message.
  */
 export const SetFirewallRuleEnabledRequestSchema: GenMessage<SetFirewallRuleEnabledRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 11);
+  messageDesc(file_rustpanel_v1_security, 14);
 
 /**
  * SetFirewallRuleEnabledResponse 返回启停结果。
@@ -505,7 +652,7 @@ export type SetFirewallRuleEnabledResponse = Message<"rustpanel.v1.SetFirewallRu
  * Use `create(SetFirewallRuleEnabledResponseSchema)` to create a new message.
  */
 export const SetFirewallRuleEnabledResponseSchema: GenMessage<SetFirewallRuleEnabledResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 12);
+  messageDesc(file_rustpanel_v1_security, 15);
 
 /**
  * UpdateSecurityOptionsRequest 表示更新安全开关请求。
@@ -524,7 +671,7 @@ export type UpdateSecurityOptionsRequest = Message<"rustpanel.v1.UpdateSecurityO
  * Use `create(UpdateSecurityOptionsRequestSchema)` to create a new message.
  */
 export const UpdateSecurityOptionsRequestSchema: GenMessage<UpdateSecurityOptionsRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 13);
+  messageDesc(file_rustpanel_v1_security, 16);
 
 /**
  * UpdateSecurityOptionsResponse 返回更新后的安全开关。
@@ -548,7 +695,7 @@ export type UpdateSecurityOptionsResponse = Message<"rustpanel.v1.UpdateSecurity
  * Use `create(UpdateSecurityOptionsResponseSchema)` to create a new message.
  */
 export const UpdateSecurityOptionsResponseSchema: GenMessage<UpdateSecurityOptionsResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 14);
+  messageDesc(file_rustpanel_v1_security, 17);
 
 /**
  * ExportFirewallRulesRequest 表示导出规则备份请求。
@@ -563,7 +710,7 @@ export type ExportFirewallRulesRequest = Message<"rustpanel.v1.ExportFirewallRul
  * Use `create(ExportFirewallRulesRequestSchema)` to create a new message.
  */
 export const ExportFirewallRulesRequestSchema: GenMessage<ExportFirewallRulesRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 15);
+  messageDesc(file_rustpanel_v1_security, 18);
 
 /**
  * ExportFirewallRulesResponse 返回规则备份 JSON。
@@ -587,7 +734,7 @@ export type ExportFirewallRulesResponse = Message<"rustpanel.v1.ExportFirewallRu
  * Use `create(ExportFirewallRulesResponseSchema)` to create a new message.
  */
 export const ExportFirewallRulesResponseSchema: GenMessage<ExportFirewallRulesResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 16);
+  messageDesc(file_rustpanel_v1_security, 19);
 
 /**
  * ImportFirewallRulesRequest 表示导入规则备份请求。
@@ -611,7 +758,7 @@ export type ImportFirewallRulesRequest = Message<"rustpanel.v1.ImportFirewallRul
  * Use `create(ImportFirewallRulesRequestSchema)` to create a new message.
  */
 export const ImportFirewallRulesRequestSchema: GenMessage<ImportFirewallRulesRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 17);
+  messageDesc(file_rustpanel_v1_security, 20);
 
 /**
  * ImportFirewallRulesResponse 返回导入结果。
@@ -640,7 +787,7 @@ export type ImportFirewallRulesResponse = Message<"rustpanel.v1.ImportFirewallRu
  * Use `create(ImportFirewallRulesResponseSchema)` to create a new message.
  */
 export const ImportFirewallRulesResponseSchema: GenMessage<ImportFirewallRulesResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 18);
+  messageDesc(file_rustpanel_v1_security, 21);
 
 /**
  * GetWafSettingsRequest 表示读取 WAF 配置请求。
@@ -655,7 +802,7 @@ export type GetWafSettingsRequest = Message<"rustpanel.v1.GetWafSettingsRequest"
  * Use `create(GetWafSettingsRequestSchema)` to create a new message.
  */
 export const GetWafSettingsRequestSchema: GenMessage<GetWafSettingsRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 19);
+  messageDesc(file_rustpanel_v1_security, 22);
 
 /**
  * GetWafSettingsResponse 返回 WAF 配置。
@@ -684,7 +831,7 @@ export type GetWafSettingsResponse = Message<"rustpanel.v1.GetWafSettingsRespons
  * Use `create(GetWafSettingsResponseSchema)` to create a new message.
  */
 export const GetWafSettingsResponseSchema: GenMessage<GetWafSettingsResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 20);
+  messageDesc(file_rustpanel_v1_security, 23);
 
 /**
  * UpdateWafSettingsRequest 表示更新 WAF 配置请求。
@@ -703,7 +850,7 @@ export type UpdateWafSettingsRequest = Message<"rustpanel.v1.UpdateWafSettingsRe
  * Use `create(UpdateWafSettingsRequestSchema)` to create a new message.
  */
 export const UpdateWafSettingsRequestSchema: GenMessage<UpdateWafSettingsRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 21);
+  messageDesc(file_rustpanel_v1_security, 24);
 
 /**
  * UpdateWafSettingsResponse 返回更新后的 WAF 配置。
@@ -727,7 +874,7 @@ export type UpdateWafSettingsResponse = Message<"rustpanel.v1.UpdateWafSettingsR
  * Use `create(UpdateWafSettingsResponseSchema)` to create a new message.
  */
 export const UpdateWafSettingsResponseSchema: GenMessage<UpdateWafSettingsResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 22);
+  messageDesc(file_rustpanel_v1_security, 25);
 
 /**
  * UpsertWafRuleRequest 表示创建或更新 WAF 规则请求。
@@ -746,7 +893,7 @@ export type UpsertWafRuleRequest = Message<"rustpanel.v1.UpsertWafRuleRequest"> 
  * Use `create(UpsertWafRuleRequestSchema)` to create a new message.
  */
 export const UpsertWafRuleRequestSchema: GenMessage<UpsertWafRuleRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 23);
+  messageDesc(file_rustpanel_v1_security, 26);
 
 /**
  * UpsertWafRuleResponse 返回保存后的 WAF 规则。
@@ -770,7 +917,7 @@ export type UpsertWafRuleResponse = Message<"rustpanel.v1.UpsertWafRuleResponse"
  * Use `create(UpsertWafRuleResponseSchema)` to create a new message.
  */
 export const UpsertWafRuleResponseSchema: GenMessage<UpsertWafRuleResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 24);
+  messageDesc(file_rustpanel_v1_security, 27);
 
 /**
  * DeleteWafRuleRequest 表示删除 WAF 规则请求。
@@ -789,7 +936,7 @@ export type DeleteWafRuleRequest = Message<"rustpanel.v1.DeleteWafRuleRequest"> 
  * Use `create(DeleteWafRuleRequestSchema)` to create a new message.
  */
 export const DeleteWafRuleRequestSchema: GenMessage<DeleteWafRuleRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 25);
+  messageDesc(file_rustpanel_v1_security, 28);
 
 /**
  * DeleteWafRuleResponse 返回删除结果。
@@ -808,7 +955,7 @@ export type DeleteWafRuleResponse = Message<"rustpanel.v1.DeleteWafRuleResponse"
  * Use `create(DeleteWafRuleResponseSchema)` to create a new message.
  */
 export const DeleteWafRuleResponseSchema: GenMessage<DeleteWafRuleResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 26);
+  messageDesc(file_rustpanel_v1_security, 29);
 
 /**
  * ListWafAttackEventsRequest 表示查询 WAF 攻击事件请求。
@@ -827,7 +974,7 @@ export type ListWafAttackEventsRequest = Message<"rustpanel.v1.ListWafAttackEven
  * Use `create(ListWafAttackEventsRequestSchema)` to create a new message.
  */
 export const ListWafAttackEventsRequestSchema: GenMessage<ListWafAttackEventsRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 27);
+  messageDesc(file_rustpanel_v1_security, 30);
 
 /**
  * ListWafAttackEventsResponse 返回 WAF 事件和聚合视图。
@@ -851,7 +998,228 @@ export type ListWafAttackEventsResponse = Message<"rustpanel.v1.ListWafAttackEve
  * Use `create(ListWafAttackEventsResponseSchema)` to create a new message.
  */
 export const ListWafAttackEventsResponseSchema: GenMessage<ListWafAttackEventsResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_security, 28);
+  messageDesc(file_rustpanel_v1_security, 31);
+
+/**
+ * GetSshSettingsRequest 表示读取 SSH 加固配置请求。
+ *
+ * @generated from message rustpanel.v1.GetSshSettingsRequest
+ */
+export type GetSshSettingsRequest = Message<"rustpanel.v1.GetSshSettingsRequest"> & {
+};
+
+/**
+ * Describes the message rustpanel.v1.GetSshSettingsRequest.
+ * Use `create(GetSshSettingsRequestSchema)` to create a new message.
+ */
+export const GetSshSettingsRequestSchema: GenMessage<GetSshSettingsRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 32);
+
+/**
+ * GetSshSettingsResponse 返回 SSH 加固配置。
+ *
+ * @generated from message rustpanel.v1.GetSshSettingsResponse
+ */
+export type GetSshSettingsResponse = Message<"rustpanel.v1.GetSshSettingsResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.SshSettings settings = 2;
+   */
+  settings?: SshSettings | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.SshKeyItem keys = 3;
+   */
+  keys: SshKeyItem[];
+};
+
+/**
+ * Describes the message rustpanel.v1.GetSshSettingsResponse.
+ * Use `create(GetSshSettingsResponseSchema)` to create a new message.
+ */
+export const GetSshSettingsResponseSchema: GenMessage<GetSshSettingsResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 33);
+
+/**
+ * UpdateSshSettingsRequest 表示更新 SSH 加固配置请求。
+ *
+ * @generated from message rustpanel.v1.UpdateSshSettingsRequest
+ */
+export type UpdateSshSettingsRequest = Message<"rustpanel.v1.UpdateSshSettingsRequest"> & {
+  /**
+   * @generated from field: rustpanel.v1.SshSettings settings = 1;
+   */
+  settings?: SshSettings | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.UpdateSshSettingsRequest.
+ * Use `create(UpdateSshSettingsRequestSchema)` to create a new message.
+ */
+export const UpdateSshSettingsRequestSchema: GenMessage<UpdateSshSettingsRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 34);
+
+/**
+ * UpdateSshSettingsResponse 返回更新后的 SSH 加固配置。
+ *
+ * @generated from message rustpanel.v1.UpdateSshSettingsResponse
+ */
+export type UpdateSshSettingsResponse = Message<"rustpanel.v1.UpdateSshSettingsResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.SshSettings settings = 2;
+   */
+  settings?: SshSettings | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.UpdateSshSettingsResponse.
+ * Use `create(UpdateSshSettingsResponseSchema)` to create a new message.
+ */
+export const UpdateSshSettingsResponseSchema: GenMessage<UpdateSshSettingsResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 35);
+
+/**
+ * GenerateSshKeyRequest 表示在线生成 SSH 密钥请求。
+ *
+ * @generated from message rustpanel.v1.GenerateSshKeyRequest
+ */
+export type GenerateSshKeyRequest = Message<"rustpanel.v1.GenerateSshKeyRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: rustpanel.v1.SshKeyAlgorithm algorithm = 2;
+   */
+  algorithm: SshKeyAlgorithm;
+};
+
+/**
+ * Describes the message rustpanel.v1.GenerateSshKeyRequest.
+ * Use `create(GenerateSshKeyRequestSchema)` to create a new message.
+ */
+export const GenerateSshKeyRequestSchema: GenMessage<GenerateSshKeyRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 36);
+
+/**
+ * GenerateSshKeyResponse 返回生成的 SSH 密钥。
+ *
+ * @generated from message rustpanel.v1.GenerateSshKeyResponse
+ */
+export type GenerateSshKeyResponse = Message<"rustpanel.v1.GenerateSshKeyResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.SshKeyItem key = 2;
+   */
+  key?: SshKeyItem | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.GenerateSshKeyResponse.
+ * Use `create(GenerateSshKeyResponseSchema)` to create a new message.
+ */
+export const GenerateSshKeyResponseSchema: GenMessage<GenerateSshKeyResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 37);
+
+/**
+ * ListSshLoginEventsRequest 表示查询 SSH 审计事件请求。
+ *
+ * @generated from message rustpanel.v1.ListSshLoginEventsRequest
+ */
+export type ListSshLoginEventsRequest = Message<"rustpanel.v1.ListSshLoginEventsRequest"> & {
+  /**
+   * @generated from field: uint32 limit = 1;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message rustpanel.v1.ListSshLoginEventsRequest.
+ * Use `create(ListSshLoginEventsRequestSchema)` to create a new message.
+ */
+export const ListSshLoginEventsRequestSchema: GenMessage<ListSshLoginEventsRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 38);
+
+/**
+ * ListSshLoginEventsResponse 返回 SSH 审计事件。
+ *
+ * @generated from message rustpanel.v1.ListSshLoginEventsResponse
+ */
+export type ListSshLoginEventsResponse = Message<"rustpanel.v1.ListSshLoginEventsResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: repeated rustpanel.v1.SshLoginEvent events = 2;
+   */
+  events: SshLoginEvent[];
+};
+
+/**
+ * Describes the message rustpanel.v1.ListSshLoginEventsResponse.
+ * Use `create(ListSshLoginEventsResponseSchema)` to create a new message.
+ */
+export const ListSshLoginEventsResponseSchema: GenMessage<ListSshLoginEventsResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 39);
+
+/**
+ * RecordSshLoginEventRequest 表示写入 SSH 登录审计事件请求。
+ *
+ * @generated from message rustpanel.v1.RecordSshLoginEventRequest
+ */
+export type RecordSshLoginEventRequest = Message<"rustpanel.v1.RecordSshLoginEventRequest"> & {
+  /**
+   * @generated from field: rustpanel.v1.SshLoginEvent event = 1;
+   */
+  event?: SshLoginEvent | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.RecordSshLoginEventRequest.
+ * Use `create(RecordSshLoginEventRequestSchema)` to create a new message.
+ */
+export const RecordSshLoginEventRequestSchema: GenMessage<RecordSshLoginEventRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 40);
+
+/**
+ * RecordSshLoginEventResponse 返回写入后的审计事件。
+ *
+ * @generated from message rustpanel.v1.RecordSshLoginEventResponse
+ */
+export type RecordSshLoginEventResponse = Message<"rustpanel.v1.RecordSshLoginEventResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.SshLoginEvent event = 2;
+   */
+  event?: SshLoginEvent | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.RecordSshLoginEventResponse.
+ * Use `create(RecordSshLoginEventResponseSchema)` to create a new message.
+ */
+export const RecordSshLoginEventResponseSchema: GenMessage<RecordSshLoginEventResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_security, 41);
 
 /**
  * FirewallProtocol 描述防火墙规则匹配的网络协议。
@@ -1024,6 +1392,34 @@ export const WafRuleKindSchema: GenEnum<WafRuleKind> = /*@__PURE__*/
   enumDesc(file_rustpanel_v1_security, 4);
 
 /**
+ * SshKeyAlgorithm 描述 SSH 密钥算法。
+ *
+ * @generated from enum rustpanel.v1.SshKeyAlgorithm
+ */
+export enum SshKeyAlgorithm {
+  /**
+   * @generated from enum value: SSH_KEY_ALGORITHM_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SSH_KEY_ALGORITHM_RSA = 1;
+   */
+  RSA = 1,
+
+  /**
+   * @generated from enum value: SSH_KEY_ALGORITHM_ED25519 = 2;
+   */
+  ED25519 = 2,
+}
+
+/**
+ * Describes the enum rustpanel.v1.SshKeyAlgorithm.
+ */
+export const SshKeyAlgorithmSchema: GenEnum<SshKeyAlgorithm> = /*@__PURE__*/
+  enumDesc(file_rustpanel_v1_security, 5);
+
+/**
  * SecurityService 提供系统防火墙和入口安全管理能力。
  *
  * @generated from service rustpanel.v1.SecurityService
@@ -1124,6 +1520,46 @@ export const SecurityService: GenService<{
     methodKind: "unary";
     input: typeof ListWafAttackEventsRequestSchema;
     output: typeof ListWafAttackEventsResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SecurityService.GetSshSettings
+   */
+  getSshSettings: {
+    methodKind: "unary";
+    input: typeof GetSshSettingsRequestSchema;
+    output: typeof GetSshSettingsResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SecurityService.UpdateSshSettings
+   */
+  updateSshSettings: {
+    methodKind: "unary";
+    input: typeof UpdateSshSettingsRequestSchema;
+    output: typeof UpdateSshSettingsResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SecurityService.GenerateSshKey
+   */
+  generateSshKey: {
+    methodKind: "unary";
+    input: typeof GenerateSshKeyRequestSchema;
+    output: typeof GenerateSshKeyResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SecurityService.ListSshLoginEvents
+   */
+  listSshLoginEvents: {
+    methodKind: "unary";
+    input: typeof ListSshLoginEventsRequestSchema;
+    output: typeof ListSshLoginEventsResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SecurityService.RecordSshLoginEvent
+   */
+  recordSshLoginEvent: {
+    methodKind: "unary";
+    input: typeof RecordSshLoginEventRequestSchema;
+    output: typeof RecordSshLoginEventResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_rustpanel_v1_security, 0);

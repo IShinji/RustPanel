@@ -307,7 +307,9 @@ button {
 }
 
 .waf-settings,
-.waf-rule-form {
+.waf-rule-form,
+.ssh-settings,
+.ssh-keys {
   align-content: start;
 }
 
@@ -367,6 +369,29 @@ button {
 
 .rank-row strong,
 .rank-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-list {
+  margin-top: 12px;
+}
+
+.key-row {
+  border-bottom: 1px solid #e8eef0;
+  display: grid;
+  gap: 4px;
+  min-height: 44px;
+  padding: 8px 0;
+}
+
+.key-row:last-child {
+  border-bottom: 0;
+}
+
+.key-row strong,
+.key-row small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -56,6 +56,9 @@ import {
   FirewallDirection,
   FirewallProtocol,
   FirewallRule,
+  SshKeyAlgorithm,
+  SshKeyItem,
+  SshLoginEvent,
   WafAttackEvent,
   WafRule,
   WafRuleKind
@@ -111,6 +114,20 @@ type WafRuleForm = {
   scopeDomain: string;
   comment: string;
 };
+type SshSettingsForm = {
+  serviceEnabled: boolean;
+  port: number;
+  passwordLoginDisabled: boolean;
+  autoBanEnabled: boolean;
+  failedAttemptLimit: number;
+  failedAttemptWindowSeconds: number;
+  configPath: string;
+  lastApplyMessage: string;
+};
+type SshKeyForm = {
+  name: string;
+  algorithm: SshKeyAlgorithm;
+};
 
 const clients = createRpcClients();
 const defaultFirewallForm: FirewallForm = {
@@ -156,6 +173,20 @@ const defaultWafRuleForm: WafRuleForm = {
   enabled: true,
   scopeDomain: "",
   comment: ""
+};
+const defaultSshSettings: SshSettingsForm = {
+  serviceEnabled: true,
+  port: 22,
+  passwordLoginDisabled: false,
+  autoBanEnabled: true,
+  failedAttemptLimit: 5,
+  failedAttemptWindowSeconds: 600,
+  configPath: "",
+  lastApplyMessage: ""
+};
+const defaultSshKeyForm: SshKeyForm = {
+  name: "admin",
+  algorithm: SshKeyAlgorithm.ED25519
 };
 
 const tabs: Array<{ id: TabId; label: string; icon: typeof Activity }> = [
@@ -326,15 +357,21 @@ function SecurityPanel({ clients }: { clients: Clients }) {
   const [wafRules, setWafRules] = useState<WafRule[]>([]);
   const [wafRuleForm, setWafRuleForm] = useState<WafRuleForm>(defaultWafRuleForm);
   const [wafEvents, setWafEvents] = useState<WafAttackEvent[]>([]);
+  const [sshSettings, setSshSettings] = useState<SshSettingsForm>(defaultSshSettings);
+  const [sshKeys, setSshKeys] = useState<SshKeyItem[]>([]);
+  const [sshKeyForm, setSshKeyForm] = useState<SshKeyForm>(defaultSshKeyForm);
+  const [sshEvents, setSshEvents] = useState<SshLoginEvent[]>([]);
   const [backupJson, setBackupJson] = useState("");
   const [status, setStatus] = useState("");
 
   const load = async () => {
     try {
-      const [firewallResponse, wafResponse, wafEventResponse] = await Promise.all([
+      const [firewallResponse, wafResponse, wafEventResponse, sshResponse, sshEventResponse] = await Promise.all([
         clients.security.listFirewallRules({}),
         clients.security.getWafSettings({}),
-        clients.security.listWafAttackEvents({ limit: 100 })
+        clients.security.listWafAttackEvents({ limit: 100 }),
+        clients.security.getSshSettings({}),
+        clients.security.listSshLoginEvents({ limit: 100 })
       ]);
       setRules(firewallResponse.rules);
       if (firewallResponse.options) {
@@ -345,6 +382,11 @@ function SecurityPanel({ clients }: { clients: Clients }) {
       }
       setWafRules(wafResponse.rules);
       setWafEvents(wafEventResponse.events);
+      if (sshResponse.settings) {
+        setSshSettings({ ...defaultSshSettings, ...sshResponse.settings });
+      }
+      setSshKeys(sshResponse.keys);
+      setSshEvents(sshEventResponse.events);
       setStatus("");
     } catch (err) {
       setStatus(safeError(err));
@@ -503,6 +545,30 @@ function SecurityPanel({ clients }: { clients: Clients }) {
   const deleteWafRule = async (rule: WafRule) => {
     try {
       await clients.security.deleteWafRule({ id: rule.id });
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const saveSshSettings = async () => {
+    try {
+      const response = await clients.security.updateSshSettings({ settings: sshSettings });
+      if (response.settings) {
+        setSshSettings({ ...defaultSshSettings, ...response.settings });
+        setStatus(response.settings.lastApplyMessage || "SSH 配置已保存");
+      }
+    } catch (err) {
+      setStatus(safeError(err));
+    }
+  };
+
+  const generateSshKey = async () => {
+    try {
+      await clients.security.generateSshKey({
+        name: sshKeyForm.name,
+        algorithm: sshKeyForm.algorithm
+      });
       await load();
     } catch (err) {
       setStatus(safeError(err));
@@ -744,6 +810,71 @@ function SecurityPanel({ clients }: { clients: Clients }) {
             </div>
           ))}
           {!wafIpRanking.length && <div className="empty-state">暂无拦截记录</div>}
+        </div>
+      </div>
+
+      <div className="panel ssh-settings">
+        <div className="panel-title"><TerminalSquare size={18} /><span>SSH 加固</span></div>
+        <ToggleRow label="服务启用" checked={sshSettings.serviceEnabled} onChange={(serviceEnabled) => setSshSettings({ ...sshSettings, serviceEnabled })} />
+        <NumberInput label="SSH 端口" value={sshSettings.port} onChange={(port) => setSshSettings({ ...sshSettings, port })} />
+        <ToggleRow
+          label="禁用密码"
+          checked={sshSettings.passwordLoginDisabled}
+          onChange={(passwordLoginDisabled) => setSshSettings({ ...sshSettings, passwordLoginDisabled })}
+        />
+        <ToggleRow label="自动封禁" checked={sshSettings.autoBanEnabled} onChange={(autoBanEnabled) => setSshSettings({ ...sshSettings, autoBanEnabled })} />
+        <NumberInput
+          label="失败阈值"
+          value={sshSettings.failedAttemptLimit}
+          onChange={(failedAttemptLimit) => setSshSettings({ ...sshSettings, failedAttemptLimit })}
+        />
+        <NumberInput
+          label="窗口秒数"
+          value={sshSettings.failedAttemptWindowSeconds}
+          onChange={(failedAttemptWindowSeconds) => setSshSettings({ ...sshSettings, failedAttemptWindowSeconds })}
+        />
+        <Input label="配置文件" value={sshSettings.configPath} onChange={(configPath) => setSshSettings({ ...sshSettings, configPath })} />
+        <button onClick={() => void saveSshSettings()} type="button"><Save size={15} />保存 SSH</button>
+      </div>
+
+      <div className="panel ssh-keys">
+        <div className="panel-title"><ShieldCheck size={18} /><span>SSH 密钥</span></div>
+        <Input label="名称" value={sshKeyForm.name} onChange={(name) => setSshKeyForm({ ...sshKeyForm, name })} />
+        <SelectRow
+          label="算法"
+          value={sshKeyForm.algorithm}
+          onChange={(algorithm) => setSshKeyForm({ ...sshKeyForm, algorithm: Number(algorithm) as SshKeyAlgorithm })}
+          options={[
+            [SshKeyAlgorithm.ED25519, "Ed25519"],
+            [SshKeyAlgorithm.RSA, "RSA 4096"]
+          ]}
+        />
+        <button onClick={() => void generateSshKey()} type="button"><Plus size={15} />生成</button>
+        <div className="table-list compact-list">
+          {sshKeys.map((key) => (
+            <div className="key-row" key={key.id}>
+              <strong>{key.name}</strong>
+              <small>{sshAlgorithmLabel(key.algorithm)} · {key.privateKeyPath}</small>
+            </div>
+          ))}
+          {!sshKeys.length && <div className="empty-state">暂无密钥</div>}
+        </div>
+      </div>
+
+      <div className="panel full-span ssh-audit">
+        <div className="panel-title"><FileText size={18} /><span>SSH 登录审计</span></div>
+        <div className="table-list">
+          {sshEvents.slice(0, 12).map((event) => (
+            <div className="table-row firewall-row" key={event.id}>
+              <div>
+                <strong>{event.username} · {event.sourceIp || "-"}</strong>
+                <small>{event.message || new Date(Number(event.occurredAtSeconds) * 1000).toLocaleString()}</small>
+              </div>
+              <StatusPill label={event.successful ? "成功" : "失败"} tone={event.successful ? "good" : "danger"} />
+              <StatusPill label={event.autoBanned ? "已封禁" : "未封禁"} tone={event.autoBanned ? "danger" : "muted"} />
+            </div>
+          ))}
+          {!sshEvents.length && <div className="empty-state">暂无审计记录</div>}
         </div>
       </div>
 
@@ -1380,6 +1511,12 @@ function wafKindLabel(kind: WafRuleKind): string {
   if (kind === WafRuleKind.XSS) return "XSS";
   if (kind === WafRuleKind.KEYWORD) return "关键词";
   if (kind === WafRuleKind.SCANNER) return "扫描器";
+  return "-";
+}
+
+function sshAlgorithmLabel(algorithm: SshKeyAlgorithm): string {
+  if (algorithm === SshKeyAlgorithm.ED25519) return "Ed25519";
+  if (algorithm === SshKeyAlgorithm.RSA) return "RSA";
   return "-";
 }
 

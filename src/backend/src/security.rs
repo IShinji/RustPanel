@@ -17,14 +17,18 @@ use crate::{
         security_service_server::SecurityService, DeleteFirewallRuleRequest,
         DeleteFirewallRuleResponse, DeleteWafRuleRequest, DeleteWafRuleResponse,
         ExportFirewallRulesRequest, ExportFirewallRulesResponse, FirewallAction, FirewallBackend,
-        FirewallDirection, FirewallProtocol, FirewallRule, GetWafSettingsRequest,
-        GetWafSettingsResponse, ImportFirewallRulesRequest, ImportFirewallRulesResponse,
-        ListFirewallRulesRequest, ListFirewallRulesResponse, ListWafAttackEventsRequest,
-        ListWafAttackEventsResponse, SecurityOptions, SetFirewallRuleEnabledRequest,
-        SetFirewallRuleEnabledResponse, UpdateSecurityOptionsRequest,
-        UpdateSecurityOptionsResponse, UpdateWafSettingsRequest, UpdateWafSettingsResponse,
-        UpsertFirewallRuleRequest, UpsertFirewallRuleResponse, UpsertWafRuleRequest,
-        UpsertWafRuleResponse, WafAttackEvent, WafRule, WafRuleKind, WafSettings,
+        FirewallDirection, FirewallProtocol, FirewallRule, GenerateSshKeyRequest,
+        GenerateSshKeyResponse, GetSshSettingsRequest, GetSshSettingsResponse,
+        GetWafSettingsRequest, GetWafSettingsResponse, ImportFirewallRulesRequest,
+        ImportFirewallRulesResponse, ListFirewallRulesRequest, ListFirewallRulesResponse,
+        ListSshLoginEventsRequest, ListSshLoginEventsResponse, ListWafAttackEventsRequest,
+        ListWafAttackEventsResponse, RecordSshLoginEventRequest, RecordSshLoginEventResponse,
+        SecurityOptions, SetFirewallRuleEnabledRequest, SetFirewallRuleEnabledResponse,
+        SshKeyAlgorithm, SshKeyItem, SshLoginEvent, SshSettings, UpdateSecurityOptionsRequest,
+        UpdateSecurityOptionsResponse, UpdateSshSettingsRequest, UpdateSshSettingsResponse,
+        UpdateWafSettingsRequest, UpdateWafSettingsResponse, UpsertFirewallRuleRequest,
+        UpsertFirewallRuleResponse, UpsertWafRuleRequest, UpsertWafRuleResponse, WafAttackEvent,
+        WafRule, WafRuleKind, WafSettings,
     },
 };
 
@@ -36,6 +40,9 @@ const DEFAULT_PANEL_ACCESS_PATH: &str = "/";
 const DEFAULT_WAF_REQUESTS_PER_MINUTE: u32 = 120;
 const DEFAULT_WAF_BURST: u32 = 30;
 const DEFAULT_WAF_BLOCK_SECONDS: u32 = 600;
+const DEFAULT_SSH_PORT: u32 = 22;
+const DEFAULT_SSH_FAILED_LIMIT: u32 = 5;
+const DEFAULT_SSH_FAILED_WINDOW_SECONDS: u32 = 600;
 
 #[derive(Clone, Debug)]
 pub struct SecurityServiceImpl {
@@ -385,6 +392,110 @@ impl SecurityService for SecurityServiceImpl {
                 .collect(),
         }))
     }
+
+    async fn get_ssh_settings(
+        &self,
+        _request: Request<GetSshSettingsRequest>,
+    ) -> Result<GrpcResponse<GetSshSettingsResponse>, Status> {
+        let state = self.store.load().await?;
+
+        Ok(GrpcResponse::new(GetSshSettingsResponse {
+            status: Some(ok_response("ok")),
+            settings: Some(state.ssh_settings.into_proto()),
+            keys: state
+                .ssh_keys
+                .into_iter()
+                .map(StoredSshKeyItem::into_proto)
+                .collect(),
+        }))
+    }
+
+    async fn update_ssh_settings(
+        &self,
+        request: Request<UpdateSshSettingsRequest>,
+    ) -> Result<GrpcResponse<UpdateSshSettingsResponse>, Status> {
+        let settings = request
+            .into_inner()
+            .settings
+            .ok_or_else(|| Status::invalid_argument("ssh settings are required"))?;
+        validate_ssh_settings(&settings)?;
+
+        let mut state = self.store.load().await?;
+        state.ssh_settings = StoredSshSettings::from_proto(settings);
+        apply_ssh_config(&mut state.ssh_settings).await?;
+        self.store.save(&state).await?;
+
+        Ok(GrpcResponse::new(UpdateSshSettingsResponse {
+            status: Some(ok_response("ssh settings updated")),
+            settings: Some(state.ssh_settings.into_proto()),
+        }))
+    }
+
+    async fn generate_ssh_key(
+        &self,
+        request: Request<GenerateSshKeyRequest>,
+    ) -> Result<GrpcResponse<GenerateSshKeyResponse>, Status> {
+        let request = request.into_inner();
+        let algorithm = ssh_key_algorithm(request.algorithm)?;
+        let key = generate_ssh_key_pair(&request.name, algorithm).await?;
+        let mut state = self.store.load().await?;
+        state.ssh_keys.retain(|stored| stored.id != key.id);
+        state.ssh_keys.push(key.clone());
+        self.store.save(&state).await?;
+
+        Ok(GrpcResponse::new(GenerateSshKeyResponse {
+            status: Some(ok_response("ssh key generated")),
+            key: Some(key.into_proto()),
+        }))
+    }
+
+    async fn list_ssh_login_events(
+        &self,
+        request: Request<ListSshLoginEventsRequest>,
+    ) -> Result<GrpcResponse<ListSshLoginEventsResponse>, Status> {
+        let limit = request.into_inner().limit.clamp(1, 500) as usize;
+        let mut events = self.store.load().await?.ssh_events;
+        events.sort_by_key(|event| std::cmp::Reverse(event.occurred_at_seconds));
+        events.truncate(limit);
+
+        Ok(GrpcResponse::new(ListSshLoginEventsResponse {
+            status: Some(ok_response("ok")),
+            events: events
+                .into_iter()
+                .map(StoredSshLoginEvent::into_proto)
+                .collect(),
+        }))
+    }
+
+    async fn record_ssh_login_event(
+        &self,
+        request: Request<RecordSshLoginEventRequest>,
+    ) -> Result<GrpcResponse<RecordSshLoginEventResponse>, Status> {
+        let mut event = request
+            .into_inner()
+            .event
+            .ok_or_else(|| Status::invalid_argument("ssh login event is required"))?;
+        validate_ssh_login_event(&event)?;
+
+        let mut state = self.store.load().await?;
+        if event.id.trim().is_empty() {
+            event.id = Uuid::new_v4().to_string();
+        }
+        if event.occurred_at_seconds == 0 {
+            event.occurred_at_seconds = current_timestamp();
+        }
+        let auto_banned = maybe_auto_ban_ssh_source(&mut state, &event).await?;
+        event.auto_banned = auto_banned;
+        state
+            .ssh_events
+            .push(StoredSshLoginEvent::from_proto(event.clone()));
+        self.store.save(&state).await?;
+
+        Ok(GrpcResponse::new(RecordSshLoginEventResponse {
+            status: Some(ok_response("ssh login event recorded")),
+            event: Some(event),
+        }))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -445,6 +556,12 @@ struct StoredSecurityState {
     waf_rules: Vec<StoredWafRule>,
     #[serde(default)]
     waf_events: Vec<StoredWafAttackEvent>,
+    #[serde(default)]
+    ssh_settings: StoredSshSettings,
+    #[serde(default)]
+    ssh_events: Vec<StoredSshLoginEvent>,
+    #[serde(default)]
+    ssh_keys: Vec<StoredSshKeyItem>,
 }
 
 impl StoredSecurityState {
@@ -475,6 +592,18 @@ impl StoredSecurityState {
         }
         if self.waf_rules.is_empty() {
             self.waf_rules = default_waf_rules();
+        }
+        if self.ssh_settings.port == 0 {
+            self.ssh_settings.port = DEFAULT_SSH_PORT;
+        }
+        if self.ssh_settings.failed_attempt_limit == 0 {
+            self.ssh_settings.failed_attempt_limit = DEFAULT_SSH_FAILED_LIMIT;
+        }
+        if self.ssh_settings.failed_attempt_window_seconds == 0 {
+            self.ssh_settings.failed_attempt_window_seconds = DEFAULT_SSH_FAILED_WINDOW_SECONDS;
+        }
+        if self.ssh_settings.config_path.trim().is_empty() {
+            self.ssh_settings.config_path = default_ssh_config_path();
         }
         self
     }
@@ -789,6 +918,146 @@ impl StoredWafAttackEvent {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct StoredSshSettings {
+    #[serde(default)]
+    service_enabled: bool,
+    #[serde(default)]
+    port: u32,
+    #[serde(default)]
+    password_login_disabled: bool,
+    #[serde(default)]
+    auto_ban_enabled: bool,
+    #[serde(default)]
+    failed_attempt_limit: u32,
+    #[serde(default)]
+    failed_attempt_window_seconds: u32,
+    #[serde(default)]
+    config_path: String,
+    #[serde(default)]
+    last_apply_message: String,
+}
+
+impl Default for StoredSshSettings {
+    fn default() -> Self {
+        Self {
+            service_enabled: true,
+            port: DEFAULT_SSH_PORT,
+            password_login_disabled: false,
+            auto_ban_enabled: true,
+            failed_attempt_limit: DEFAULT_SSH_FAILED_LIMIT,
+            failed_attempt_window_seconds: DEFAULT_SSH_FAILED_WINDOW_SECONDS,
+            config_path: default_ssh_config_path(),
+            last_apply_message: "ssh config not written yet".to_owned(),
+        }
+    }
+}
+
+impl StoredSshSettings {
+    fn from_proto(settings: SshSettings) -> Self {
+        Self {
+            service_enabled: settings.service_enabled,
+            port: settings.port,
+            password_login_disabled: settings.password_login_disabled,
+            auto_ban_enabled: settings.auto_ban_enabled,
+            failed_attempt_limit: settings.failed_attempt_limit,
+            failed_attempt_window_seconds: settings.failed_attempt_window_seconds,
+            config_path: if settings.config_path.trim().is_empty() {
+                default_ssh_config_path()
+            } else {
+                settings.config_path
+            },
+            last_apply_message: settings.last_apply_message,
+        }
+    }
+
+    fn into_proto(self) -> SshSettings {
+        SshSettings {
+            service_enabled: self.service_enabled,
+            port: self.port,
+            password_login_disabled: self.password_login_disabled,
+            auto_ban_enabled: self.auto_ban_enabled,
+            failed_attempt_limit: self.failed_attempt_limit,
+            failed_attempt_window_seconds: self.failed_attempt_window_seconds,
+            config_path: self.config_path,
+            last_apply_message: self.last_apply_message,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct StoredSshLoginEvent {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    username: String,
+    #[serde(default)]
+    source_ip: String,
+    #[serde(default)]
+    successful: bool,
+    #[serde(default)]
+    auto_banned: bool,
+    #[serde(default)]
+    message: String,
+    #[serde(default)]
+    occurred_at_seconds: u64,
+}
+
+impl StoredSshLoginEvent {
+    fn from_proto(event: SshLoginEvent) -> Self {
+        Self {
+            id: event.id,
+            username: event.username,
+            source_ip: event.source_ip,
+            successful: event.successful,
+            auto_banned: event.auto_banned,
+            message: event.message,
+            occurred_at_seconds: event.occurred_at_seconds,
+        }
+    }
+
+    fn into_proto(self) -> SshLoginEvent {
+        SshLoginEvent {
+            id: self.id,
+            username: self.username,
+            source_ip: self.source_ip,
+            successful: self.successful,
+            auto_banned: self.auto_banned,
+            message: self.message,
+            occurred_at_seconds: self.occurred_at_seconds,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct StoredSshKeyItem {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    algorithm: i32,
+    #[serde(default)]
+    public_key: String,
+    #[serde(default)]
+    private_key_path: String,
+    #[serde(default)]
+    created_at_seconds: u64,
+}
+
+impl StoredSshKeyItem {
+    fn into_proto(self) -> SshKeyItem {
+        SshKeyItem {
+            id: self.id,
+            name: self.name,
+            algorithm: self.algorithm,
+            public_key: self.public_key,
+            private_key_path: self.private_key_path,
+            created_at_seconds: self.created_at_seconds,
+        }
+    }
+}
+
 async fn apply_rule_change(
     old_rule: Option<&StoredFirewallRule>,
     new_rule: Option<&StoredFirewallRule>,
@@ -906,6 +1175,152 @@ async fn apply_waf_config(
     Ok(())
 }
 
+async fn apply_ssh_config(settings: &mut StoredSshSettings) -> Result<(), Status> {
+    validate_ssh_settings(&settings.clone().into_proto())?;
+    let config_path = PathBuf::from(&settings.config_path);
+    if let Some(parent) = config_path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+    tokio::fs::write(&config_path, render_ssh_config(settings))
+        .await
+        .map_err(io_status)?;
+
+    if should_apply_system_firewall() {
+        let output = Command::new("sshd")
+            .arg("-t")
+            .output()
+            .await
+            .map_err(io_status)?;
+        if !output.status.success() {
+            return Err(Status::internal(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
+        }
+        let reload = Command::new("sh")
+            .arg("-c")
+            .arg("systemctl reload sshd || systemctl reload ssh || service sshd reload || service ssh reload")
+            .output()
+            .await
+            .map_err(io_status)?;
+        if !reload.status.success() {
+            return Err(Status::internal(
+                String::from_utf8_lossy(&reload.stderr).to_string(),
+            ));
+        }
+        settings.last_apply_message = "ssh config written and service reloaded".to_owned();
+    } else {
+        settings.last_apply_message = format!("ssh config written to {}", settings.config_path);
+    }
+
+    Ok(())
+}
+
+async fn maybe_auto_ban_ssh_source(
+    state: &mut StoredSecurityState,
+    event: &SshLoginEvent,
+) -> Result<bool, Status> {
+    if event.successful || !state.ssh_settings.auto_ban_enabled || event.source_ip.trim().is_empty()
+    {
+        return Ok(false);
+    }
+    let window_start = event
+        .occurred_at_seconds
+        .saturating_sub(u64::from(state.ssh_settings.failed_attempt_window_seconds));
+    let failures = state
+        .ssh_events
+        .iter()
+        .filter(|stored| {
+            !stored.successful
+                && stored.source_ip == event.source_ip
+                && stored.occurred_at_seconds >= window_start
+        })
+        .count()
+        + 1;
+    if failures < state.ssh_settings.failed_attempt_limit as usize {
+        return Ok(false);
+    }
+
+    let source = event.source_ip.trim().to_owned();
+    if state.rules.iter().any(|rule| {
+        rule.name.starts_with("SSH 自动封禁")
+            && rule.source == source
+            && rule.port_start == state.ssh_settings.port
+    }) {
+        return Ok(true);
+    }
+
+    let now = current_timestamp();
+    let rule = StoredFirewallRule {
+        id: Uuid::new_v4().to_string(),
+        name: format!("SSH 自动封禁 {source}"),
+        protocol: FirewallProtocol::Tcp.into(),
+        action: FirewallAction::Deny.into(),
+        direction: FirewallDirection::Inbound.into(),
+        port_start: state.ssh_settings.port,
+        port_end: state.ssh_settings.port,
+        source,
+        destination: String::new(),
+        enabled: true,
+        comment: format!("{} 次失败登录后自动封禁", failures),
+        created_at_seconds: now,
+        updated_at_seconds: now,
+    };
+    let mut options = state.options.clone();
+    apply_rule_change(None, Some(&rule), &mut options).await?;
+    state.options = options;
+    state.rules.push(rule);
+    Ok(true)
+}
+
+async fn generate_ssh_key_pair(
+    name: &str,
+    algorithm: SshKeyAlgorithm,
+) -> Result<StoredSshKeyItem, Status> {
+    let safe_name = safe_key_name(name)?;
+    let key_id = Uuid::new_v4().to_string();
+    let root = PathBuf::from(default_ssh_key_root());
+    tokio::fs::create_dir_all(&root).await.map_err(io_status)?;
+    let private_key_path = root.join(format!("{safe_name}-{key_id}"));
+    let key_type = match algorithm {
+        SshKeyAlgorithm::Rsa => "rsa",
+        SshKeyAlgorithm::Ed25519 => "ed25519",
+        SshKeyAlgorithm::Unspecified => {
+            return Err(Status::invalid_argument("ssh key algorithm is required"));
+        }
+    };
+    let mut command = Command::new("ssh-keygen");
+    command
+        .arg("-t")
+        .arg(key_type)
+        .arg("-N")
+        .arg("")
+        .arg("-C")
+        .arg(format!("rustpanel-{safe_name}"))
+        .arg("-f")
+        .arg(&private_key_path);
+    if algorithm == SshKeyAlgorithm::Rsa {
+        command.arg("-b").arg("4096");
+    }
+    let output = command.output().await.map_err(io_status)?;
+    if !output.status.success() {
+        return Err(Status::internal(
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ));
+    }
+    let public_key = tokio::fs::read_to_string(private_key_path.with_extension("pub"))
+        .await
+        .map_err(io_status)?;
+
+    Ok(StoredSshKeyItem {
+        id: key_id,
+        name: safe_name,
+        algorithm: algorithm.into(),
+        public_key,
+        private_key_path: private_key_path.to_string_lossy().to_string(),
+        created_at_seconds: current_timestamp(),
+    })
+}
+
 async fn apply_imported_state(
     state: &StoredSecurityState,
     options: &mut StoredSecurityOptions,
@@ -1016,6 +1431,23 @@ fn waf_challenge_page() -> &'static str {
 </body>
 </html>
 "#
+}
+
+fn render_ssh_config(settings: &StoredSshSettings) -> String {
+    let password_auth = if settings.password_login_disabled {
+        "no"
+    } else {
+        "yes"
+    };
+    let service_note = if settings.service_enabled {
+        "service enabled"
+    } else {
+        "service disabled from panel state"
+    };
+    format!(
+        "# Generated by RustPanel ({service_note})\nPort {}\nPasswordAuthentication {password_auth}\nPubkeyAuthentication yes\nPermitRootLogin prohibit-password\n",
+        settings.port
+    )
 }
 
 fn default_waf_rules() -> Vec<StoredWafRule> {
@@ -1414,6 +1846,34 @@ fn validate_waf_rule(rule: &WafRule) -> Result<(), Status> {
     Ok(())
 }
 
+fn validate_ssh_settings(settings: &SshSettings) -> Result<(), Status> {
+    if settings.port == 0 || settings.port > 65_535 {
+        return Err(Status::invalid_argument("ssh port must be 1-65535"));
+    }
+    if settings.failed_attempt_limit < 2 {
+        return Err(Status::invalid_argument(
+            "failed_attempt_limit must be at least 2",
+        ));
+    }
+    if settings.failed_attempt_window_seconds == 0 {
+        return Err(Status::invalid_argument(
+            "failed_attempt_window_seconds must be greater than 0",
+        ));
+    }
+    if settings.config_path.trim().is_empty() {
+        return Err(Status::invalid_argument("ssh config_path is required"));
+    }
+    Ok(())
+}
+
+fn validate_ssh_login_event(event: &SshLoginEvent) -> Result<(), Status> {
+    if event.username.trim().is_empty() {
+        return Err(Status::invalid_argument("ssh username is required"));
+    }
+    validate_address_filter(&event.source_ip, "source_ip")?;
+    Ok(())
+}
+
 pub fn normalize_panel_access_path(path: &str) -> Result<String, Status> {
     let path = path.trim();
     if path.is_empty() || path == "/" {
@@ -1487,6 +1947,13 @@ fn waf_rule_kind(value: i32) -> Result<WafRuleKind, Status> {
         .ok()
         .filter(|kind| *kind != WafRuleKind::Unspecified)
         .ok_or_else(|| Status::invalid_argument("waf rule kind is required"))
+}
+
+fn ssh_key_algorithm(value: i32) -> Result<SshKeyAlgorithm, Status> {
+    SshKeyAlgorithm::try_from(value)
+        .ok()
+        .filter(|algorithm| *algorithm != SshKeyAlgorithm::Unspecified)
+        .ok_or_else(|| Status::invalid_argument("ssh key algorithm is required"))
 }
 
 fn backend_preference(options: &StoredSecurityOptions) -> FirewallBackend {
@@ -1579,6 +2046,37 @@ fn default_waf_config_path() -> String {
 fn default_waf_challenge_path() -> String {
     env::var("RUSTPANEL_WAF_CHALLENGE_PATH")
         .unwrap_or_else(|_| format!("{DEFAULT_SECURITY_ROOT}/waf-challenge.html"))
+}
+
+fn default_ssh_config_path() -> String {
+    env::var("RUSTPANEL_SSHD_CONFIG_PATH")
+        .unwrap_or_else(|_| format!("{DEFAULT_SECURITY_ROOT}/sshd-rustpanel.conf"))
+}
+
+fn default_ssh_key_root() -> String {
+    env::var("RUSTPANEL_SSH_KEY_ROOT")
+        .unwrap_or_else(|_| format!("{DEFAULT_SECURITY_ROOT}/ssh-keys"))
+}
+
+fn safe_key_name(name: &str) -> Result<String, Status> {
+    let safe = name
+        .trim()
+        .chars()
+        .map(|char| {
+            if char.is_ascii_alphanumeric() || char == '-' {
+                char.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_owned();
+    if safe.is_empty() {
+        Err(Status::invalid_argument("ssh key name is required"))
+    } else {
+        Ok(safe)
+    }
 }
 
 fn totp_secret_configured() -> bool {
@@ -1727,5 +2225,60 @@ mod tests {
         };
 
         assert!(validate_waf_rule(&rule).is_err());
+    }
+
+    #[test]
+    fn renders_ssh_config_with_custom_port_and_password_lock() {
+        let settings = StoredSshSettings {
+            port: 2222,
+            password_login_disabled: true,
+            ..StoredSshSettings::default()
+        };
+        let config = render_ssh_config(&settings);
+
+        assert!(config.contains("Port 2222"));
+        assert!(config.contains("PasswordAuthentication no"));
+    }
+
+    #[tokio::test]
+    async fn auto_bans_ssh_source_after_failed_attempts() {
+        let mut state = StoredSecurityState {
+            ssh_settings: StoredSshSettings {
+                port: 2222,
+                failed_attempt_limit: 2,
+                failed_attempt_window_seconds: 600,
+                auto_ban_enabled: true,
+                ..StoredSshSettings::default()
+            },
+            ..StoredSecurityState::default()
+        }
+        .with_defaults();
+        state.ssh_events.push(StoredSshLoginEvent {
+            id: "first".to_owned(),
+            username: "root".to_owned(),
+            source_ip: "192.0.2.10".to_owned(),
+            successful: false,
+            auto_banned: false,
+            message: String::new(),
+            occurred_at_seconds: 100,
+        });
+        let event = SshLoginEvent {
+            id: String::new(),
+            username: "root".to_owned(),
+            source_ip: "192.0.2.10".to_owned(),
+            successful: false,
+            auto_banned: false,
+            message: String::new(),
+            occurred_at_seconds: 200,
+        };
+
+        let banned = maybe_auto_ban_ssh_source(&mut state, &event)
+            .await
+            .expect("auto ban");
+
+        assert!(banned);
+        assert_eq!(state.rules.len(), 1);
+        assert_eq!(state.rules[0].port_start, 2222);
+        assert_eq!(state.rules[0].action, FirewallAction::Deny as i32);
     }
 }

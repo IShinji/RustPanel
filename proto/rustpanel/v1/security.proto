@@ -45,6 +45,13 @@ enum WafRuleKind {
   WAF_RULE_KIND_SCANNER = 5;
 }
 
+// SshKeyAlgorithm 描述 SSH 密钥算法。
+enum SshKeyAlgorithm {
+  SSH_KEY_ALGORITHM_UNSPECIFIED = 0;
+  SSH_KEY_ALGORITHM_RSA = 1;
+  SSH_KEY_ALGORITHM_ED25519 = 2;
+}
+
 // FirewallRule 描述一条可视化防火墙规则。
 message FirewallRule {
   string id = 1;
@@ -113,6 +120,39 @@ message WafAttackEvent {
   string path = 8;
   string user_agent = 9;
   uint64 occurred_at_seconds = 10;
+}
+
+// SshSettings 描述 SSH 服务加固配置。
+message SshSettings {
+  bool service_enabled = 1;
+  uint32 port = 2;
+  bool password_login_disabled = 3;
+  bool auto_ban_enabled = 4;
+  uint32 failed_attempt_limit = 5;
+  uint32 failed_attempt_window_seconds = 6;
+  string config_path = 7;
+  string last_apply_message = 8;
+}
+
+// SshLoginEvent 描述一次 SSH 登录审计记录。
+message SshLoginEvent {
+  string id = 1;
+  string username = 2;
+  string source_ip = 3;
+  bool successful = 4;
+  bool auto_banned = 5;
+  string message = 6;
+  uint64 occurred_at_seconds = 7;
+}
+
+// SshKeyItem 描述一组 SSH 密钥。
+message SshKeyItem {
+  string id = 1;
+  string name = 2;
+  SshKeyAlgorithm algorithm = 3;
+  string public_key = 4;
+  string private_key_path = 5;
+  uint64 created_at_seconds = 6;
 }
 
 // ListFirewallRulesRequest 表示防火墙规则列表请求。
@@ -244,6 +284,61 @@ message ListWafAttackEventsResponse {
   repeated WafAttackEvent events = 2;
 }
 
+// GetSshSettingsRequest 表示读取 SSH 加固配置请求。
+message GetSshSettingsRequest {}
+
+// GetSshSettingsResponse 返回 SSH 加固配置。
+message GetSshSettingsResponse {
+  Response status = 1;
+  SshSettings settings = 2;
+  repeated SshKeyItem keys = 3;
+}
+
+// UpdateSshSettingsRequest 表示更新 SSH 加固配置请求。
+message UpdateSshSettingsRequest {
+  SshSettings settings = 1;
+}
+
+// UpdateSshSettingsResponse 返回更新后的 SSH 加固配置。
+message UpdateSshSettingsResponse {
+  Response status = 1;
+  SshSettings settings = 2;
+}
+
+// GenerateSshKeyRequest 表示在线生成 SSH 密钥请求。
+message GenerateSshKeyRequest {
+  string name = 1;
+  SshKeyAlgorithm algorithm = 2;
+}
+
+// GenerateSshKeyResponse 返回生成的 SSH 密钥。
+message GenerateSshKeyResponse {
+  Response status = 1;
+  SshKeyItem key = 2;
+}
+
+// ListSshLoginEventsRequest 表示查询 SSH 审计事件请求。
+message ListSshLoginEventsRequest {
+  uint32 limit = 1;
+}
+
+// ListSshLoginEventsResponse 返回 SSH 审计事件。
+message ListSshLoginEventsResponse {
+  Response status = 1;
+  repeated SshLoginEvent events = 2;
+}
+
+// RecordSshLoginEventRequest 表示写入 SSH 登录审计事件请求。
+message RecordSshLoginEventRequest {
+  SshLoginEvent event = 1;
+}
+
+// RecordSshLoginEventResponse 返回写入后的审计事件。
+message RecordSshLoginEventResponse {
+  Response status = 1;
+  SshLoginEvent event = 2;
+}
+
 // SecurityService 提供系统防火墙和入口安全管理能力。
 service SecurityService {
   rpc ListFirewallRules(ListFirewallRulesRequest) returns (ListFirewallRulesResponse);
@@ -258,4 +353,9 @@ service SecurityService {
   rpc UpsertWafRule(UpsertWafRuleRequest) returns (UpsertWafRuleResponse);
   rpc DeleteWafRule(DeleteWafRuleRequest) returns (DeleteWafRuleResponse);
   rpc ListWafAttackEvents(ListWafAttackEventsRequest) returns (ListWafAttackEventsResponse);
+  rpc GetSshSettings(GetSshSettingsRequest) returns (GetSshSettingsResponse);
+  rpc UpdateSshSettings(UpdateSshSettingsRequest) returns (UpdateSshSettingsResponse);
+  rpc GenerateSshKey(GenerateSshKeyRequest) returns (GenerateSshKeyResponse);
+  rpc ListSshLoginEvents(ListSshLoginEventsRequest) returns (ListSshLoginEventsResponse);
+  rpc RecordSshLoginEvent(RecordSshLoginEventRequest) returns (RecordSshLoginEventResponse);
 }
