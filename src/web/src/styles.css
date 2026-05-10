@@ -20,61 +20,118 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --font-sans:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    Inter, "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
 }
 
-/* 浅色主题保留为可选,默认走暗色面板 */
+/* 默认亮色调色板 - 对齐宝塔免费版视觉:浅冷灰画布、白卡片、宝塔绿主色 */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --radius: 0.5rem;
+  --background: oklch(0.985 0.003 247);
+  --foreground: oklch(0.205 0.014 247);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.205 0.014 247);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.21 0.03 264);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.21 0.03 264);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.21 0.03 264);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --popover-foreground: oklch(0.205 0.014 247);
+  --primary: oklch(0.62 0.16 145);
+  --primary-foreground: oklch(0.99 0.005 145);
+  --secondary: oklch(0.95 0.008 247);
+  --secondary-foreground: oklch(0.205 0.014 247);
+  --muted: oklch(0.96 0.005 247);
+  --muted-foreground: oklch(0.5 0.012 247);
+  --accent: oklch(0.94 0.012 145);
+  --accent-foreground: oklch(0.3 0.06 145);
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: oklch(0.99 0.01 25);
+  --success: oklch(0.62 0.16 145);
+  --success-foreground: oklch(0.3 0.08 145);
+  --warning: oklch(0.74 0.16 70);
+  --warning-foreground: oklch(0.32 0.08 70);
+  --info: oklch(0.62 0.16 245);
+  --info-foreground: oklch(0.3 0.08 245);
+  --border: oklch(0.92 0.005 247);
+  --input: oklch(0.92 0.005 247);
+  --ring: oklch(0.62 0.16 145);
+  --sidebar: oklch(0.99 0.003 247);
+  --sidebar-foreground: oklch(0.3 0.014 247);
+  --sidebar-accent: oklch(0.94 0.012 145);
+  --sidebar-accent-foreground: oklch(0.32 0.08 145);
+  --sidebar-border: oklch(0.92 0.005 247);
+  --sidebar-ring: oklch(0.62 0.16 145);
+  --chart-1: oklch(0.62 0.16 145);
+  --chart-2: oklch(0.62 0.16 245);
+  --chart-3: oklch(0.74 0.16 70);
+  --chart-4: oklch(0.6 0.22 25);
+  --chart-5: oklch(0.55 0.2 295);
+  --terminal-bg: oklch(0.18 0.012 250);
+  --terminal-fg: oklch(0.95 0.005 247);
 }
 
+/* 暗色调色板 - 钢蓝基调,卡片与画布对比加强 */
 .dark {
   --background: oklch(0.16 0.01 250);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.012 250);
+  --card: oklch(0.22 0.012 250);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.25 0.012 250);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.7 0.18 256);
-  --primary-foreground: oklch(0.18 0.012 250);
+  --primary: oklch(0.7 0.18 145);
+  --primary-foreground: oklch(0.18 0.04 145);
   --secondary: oklch(0.27 0.014 250);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.27 0.014 250);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.34 0.016 250);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
+  --muted-foreground: oklch(0.72 0.01 250);
+  --accent: oklch(0.34 0.04 145);
+  --accent-foreground: oklch(0.95 0.04 145);
+  --destructive: oklch(0.7 0.2 25);
+  --destructive-foreground: oklch(0.18 0.05 25);
+  --success: oklch(0.7 0.18 145);
+  --success-foreground: oklch(0.18 0.04 145);
+  --warning: oklch(0.78 0.16 70);
+  --warning-foreground: oklch(0.22 0.05 70);
+  --info: oklch(0.7 0.18 245);
+  --info-foreground: oklch(0.18 0.05 245);
+  --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: oklch(0.7 0.18 145);
+  --sidebar: oklch(0.19 0.012 250);
+  --sidebar-foreground: oklch(0.85 0.005 250);
+  --sidebar-accent: oklch(0.32 0.04 145);
+  --sidebar-accent-foreground: oklch(0.95 0.04 145);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.7 0.18 145);
+  --chart-1: oklch(0.7 0.18 145);
+  --chart-2: oklch(0.7 0.18 245);
+  --chart-3: oklch(0.78 0.16 70);
+  --chart-4: oklch(0.7 0.2 25);
+  --chart-5: oklch(0.65 0.2 295);
 }
 
 @layer base {
@@ -108,56 +165,83 @@ textarea {
 
 button {
   align-items: center;
+  background: transparent;
   border: 0;
   border-radius: 6px;
+  color: inherit;
   cursor: pointer;
   display: inline-flex;
   gap: 8px;
 }
 
+/* ====== 布局骨架 ====== */
+
 .app-shell {
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr);
   min-height: 100vh;
+  background: var(--background);
+  color: var(--foreground);
 }
 
 .sidebar {
-  background: #172022;
-  color: #eef2f3;
+  background: var(--sidebar);
+  border-right: 1px solid var(--sidebar-border);
+  color: var(--sidebar-foreground);
   display: flex;
   flex-direction: column;
-  padding: 18px;
+  padding: 18px 12px;
 }
 
 .brand {
   align-items: center;
+  color: var(--sidebar-foreground);
   display: flex;
   font-weight: 700;
   gap: 10px;
   height: 42px;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
+  padding: 0 8px;
 }
 
 .nav-list {
   display: grid;
-  gap: 6px;
+  gap: 2px;
+}
+
+.nav-group-title {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin: 12px 8px 4px;
+  text-transform: uppercase;
 }
 
 .nav-item {
   background: transparent;
-  color: #bdc9cc;
-  height: 42px;
+  border-radius: 6px;
+  color: var(--sidebar-foreground);
+  font-weight: 500;
+  height: 36px;
   justify-content: flex-start;
-  padding: 0 12px;
+  padding: 0 10px;
+  width: 100%;
 }
 
-.nav-item.active,
 .nav-item:hover {
-  background: #243235;
-  color: #ffffff;
+  background: color-mix(in oklch, var(--sidebar-accent) 70%, transparent);
+  color: var(--sidebar-accent-foreground);
+}
+
+.nav-item.active {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
 }
 
 .workspace {
+  background: var(--background);
+  color: var(--foreground);
   min-width: 0;
   padding: 24px;
 }
@@ -195,21 +279,25 @@ button {
 }
 
 .section-header h1 {
+  color: var(--foreground);
   font-size: 24px;
   line-height: 1.2;
   margin: 0 0 4px;
 }
 
 .section-header p {
-  color: #5c6b70;
+  color: var(--muted-foreground);
   margin: 0;
 }
 
+/* ====== 卡片与面板 ====== */
+
 .metric-card,
 .panel {
-  background: #ffffff;
-  border: 1px solid #dde4e6;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
+  color: var(--card-foreground);
 }
 
 .metric-card {
@@ -224,10 +312,11 @@ button {
 .table-row small,
 .item-card small,
 .input-row span {
-  color: #617075;
+  color: var(--muted-foreground);
 }
 
 .metric-card strong {
+  color: var(--foreground);
   font-size: 26px;
   line-height: 1.1;
 }
@@ -239,6 +328,7 @@ button {
 
 .panel-title {
   align-items: center;
+  color: var(--foreground);
   display: flex;
   font-weight: 700;
   gap: 8px;
@@ -254,6 +344,8 @@ button {
   min-height: 360px;
 }
 
+/* ====== 范围切换 / 工具栏 ====== */
+
 .range-tabs {
   align-items: center;
   display: flex;
@@ -262,18 +354,22 @@ button {
 }
 
 .range-tab {
-  background: #eef3f4;
-  color: #34464b;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
   height: 32px;
   justify-content: center;
   min-width: 48px;
   padding: 0 10px;
 }
 
-.range-tab.active,
 .range-tab:hover {
-  background: #136f63;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.range-tab.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .custom-range,
@@ -286,25 +382,31 @@ button {
 
 .custom-range input,
 .report-actions select {
-  border: 1px solid #ccd7da;
+  background: var(--card);
+  border: 1px solid var(--input);
   border-radius: 6px;
+  color: var(--foreground);
   height: 34px;
   padding: 0 10px;
 }
 
 .report-actions button {
-  background: #136f63;
-  color: #ffffff;
+  background: var(--primary);
+  color: var(--primary-foreground);
   height: 34px;
   justify-content: center;
   padding: 0 12px;
 }
 
+.report-actions button:hover {
+  background: color-mix(in oklch, var(--primary) 85%, black);
+}
+
 .report-output {
-  background: #f7fafb;
-  border: 1px solid #dfe7e9;
+  background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #1d2527;
+  color: var(--foreground);
   margin: 0;
   min-height: 220px;
   overflow: auto;
@@ -316,12 +418,14 @@ button {
   grid-template-columns: minmax(0, 1fr) 80px 96px;
 }
 
+/* ====== 终端 / 日志 ====== */
+
 .terminal-layout {
   grid-template-columns: 1fr;
 }
 
 .terminal-surface {
-  background: #101418;
+  background: var(--terminal-bg);
   border-radius: 8px;
   min-height: 640px;
   overflow: hidden;
@@ -335,9 +439,11 @@ button {
   gap: 8px;
 }
 
+/* ====== 图标按钮 / 输入 ====== */
+
 .icon-button {
-  background: #e7edef;
-  color: #1d2527;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
   height: 34px;
   justify-content: center;
   padding: 0;
@@ -345,16 +451,25 @@ button {
 }
 
 .icon-button:hover {
-  background: #d7e2e5;
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 
 .toolbar-input {
-  border: 1px solid #ccd7da;
+  background: var(--card);
+  border: 1px solid var(--input);
   border-radius: 6px;
+  color: var(--foreground);
   height: 34px;
   min-width: 160px;
   padding: 0 10px;
 }
+
+.toolbar-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+/* ====== 文件管理器 ====== */
 
 .file-list {
   display: grid;
@@ -366,7 +481,7 @@ button {
 .breadcrumb,
 .file-row {
   background: transparent;
-  color: #1d2527;
+  color: var(--foreground);
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) auto;
   min-height: 34px;
@@ -376,7 +491,7 @@ button {
 }
 
 .breadcrumb {
-  color: #136f63;
+  color: var(--primary);
   display: block;
 }
 
@@ -388,7 +503,8 @@ button {
 
 .file-row.active,
 .file-row:hover {
-  background: #edf4f3;
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 
 .editor-panel {
@@ -396,10 +512,11 @@ button {
 }
 
 .context-menu {
-  background: #ffffff;
-  border: 1px solid #d6dee0;
+  background: var(--popover);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 12px 36px rgb(20 30 33 / 16%);
+  box-shadow: 0 12px 36px oklch(0 0 0 / 16%);
+  color: var(--popover-foreground);
   display: grid;
   min-width: 132px;
   padding: 6px;
@@ -409,13 +526,17 @@ button {
 
 .context-menu button {
   background: transparent;
+  color: var(--popover-foreground);
   justify-content: flex-start;
   padding: 9px 10px;
 }
 
 .context-menu button:hover {
-  background: #f1f5f6;
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
+
+/* ====== 表格 / 列表 ====== */
 
 .table-list,
 .template-grid,
@@ -441,8 +562,10 @@ button {
 
 .toggle-row {
   align-items: center;
-  border: 1px solid #dfe7e9;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
+  color: var(--card-foreground);
   display: flex;
   justify-content: space-between;
   margin-bottom: 10px;
@@ -451,6 +574,7 @@ button {
 }
 
 .toggle-row input {
+  accent-color: var(--primary);
   height: 18px;
   width: 18px;
 }
@@ -474,10 +598,10 @@ button {
 .world-map {
   aspect-ratio: 2 / 1;
   background:
-    linear-gradient(90deg, transparent 23%, #dfe7e9 23% 24%, transparent 24% 51%, #dfe7e9 51% 52%, transparent 52% 78%, #dfe7e9 78% 79%, transparent 79%),
-    linear-gradient(0deg, transparent 31%, #dfe7e9 31% 32%, transparent 32% 66%, #dfe7e9 66% 67%, transparent 67%),
-    #f7fafb;
-  border: 1px solid #dfe7e9;
+    linear-gradient(90deg, transparent 23%, var(--border) 23% 24%, transparent 24% 51%, var(--border) 51% 52%, transparent 52% 78%, var(--border) 78% 79%, transparent 79%),
+    linear-gradient(0deg, transparent 31%, var(--border) 31% 32%, transparent 32% 66%, var(--border) 66% 67%, transparent 67%),
+    var(--muted);
+  border: 1px solid var(--border);
   border-radius: 8px;
   min-height: 220px;
   position: relative;
@@ -485,10 +609,10 @@ button {
 
 .map-point {
   align-items: center;
-  background: #ad3d20;
-  border: 2px solid #ffffff;
+  background: var(--destructive);
+  border: 2px solid var(--card);
   border-radius: 999px;
-  color: #ffffff;
+  color: var(--destructive-foreground);
   display: inline-flex;
   font-size: 12px;
   font-weight: 700;
@@ -509,7 +633,7 @@ button {
 
 .rank-row {
   align-items: center;
-  border-bottom: 1px solid #e8eef0;
+  border-bottom: 1px solid var(--border);
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) minmax(80px, auto) auto;
@@ -532,7 +656,7 @@ button {
 }
 
 .key-row {
-  border-bottom: 1px solid #e8eef0;
+  border-bottom: 1px solid var(--border);
   display: grid;
   gap: 4px;
   min-height: 44px;
@@ -551,8 +675,10 @@ button {
 }
 
 .backup-panel textarea {
-  border: 1px solid #ccd7da;
+  background: var(--card);
+  border: 1px solid var(--input);
   border-radius: 6px;
+  color: var(--foreground);
   min-height: 180px;
   padding: 10px;
   resize: vertical;
@@ -560,8 +686,10 @@ button {
 }
 
 .pem-input {
-  border: 1px solid #ccd7da;
+  background: var(--card);
+  border: 1px solid var(--input);
   border-radius: 6px;
+  color: var(--foreground);
   min-height: 96px;
   margin-bottom: 10px;
   padding: 10px;
@@ -570,7 +698,7 @@ button {
 }
 
 .code-input {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   min-height: 180px;
 }
 
@@ -579,24 +707,29 @@ button {
 }
 
 .backup-actions button {
-  background: #136f63;
-  color: #ffffff;
+  background: var(--primary);
+  color: var(--primary-foreground);
   height: 36px;
   justify-content: center;
   padding: 0 12px;
 }
 
+.backup-actions button:hover {
+  background: color-mix(in oklch, var(--primary) 85%, black);
+}
+
 .empty-state {
-  border: 1px dashed #cbd7da;
+  border: 1px dashed var(--border);
   border-radius: 8px;
-  color: #617075;
+  color: var(--muted-foreground);
   padding: 18px;
   text-align: center;
 }
 
 .table-row {
   align-items: center;
-  border-bottom: 1px solid #e8eef0;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -626,8 +759,10 @@ button {
 }
 
 .item-card {
-  border: 1px solid #dfe7e9;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 8px;
+  color: var(--card-foreground);
   display: grid;
   gap: 8px;
   padding: 12px;
@@ -636,16 +771,24 @@ button {
 .item-card button,
 .panel > button,
 .sql-panel > button {
-  background: #136f63;
-  color: #ffffff;
+  background: var(--primary);
+  color: var(--primary-foreground);
   height: 36px;
   justify-content: center;
   padding: 0 12px;
 }
 
+.item-card button:hover,
+.panel > button:hover,
+.sql-panel > button:hover {
+  background: color-mix(in oklch, var(--primary) 85%, black);
+}
+
 .item-card select {
-  border: 1px solid #ccd7da;
+  background: var(--card);
+  border: 1px solid var(--input);
   border-radius: 6px;
+  color: var(--foreground);
   height: 34px;
   padding: 0 8px;
   width: 100%;
@@ -661,15 +804,17 @@ button {
 }
 
 .log-panel pre {
-  background: #101418;
+  background: var(--terminal-bg);
   border-radius: 6px;
-  color: #eef2f3;
+  color: var(--terminal-fg);
   margin: 0;
   min-height: 220px;
   overflow: auto;
   padding: 12px;
   white-space: pre-wrap;
 }
+
+/* ====== 状态徽章 ====== */
 
 .status-pill {
   border-radius: 999px;
@@ -682,18 +827,18 @@ button {
 }
 
 .status-pill.good {
-  background: #dcefe8;
-  color: #136f63;
+  background: color-mix(in oklch, var(--success) 18%, transparent);
+  color: var(--success);
 }
 
 .status-pill.danger {
-  background: #ffe5dd;
-  color: #ad3d20;
+  background: color-mix(in oklch, var(--destructive) 18%, transparent);
+  color: var(--destructive);
 }
 
 .status-pill.muted {
-  background: #edf1f2;
-  color: #66767b;
+  background: var(--muted);
+  color: var(--muted-foreground);
 }
 
 .input-row {
@@ -704,8 +849,10 @@ button {
 
 .input-row input,
 .input-row select {
-  border: 1px solid #ccd7da;
+  background: var(--card);
+  border: 1px solid var(--input);
   border-radius: 6px;
+  color: var(--foreground);
   height: 36px;
   min-width: 0;
   padding: 0 10px;
@@ -723,9 +870,16 @@ button {
 
 .result-table th,
 .result-table td {
-  border: 1px solid #dfe7e9;
+  border: 1px solid var(--border);
+  color: var(--foreground);
   padding: 8px;
   text-align: left;
+}
+
+.result-table th {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-weight: 600;
 }
 
 @media (max-width: 980px) {
@@ -792,10 +946,15 @@ button {
   }
 }
 
-/* 登录页 */
+/* 登录页 - 亮暗双适配,保留一些品牌渐变 */
 .login-shell {
   align-items: center;
-  background: #0f1416;
+  background: var(--background);
+  background-image: radial-gradient(
+    circle at top,
+    color-mix(in oklch, var(--primary) 8%, transparent) 0%,
+    var(--background) 55%
+  );
   display: flex;
   justify-content: center;
   min-height: 100vh;
@@ -803,10 +962,11 @@ button {
 }
 
 .login-card {
-  background: #1a2326;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 14px;
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.32);
-  color: #eef2f3;
+  box-shadow: 0 16px 32px oklch(0 0 0 / 12%);
+  color: var(--card-foreground);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -822,49 +982,51 @@ button {
 }
 
 .login-brand h1 {
+  color: var(--foreground);
   font-size: 22px;
   margin: 0;
 }
 
 .login-brand p {
-  color: #8c9ba0;
+  color: var(--muted-foreground);
   font-size: 13px;
   margin: 4px 0 0;
 }
 
 .login-card label {
+  color: var(--foreground);
   display: flex;
   flex-direction: column;
-  gap: 6px;
   font-size: 13px;
+  gap: 6px;
 }
 
 .login-card input {
-  background: #0f1416;
-  border: 1px solid #2a363a;
+  background: var(--card);
+  border: 1px solid var(--input);
   border-radius: 6px;
-  color: #eef2f3;
+  color: var(--foreground);
   padding: 10px 12px;
 }
 
 .login-card input:focus {
-  border-color: #4f8cff;
+  border-color: var(--ring);
   outline: none;
 }
 
 .login-error {
-  background: rgba(220, 60, 60, 0.12);
-  border: 1px solid rgba(220, 60, 60, 0.4);
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--destructive) 40%, transparent);
   border-radius: 6px;
-  color: #ff8a8a;
+  color: var(--destructive);
   font-size: 13px;
   padding: 10px 12px;
 }
 
 .login-submit {
-  background: #4f8cff;
+  background: var(--primary);
   border-radius: 6px;
-  color: #fff;
+  color: var(--primary-foreground);
   font-weight: 600;
   justify-content: center;
   padding: 11px;
@@ -872,35 +1034,39 @@ button {
 }
 
 .login-submit:hover:not(:disabled) {
-  background: #3a78ec;
+  background: color-mix(in oklch, var(--primary) 85%, black);
 }
 
 .login-submit:disabled {
-  background: #2a363a;
+  background: var(--muted);
+  color: var(--muted-foreground);
   cursor: not-allowed;
 }
 
 .login-hint {
-  color: #6b7c81;
+  color: var(--muted-foreground);
   font-size: 12px;
   line-height: 1.5;
   margin: 0;
 }
 
 .login-hint code {
-  background: #0f1416;
+  background: var(--muted);
   border-radius: 4px;
+  color: var(--foreground);
   padding: 1px 4px;
 }
 
 .nav-logout {
   background: transparent;
-  color: #c1ccd0;
+  border-radius: 6px;
+  color: var(--sidebar-foreground);
   margin-top: auto;
   padding: 10px 12px;
   width: 100%;
 }
 
 .nav-logout:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  color: var(--destructive);
 }

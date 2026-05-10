@@ -203,6 +203,27 @@
  
 ---
  
+## P7 第七步：UI 信息架构与视觉对齐 (BaoTa-style Layout)
+
+目标：让前端视觉与信息架构与宝塔免费版形成高一致性，提供“看起来就像宝塔”的运维体感。
+
+### P7-01 主题与设计 Token
+- [x] **P7-01-1** 双主题（默认亮色 + 暗色可切） + 系统跟随，localStorage 记忆。
+- [x] **P7-01-2** 设计 Token 重写：宝塔绿主色、语义色（success/warning/info/destructive）、侧栏专用 token、图表 token、终端专用色。
+- [x] **P7-01-3** 遗留 styles.css 全量迁移：所有 hex 硬编码改为 CSS 变量，杜绝“白底白字”对比度问题。
+
+### P7-02 信息架构与导航
+- [x] **P7-02-1** 侧栏宝塔分组（总览 / 主机 / 资源 / 安全 / 工具 / 系统），分组标题样式。
+- [x] **P7-02-2** 顶栏 Topbar：面包屑 + ThemeToggle + 用户菜单。
+- [x] **P7-02-3** Dashboard 改造：服务器信息卡 + CPU/内存/磁盘/网络四联指标卡 + CPU/内存历史折线 + 已安装软件状态。
+
+### P7-03 补缺页面
+- [x] **P7-03-1** 面板设置页（基础/安全/SSL/关于 四 Tab），复用 SecurityOptions / SSL 既有 RPC。
+- [x] **P7-03-2** 操作日志页（独立 audit Tab，支持模块/关键字过滤）。
+- [ ] **P7-03-3** FTP 用户管理：**@status: BLOCKED** —— 后端 FtpService 尚未实现（无 proto/无 backend 模块）。前端已落地占位页（src/web/src/App.tsx 中的 `FtpPage`）引导用户改用文件管理器或 Web 终端 sftp。需在后续版本规划：`proto/rustpanel/v1/ftp.proto`、`src/backend/src/ftp.rs`、容器化 vsftpd/proftpd 守护进程对接。
+
+---
+ 
 ## 验证计划
  
 - [x] **V-01** `./scripts/verify-all.sh` 通过。

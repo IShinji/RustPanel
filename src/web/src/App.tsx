@@ -5,10 +5,14 @@ import "@xterm/xterm/css/xterm.css";
 import {
   Activity,
   Archive,
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Ban,
   Boxes,
+  ChevronDown,
   Clock,
   Copy,
+  Cpu,
   Database,
   Download,
   FileDown,
@@ -17,7 +21,12 @@ import {
   Folder,
   FolderPlus,
   Globe,
+  HardDrive,
+  Info,
+  LineChart as LineChartIcon,
   LogOut,
+  MemoryStick,
+  Network,
   Pause,
   Play,
   Plus,
@@ -25,7 +34,9 @@ import {
   RefreshCw,
   RotateCw,
   Save,
+  ScrollText,
   Server,
+  Settings as SettingsIcon,
   Shield,
   ShieldAlert,
   ShieldCheck,
@@ -33,7 +44,9 @@ import {
   Store,
   TerminalSquare,
   Trash2,
-  Upload
+  Upload,
+  UserCircle2,
+  Wifi
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -71,10 +84,47 @@ import { ReverseProxyRule, RewriteTemplate, SiteItem } from "./gen/rustpanel/v1/
 import { CertificateItem } from "./gen/rustpanel/v1/ssl_pb";
 import { RuntimeModule } from "./gen/rustpanel/v1/system_pb";
 import { WorkloadItem, WorkloadState } from "./gen/rustpanel/v1/workload_pb";
+import { Badge } from "./components/ui/badge";
 import { Button as UIButton } from "./components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "./components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "./components/ui/dropdown-menu";
 import { Input as UIInput } from "./components/ui/input";
 import { Label as UILabel } from "./components/ui/label";
+import { Progress } from "./components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "./components/ui/select";
+import { Switch } from "./components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow as UITableRow
+} from "./components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { ThemeToggle } from "./components/theme-toggle";
 import { cn } from "./lib/utils";
 import {
   appendAuthQuery,
@@ -89,8 +139,28 @@ import { formatBytes, formatDuration, formatPercent, safeError } from "./lib/for
 import { useMonitorStore } from "./store/monitor";
 
 type Clients = ReturnType<typeof createRpcClients>;
-type TabId = "dashboard" | "micro" | "security" | "terminal" | "files" | "docker" | "sites" | "database" | "cron" | "cluster";
-type NavTab = { id: TabId; label: string; icon: typeof Activity; modules?: string[] };
+type TabId =
+  | "dashboard"
+  | "sites"
+  | "ftp"
+  | "database"
+  | "files"
+  | "cron"
+  | "docker"
+  | "security"
+  | "audit"
+  | "cluster"
+  | "terminal"
+  | "micro"
+  | "settings";
+type NavGroup = "overview" | "host" | "resource" | "security" | "tools" | "system";
+type NavTab = {
+  id: TabId;
+  label: string;
+  icon: typeof Activity;
+  group: NavGroup;
+  modules?: string[];
+};
 type MonitorRange = "1h" | "24h" | "7d" | "custom";
 type ChartPoint = {
   time: string;
@@ -320,16 +390,28 @@ const defaultSshKeyForm: SshKeyForm = {
 };
 
 const tabs: NavTab[] = [
-  { id: "dashboard", label: "仪表盘", icon: Activity },
-  { id: "micro", label: "Micro", icon: Power, modules: ["static-sites", "workloads", "proxy"] },
-  { id: "security", label: "安全", icon: Shield, modules: ["security"] },
-  { id: "terminal", label: "终端", icon: TerminalSquare, modules: ["terminal"] },
-  { id: "files", label: "文件", icon: Folder, modules: ["files"] },
-  { id: "docker", label: "容器", icon: Boxes, modules: ["docker", "appstore"] },
-  { id: "sites", label: "站点", icon: Globe, modules: ["sites", "ssl"] },
-  { id: "database", label: "数据库", icon: Database, modules: ["database"] },
-  { id: "cron", label: "计划任务", icon: Clock, modules: ["cron"] },
-  { id: "cluster", label: "集群/审计", icon: ShieldAlert, modules: ["cluster"] }
+  { id: "dashboard", label: "仪表盘", icon: Activity, group: "overview" },
+  { id: "sites", label: "网站", icon: Globe, group: "host", modules: ["sites", "ssl"] },
+  { id: "ftp", label: "FTP", icon: HardDrive, group: "host" },
+  { id: "database", label: "数据库", icon: Database, group: "host", modules: ["database"] },
+  { id: "files", label: "文件", icon: Folder, group: "resource", modules: ["files"] },
+  { id: "cron", label: "计划任务", icon: Clock, group: "resource", modules: ["cron"] },
+  { id: "docker", label: "软件商店", icon: Boxes, group: "resource", modules: ["docker", "appstore"] },
+  { id: "security", label: "安全", icon: Shield, group: "security", modules: ["security"] },
+  { id: "audit", label: "日志", icon: ScrollText, group: "security", modules: ["cluster"] },
+  { id: "cluster", label: "集群", icon: Network, group: "security", modules: ["cluster"] },
+  { id: "terminal", label: "终端", icon: TerminalSquare, group: "tools", modules: ["terminal"] },
+  { id: "micro", label: "Micro", icon: Power, group: "tools", modules: ["static-sites", "workloads", "proxy"] },
+  { id: "settings", label: "面板设置", icon: SettingsIcon, group: "system" }
+];
+
+const navGroups: Array<{ id: NavGroup; label: string }> = [
+  { id: "overview", label: "总览" },
+  { id: "host", label: "主机" },
+  { id: "resource", label: "资源" },
+  { id: "security", label: "安全" },
+  { id: "tools", label: "工具" },
+  { id: "system", label: "系统" }
 ];
 
 // 登录页:无 token 时唯一可访问的视图。提交后调用 AuthService.Login,成功则把 JWT 写入 sessionStorage
@@ -374,8 +456,8 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
   );
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-6 bg-[radial-gradient(circle_at_top,oklch(0.25_0.04_260)_0%,oklch(0.16_0.01_250)_45%)]">
-      <Card className="w-full max-w-sm border-border/60 shadow-2xl backdrop-blur supports-[backdrop-filter]:bg-card/80">
+    <div className="login-shell">
+      <Card className="w-full max-w-sm border-border/60 shadow-2xl backdrop-blur supports-[backdrop-filter]:bg-card/90">
         <CardHeader className="gap-1.5">
           <div className="flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-lg bg-primary/15 text-primary ring-1 ring-primary/20">
@@ -496,10 +578,20 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
     }
   }, [active, visibleTabs]);
 
+  const activeTab = visibleTabs.find((tab) => tab.id === active);
+  const groupedTabs = useMemo(() => {
+    return navGroups
+      .map((group) => ({
+        ...group,
+        items: visibleTabs.filter((tab) => tab.group === group.id)
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [visibleTabs]);
+
   return (
-    <div className="min-h-screen grid grid-cols-[232px_minmax(0,1fr)] bg-background text-foreground">
-      <aside className="flex flex-col gap-1 border-r border-border bg-card/40 p-4" aria-label="RustPanel navigation">
-        <div className="flex items-center gap-2.5 px-3 py-2 mb-2">
+    <div className="app-shell">
+      <aside className="sidebar" aria-label="RustPanel navigation">
+        <div className="brand">
           <div className="flex size-8 items-center justify-center rounded-md bg-primary/15 text-primary ring-1 ring-primary/20">
             <Server className="size-4" />
           </div>
@@ -508,51 +600,91 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
             <span className="text-[11px] text-muted-foreground">控制面板</span>
           </div>
         </div>
-        <nav className="flex flex-col gap-0.5">
-          {visibleTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = active === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActive(tab.id)}
-                type="button"
-                className={cn(
-                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
-                  isActive
-                    ? "bg-accent text-accent-foreground font-medium"
-                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                )}
-              >
-                <Icon className="size-[18px] shrink-0" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
+        <nav className="nav-list flex flex-col">
+          {groupedTabs.map((group) => (
+            <div key={group.id} className="flex flex-col gap-0.5">
+              {group.id !== "overview" && <div className="nav-group-title">{group.label}</div>}
+              {group.items.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = active === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActive(tab.id)}
+                    type="button"
+                    className={cn("nav-item", isActive && "active")}
+                  >
+                    <Icon className="size-[18px] shrink-0" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
-        <button
-          className="mt-auto flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
-          onClick={onLogout}
-          type="button"
-        >
+        <button className="nav-logout" onClick={onLogout} type="button">
           <LogOut className="size-[18px] shrink-0" />
           <span>退出登录</span>
         </button>
       </aside>
 
-      <main className="min-w-0 p-6 overflow-auto">
-        {active === "dashboard" && <Dashboard clients={clients} />}
-        {active === "micro" && <MicroPanel clients={clients} />}
-        {active === "security" && <SecurityPanel clients={clients} />}
-        {active === "terminal" && <TerminalPanel cwd={terminalCwd} />}
-        {active === "files" && <FileManager clients={clients} openTerminal={(cwd) => { setTerminalCwd(cwd); setActive("terminal"); }} />}
-        {active === "docker" && <DockerApps clients={clients} />}
-        {active === "sites" && <SitesSsl clients={clients} />}
-        {active === "database" && <DatabasePanel clients={clients} />}
-        {active === "cron" && <CronPanel clients={clients} />}
-        {active === "cluster" && <ClusterAudit clients={clients} />}
+      <main className="min-w-0 flex flex-col overflow-hidden">
+        <Topbar title={activeTab?.label ?? "仪表盘"} onLogout={onLogout} />
+        <div className="workspace flex-1 overflow-auto">
+          {active === "dashboard" && <Dashboard clients={clients} />}
+          {active === "sites" && <SitesSsl clients={clients} />}
+          {active === "ftp" && <FtpPage />}
+          {active === "database" && <DatabasePanel clients={clients} />}
+          {active === "files" && (
+            <FileManager
+              clients={clients}
+              openTerminal={(cwd) => {
+                setTerminalCwd(cwd);
+                setActive("terminal");
+              }}
+            />
+          )}
+          {active === "cron" && <CronPanel clients={clients} />}
+          {active === "docker" && <DockerApps clients={clients} />}
+          {active === "security" && <SecurityPanel clients={clients} />}
+          {active === "audit" && <AuditPage clients={clients} />}
+          {active === "cluster" && <ClusterAudit clients={clients} />}
+          {active === "terminal" && <TerminalPanel cwd={terminalCwd} />}
+          {active === "micro" && <MicroPanel clients={clients} />}
+          {active === "settings" && <SettingsPage clients={clients} onLogout={onLogout} />}
+        </div>
       </main>
     </div>
+  );
+}
+
+function Topbar({ title, onLogout }: { title: string; onLogout: () => void }) {
+  return (
+    <header className="flex h-14 items-center justify-between gap-4 border-b border-border bg-card/60 px-6 backdrop-blur">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <span>RustPanel</span>
+        <span className="text-border">/</span>
+        <span className="font-medium text-foreground">{title}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <UIButton variant="ghost" size="icon" aria-label="账户">
+              <UserCircle2 className="size-5" />
+            </UIButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>账户</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={onLogout}>
+              <LogOut className="size-4" />
+              <span>退出登录</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
   );
 }
 
@@ -561,6 +693,7 @@ function Dashboard({ clients }: { clients: Clients }) {
   const history = useMonitorStore((state) => state.history);
   const setCurrent = useMonitorStore((state) => state.setCurrent);
   const [system, setSystem] = useState({ hostname: "-", os: "-", kernel: "-", arch: "-" });
+  const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
   const [error, setError] = useState("");
   const [range, setRange] = useState<MonitorRange>("1h");
   const [customStart, setCustomStart] = useState(() => toLocalInputValue(Date.now() - 60 * 60 * 1000));
@@ -570,6 +703,13 @@ function Dashboard({ clients }: { clients: Clients }) {
   const [processes, setProcesses] = useState<ProcessResourceSnapshot[]>([]);
   const [reportPeriod, setReportPeriod] = useState<"daily" | "weekly">("daily");
   const [healthReport, setHealthReport] = useState("");
+
+  useEffect(() => {
+    clients.appStore
+      .listInstalledApps({})
+      .then((response) => setInstalledApps(response.apps))
+      .catch(() => setInstalledApps([]));
+  }, [clients]);
 
   const loadMetricHistory = useCallback(async () => {
     const window = resolveHistoryWindow(range, customStart, customEnd);
@@ -691,117 +831,347 @@ function Dashboard({ clients }: { clients: Clients }) {
     }
   };
 
+  const memoryPercent =
+    current?.memory && current.memory.totalBytes > 0n
+      ? (Number(current.memory.usedBytes) / Number(current.memory.totalBytes)) * 100
+      : 0;
+  const rootDisk = current?.disks?.find((disk) => disk.mountPoint === "/") ?? current?.disks?.[0];
+  const diskUsed = rootDisk
+    ? Number(rootDisk.totalSpaceBytes) - Number(rootDisk.availableSpaceBytes)
+    : 0;
+  const diskTotal = rootDisk ? Number(rootDisk.totalSpaceBytes) : 0;
+  const diskPercent = diskTotal > 0 ? (diskUsed / diskTotal) * 100 : 0;
+  const primaryNetwork = current?.networks?.find(
+    (net) => net.interfaceName !== "lo" && !net.interfaceName.startsWith("docker")
+  ) ?? current?.networks?.[0];
+  const netRx = primaryNetwork ? Number(primaryNetwork.receivedBytes) : 0;
+  const netTx = primaryNetwork ? Number(primaryNetwork.transmittedBytes) : 0;
+
   return (
-    <section className="page-grid">
-      <header className="full-span flex items-start justify-between gap-4 flex-wrap pb-2 border-b border-border/60 mb-2">
+    <section className="flex flex-col gap-5">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight m-0">资源监控</h1>
-          <p className="text-sm text-muted-foreground m-0">
-            {system.hostname} · {system.os} · 内核 {system.kernel} · {system.arch}
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight m-0">仪表盘</h1>
+          <p className="text-sm text-muted-foreground m-0">服务器实时状态总览</p>
         </div>
-        <StatusPill label={error ? "离线" : "运行中"} tone={error ? "danger" : "good"} />
+        <Badge variant={error ? "destructive" : "success"}>
+          {error ? "离线" : "运行中"}
+        </Badge>
       </header>
 
-      <Metric label="CPU" value={formatPercent(current?.cpuUsagePercent ?? 0)} detail={`${current?.cpuCores.length ?? 0} 核心`} />
-      <Metric
-        label="内存"
-        value={formatBytes(current?.memory?.usedBytes ?? 0)}
-        detail={`总计 ${formatBytes(current?.memory?.totalBytes ?? 0)}`}
-      />
-      <Metric
-        label="负载"
-        value={(current?.loadAverage?.oneMinute ?? 0).toFixed(2)}
-        detail={`${(current?.loadAverage?.fiveMinutes ?? 0).toFixed(2)} / ${(current?.loadAverage?.fifteenMinutes ?? 0).toFixed(2)}`}
-      />
-      <Metric label="运行时间" value={formatDuration(current?.uptimeSeconds ?? 0)} detail="守护进程状态" />
+      <Card>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-3 text-sm">
+            <ServerInfoCell label="主机名" value={system.hostname} />
+            <ServerInfoCell label="操作系统" value={system.os} />
+            <ServerInfoCell label="内核" value={system.kernel} />
+            <ServerInfoCell label="架构" value={system.arch} />
+            <ServerInfoCell label="运行时间" value={formatDuration(current?.uptimeSeconds ?? 0)} />
+            <ServerInfoCell
+              label="负载"
+              value={`${(current?.loadAverage?.oneMinute ?? 0).toFixed(2)} / ${(current?.loadAverage?.fiveMinutes ?? 0).toFixed(2)} / ${(current?.loadAverage?.fifteenMinutes ?? 0).toFixed(2)}`}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="panel chart-panel full-span">
-        <div className="panel-title">
-          <Activity size={18} />
-          <span>CPU / 内存趋势</span>
-          <div className="range-tabs">
-            {monitorRanges.map((item) => (
-              <button
-                className={range === item.id ? "range-tab active" : "range-tab"}
-                key={item.id}
-                onClick={() => setRange(item.id)}
-                type="button"
-              >
-                {item.label}
-              </button>
-            ))}
-            <IconButton label="刷新历史" icon={RefreshCw} onClick={() => void loadMetricHistory()} />
-          </div>
-        </div>
-        {range === "custom" && (
-          <div className="custom-range">
-            <input
-              aria-label="开始时间"
-              onChange={(event) => setCustomStart(event.target.value)}
-              type="datetime-local"
-              value={customStart}
-            />
-            <input
-              aria-label="结束时间"
-              onChange={(event) => setCustomEnd(event.target.value)}
-              type="datetime-local"
-              value={customEnd}
-            />
-          </div>
-        )}
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={chartData} onClick={(state) => handleChartClick(state as ChartClickState)}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="time" minTickGap={24} />
-            <YAxis domain={[0, 100]} />
-            <Tooltip />
-            <Line dataKey="cpu" dot={false} stroke="#136f63" strokeWidth={2} />
-            <Line dataKey="memory" dot={false} stroke="#ba5a31" strokeWidth={2} />
-          </LineChart>
-        </ResponsiveContainer>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          icon={Cpu}
+          label="CPU 使用率"
+          value={formatPercent(current?.cpuUsagePercent ?? 0)}
+          detail={`${current?.cpuCores.length ?? 0} 核心`}
+          percent={current?.cpuUsagePercent ?? 0}
+        />
+        <MetricCard
+          icon={MemoryStick}
+          label="内存使用"
+          value={`${memoryPercent.toFixed(1)}%`}
+          detail={`${formatBytes(current?.memory?.usedBytes ?? 0)} / ${formatBytes(current?.memory?.totalBytes ?? 0)}`}
+          percent={memoryPercent}
+        />
+        <MetricCard
+          icon={HardDrive}
+          label="磁盘使用"
+          value={diskTotal > 0 ? `${diskPercent.toFixed(1)}%` : "-"}
+          detail={diskTotal > 0 ? `${formatBytes(BigInt(diskUsed))} / ${formatBytes(BigInt(diskTotal))}` : "无磁盘数据"}
+          percent={diskPercent}
+        />
+        <NetworkMetricCard
+          interfaceName={primaryNetwork?.interfaceName ?? "-"}
+          receivedBytes={netRx}
+          transmittedBytes={netTx}
+        />
       </div>
 
-      <div className="panel wide-panel">
-        <div className="panel-title">
-          <Server size={18} />
-          <span>异常时刻进程</span>
-          <small>{selectedLabel}</small>
-        </div>
-        <div className="table-list">
-          {processes.length === 0 && <div className="empty-state">点击趋势图查看该时刻进程资源</div>}
-          {processes.map((process) => (
-            <div className="table-row process-row" key={`${process.pid}-${process.name}`}>
-              <div>
-                <strong>{process.name || process.pid}</strong>
-                <small>PID {process.pid}</small>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="lg:col-span-2">
+          <CardHeader className="border-b border-border [.border-b]:pb-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <LineChartIcon className="size-4 text-primary" />
+                <CardTitle className="text-base">CPU / 内存趋势</CardTitle>
               </div>
-              <span>{formatPercent(process.cpuUsagePercent)}</span>
-              <small>{formatBytes(process.memoryBytes)}</small>
+              <div className="flex items-center gap-2">
+                <Tabs value={range} onValueChange={(value) => setRange(value as MonitorRange)}>
+                  <TabsList className="h-8">
+                    {monitorRanges.map((item) => (
+                      <TabsTrigger key={item.id} value={item.id} className="h-6 text-xs">
+                        {item.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+                <UIButton
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  aria-label="刷新历史"
+                  onClick={() => void loadMetricHistory()}
+                >
+                  <RefreshCw className="size-4" />
+                </UIButton>
+              </div>
             </div>
-          ))}
-        </div>
+          </CardHeader>
+          <CardContent className="pt-4">
+            {range === "custom" && (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <UIInput
+                  aria-label="开始时间"
+                  className="h-8 w-auto text-xs"
+                  onChange={(event) => setCustomStart(event.target.value)}
+                  type="datetime-local"
+                  value={customStart}
+                />
+                <UIInput
+                  aria-label="结束时间"
+                  className="h-8 w-auto text-xs"
+                  onChange={(event) => setCustomEnd(event.target.value)}
+                  type="datetime-local"
+                  value={customEnd}
+                />
+              </div>
+            )}
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={chartData} onClick={(state) => handleChartClick(state as ChartClickState)}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="time" minTickGap={24} stroke="var(--muted-foreground)" fontSize={12} />
+                <YAxis domain={[0, 100]} stroke="var(--muted-foreground)" fontSize={12} />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--popover)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    color: "var(--popover-foreground)"
+                  }}
+                />
+                <Line dataKey="cpu" dot={false} stroke="var(--chart-1)" strokeWidth={2} name="CPU %" />
+                <Line dataKey="memory" dot={false} stroke="var(--chart-2)" strokeWidth={2} name="内存 %" />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3 [.border-b]:pb-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <Boxes className="size-4 text-primary" />
+              <CardTitle className="text-base">已安装软件</CardTitle>
+            </div>
+            <CardDescription>当前面板部署的应用与运行状态</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4">
+            {installedApps.length === 0 ? (
+              <div className="empty-state">尚未安装任何应用</div>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {installedApps.slice(0, 8).map((app) => (
+                  <li
+                    key={app.slug}
+                    className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2"
+                  >
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm font-medium truncate">{app.appName}</span>
+                      <span className="text-xs text-muted-foreground truncate">
+                        {app.image} · {app.version || "-"}
+                      </span>
+                    </div>
+                    <Badge variant={appStateVariant(app.state)}>{app.state || "unknown"}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="panel report-panel">
-        <div className="panel-title">
-          <FileText size={18} />
-          <span>运行报告</span>
-        </div>
-        <div className="report-actions">
-          <select value={reportPeriod} onChange={(event) => setReportPeriod(event.target.value as "daily" | "weekly")}>
-            <option value="daily">日报</option>
-            <option value="weekly">周报</option>
-          </select>
-          <button onClick={() => void generateReport()} type="button">
-            <RefreshCw size={15} />
-            生成
-          </button>
-        </div>
-        <pre className="report-output">{healthReport || "暂无报告"}</pre>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="lg:col-span-2">
+          <CardHeader className="border-b border-border [.border-b]:pb-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Server className="size-4 text-primary" />
+                <CardTitle className="text-base">异常时刻进程</CardTitle>
+              </div>
+              <span className="text-xs text-muted-foreground">{selectedLabel}</span>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-4">
+            {processes.length === 0 ? (
+              <div className="empty-state">点击趋势图查看该时刻进程资源</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <UITableRow>
+                    <TableHead>进程</TableHead>
+                    <TableHead className="text-right">CPU</TableHead>
+                    <TableHead className="text-right">内存</TableHead>
+                  </UITableRow>
+                </TableHeader>
+                <TableBody>
+                  {processes.map((process) => (
+                    <UITableRow key={`${process.pid}-${process.name}`}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{process.name || process.pid}</span>
+                          <span className="text-xs text-muted-foreground">PID {process.pid}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">{formatPercent(process.cpuUsagePercent)}</TableCell>
+                      <TableCell className="text-right">{formatBytes(process.memoryBytes)}</TableCell>
+                    </UITableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3 [.border-b]:pb-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <FileText className="size-4 text-primary" />
+              <CardTitle className="text-base">运行报告</CardTitle>
+            </div>
+            <CardDescription>面板自动汇总日报或周报</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 pt-4">
+            <div className="flex gap-2">
+              <Select value={reportPeriod} onValueChange={(value) => setReportPeriod(value as "daily" | "weekly")}>
+                <SelectTrigger className="h-8 flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">日报</SelectItem>
+                  <SelectItem value="weekly">周报</SelectItem>
+                </SelectContent>
+              </Select>
+              <UIButton size="sm" onClick={() => void generateReport()}>
+                <RefreshCw className="size-3.5" />
+                生成
+              </UIButton>
+            </div>
+            <pre className="report-output text-xs">{healthReport || "暂无报告"}</pre>
+          </CardContent>
+        </Card>
       </div>
     </section>
   );
+}
+
+function ServerInfoCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="font-medium text-foreground truncate" title={value}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  percent
+}: {
+  icon: typeof Cpu;
+  label: string;
+  value: string;
+  detail: string;
+  percent: number;
+}) {
+  const clamped = Math.max(0, Math.min(100, percent));
+  return (
+    <Card>
+      <CardContent>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            {label}
+          </span>
+          <Icon className="size-4 text-primary" />
+        </div>
+        <div className="text-2xl font-semibold tracking-tight text-foreground">{value}</div>
+        <div className="text-xs text-muted-foreground mt-1 mb-3 truncate">{detail}</div>
+        <Progress value={clamped} className="h-1.5" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function NetworkMetricCard({
+  interfaceName,
+  receivedBytes,
+  transmittedBytes
+}: {
+  interfaceName: string;
+  receivedBytes: number;
+  transmittedBytes: number;
+}) {
+  return (
+    <Card>
+      <CardContent>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            网络吞吐
+          </span>
+          <Wifi className="size-4 text-primary" />
+        </div>
+        <div className="text-sm text-muted-foreground truncate" title={interfaceName}>
+          {interfaceName}
+        </div>
+        <div className="flex flex-col gap-1 mt-2">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <ArrowDownToLine className="size-3.5 text-info" />
+              <span>下行</span>
+            </div>
+            <span className="font-medium text-foreground">{formatBytes(BigInt(receivedBytes))}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <ArrowUpFromLine className="size-3.5 text-warning" />
+              <span>上行</span>
+            </div>
+            <span className="font-medium text-foreground">{formatBytes(BigInt(transmittedBytes))}</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function appStateVariant(
+  state: string
+): "success" | "destructive" | "warning" | "muted" {
+  const normalized = state.toLowerCase();
+  if (normalized.includes("running") || normalized === "up" || normalized === "active") return "success";
+  if (normalized.includes("error") || normalized.includes("fail") || normalized === "dead") return "destructive";
+  if (normalized.includes("paused") || normalized.includes("restart") || normalized.includes("starting")) return "warning";
+  return "muted";
 }
 
 function resolveHistoryWindow(range: MonitorRange, customStart: string, customEnd: string) {
@@ -2496,37 +2866,264 @@ function DatabasePanel({ clients }: { clients: Clients }) {
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<string[][]>([]);
   const [databases, setDatabases] = useState<string[]>([]);
+  const [newDbName, setNewDbName] = useState("");
+  const [userForm, setUserForm] = useState({
+    username: "app",
+    password: "",
+    database: ""
+  });
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  const listDatabases = async () => {
-    const response = await clients.database.listDatabases({ dsn });
-    setDatabases(response.databases.map((database) => database.name));
+  const listDatabases = useCallback(async () => {
+    try {
+      const response = await clients.database.listDatabases({ dsn });
+      setDatabases(response.databases.map((database) => database.name));
+      setMessage(`已连接,共 ${response.databases.length} 个数据库`);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients, dsn]);
+
+  const createDatabase = async () => {
+    if (!newDbName.trim()) return;
+    try {
+      await clients.database.createDatabase({ dsn, name: newDbName.trim() });
+      setMessage(`数据库 ${newDbName} 已创建`);
+      setNewDbName("");
+      void listDatabases();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const backupDatabase = async (database: string) => {
+    try {
+      const response = await clients.database.backupDatabase({ dsn, database });
+      setMessage(`备份完成:${response.downloadUrl || "下载链接已生成"}`);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const createDatabaseUser = async () => {
+    try {
+      await clients.database.createDatabaseUser({
+        dsn,
+        username: userForm.username,
+        password: userForm.password,
+        database: userForm.database
+      });
+      setMessage(`用户 ${userForm.username} 已创建并授权 ${userForm.database}`);
+      setUserForm((prev) => ({ ...prev, password: "" }));
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
   };
 
   const execute = async () => {
-    const response = await clients.database.executeSql({ dsn, sql, maxRows: 100 });
-    setColumns(response.columns);
-    setRows(response.rows.map((row) => row.values));
+    try {
+      const response = await clients.database.executeSql({ dsn, sql, maxRows: 200 });
+      setColumns(response.columns);
+      setRows(response.rows.map((row) => row.values));
+      setMessage(`返回 ${response.rows.length} 行,影响 ${response.rowsAffected} 行`);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
   };
 
   return (
-    <section className="split-page">
-      <div className="panel">
-        <div className="panel-title"><Database size={18} /><span>连接</span></div>
-        <Input label="DSN" value={dsn} onChange={setDsn} />
-        <button onClick={() => void listDatabases()} type="button"><RefreshCw size={15} />连接</button>
-        <div className="tree-list">
-          {databases.map((database) => <span key={database}>{database}</span>)}
-        </div>
-      </div>
-      <div className="panel sql-panel">
-        <div className="panel-title"><FileText size={18} /><span>SQL 查询台</span></div>
-        <Editor height="260px" language="sql" onChange={(value) => setSql(value ?? "")} value={sql} />
-        <button onClick={() => void execute()} type="button"><Play size={15} />执行</button>
-        <table className="result-table">
-          <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
-          <tbody>{rows.map((row, index) => <tr key={index}>{row.map((value, cell) => <td key={cell}>{value}</td>)}</tr>)}</tbody>
-        </table>
-      </div>
+    <section className="flex flex-col gap-5">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight m-0">数据库</h1>
+        <p className="text-sm text-muted-foreground m-0">MySQL / PostgreSQL / SQLite 连接、用户、备份与 SQL 控制台</p>
+      </header>
+
+      <Card>
+        <CardContent className="flex flex-col gap-3">
+          <div className="grid gap-2">
+            <UILabel htmlFor="db-dsn">数据库连接 DSN</UILabel>
+            <div className="flex gap-2">
+              <UIInput
+                id="db-dsn"
+                placeholder="mysql://user:pass@host/db 或 sqlite::memory:"
+                value={dsn}
+                onChange={(event) => setDsn(event.target.value)}
+              />
+              <UIButton onClick={() => void listDatabases()}>
+                <RefreshCw className="size-4" />
+                连接
+              </UIButton>
+            </div>
+          </div>
+          {error && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          {message && !error && (
+            <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+              {message}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Tabs defaultValue="databases">
+        <TabsList>
+          <TabsTrigger value="databases">数据库</TabsTrigger>
+          <TabsTrigger value="users">用户</TabsTrigger>
+          <TabsTrigger value="sql">SQL 控制台</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="databases" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>数据库列表</CardTitle>
+              <CardDescription>新建数据库,或对已有库一键备份</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div className="flex flex-wrap gap-2">
+                <UIInput
+                  className="flex-1 min-w-[200px]"
+                  placeholder="新数据库名"
+                  value={newDbName}
+                  onChange={(event) => setNewDbName(event.target.value)}
+                />
+                <UIButton onClick={() => void createDatabase()}>
+                  <Plus className="size-4" />
+                  创建数据库
+                </UIButton>
+              </div>
+              {databases.length === 0 ? (
+                <div className="empty-state text-sm">先连接 DSN 以加载数据库列表</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <UITableRow>
+                      <TableHead>名称</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
+                    </UITableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {databases.map((database) => (
+                      <UITableRow key={database}>
+                        <TableCell className="font-medium">{database}</TableCell>
+                        <TableCell className="text-right">
+                          <UIButton
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void backupDatabase(database)}
+                          >
+                            <Download className="size-3.5" />
+                            备份
+                          </UIButton>
+                        </TableCell>
+                      </UITableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="users" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>创建数据库用户</CardTitle>
+              <CardDescription>为指定数据库创建独立账号并授权</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-2">
+                  <UILabel htmlFor="db-user">用户名</UILabel>
+                  <UIInput
+                    id="db-user"
+                    value={userForm.username}
+                    onChange={(event) => setUserForm((prev) => ({ ...prev, username: event.target.value }))}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <UILabel htmlFor="db-pass">密码</UILabel>
+                  <UIInput
+                    id="db-pass"
+                    type="password"
+                    value={userForm.password}
+                    onChange={(event) => setUserForm((prev) => ({ ...prev, password: event.target.value }))}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <UILabel htmlFor="db-target">授权数据库</UILabel>
+                  <UIInput
+                    id="db-target"
+                    value={userForm.database}
+                    onChange={(event) => setUserForm((prev) => ({ ...prev, database: event.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <UIButton onClick={() => void createDatabaseUser()}>
+                  <Plus className="size-4" />
+                  创建并授权
+                </UIButton>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="sql" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>SQL 控制台</CardTitle>
+              <CardDescription>仅返回最多 200 行结果</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div className="border border-border rounded-md overflow-hidden">
+                <Editor
+                  height="240px"
+                  language="sql"
+                  onChange={(value) => setSql(value ?? "")}
+                  value={sql}
+                  options={{ minimap: { enabled: false }, fontSize: 13 }}
+                />
+              </div>
+              <div className="flex justify-end">
+                <UIButton onClick={() => void execute()}>
+                  <Play className="size-4" />
+                  执行
+                </UIButton>
+              </div>
+              {columns.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="result-table">
+                    <thead>
+                      <tr>
+                        {columns.map((column) => (
+                          <th key={column}>{column}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, index) => (
+                        <tr key={index}>
+                          {row.map((value, cell) => (
+                            <td key={cell}>{value}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }
@@ -2792,6 +3389,497 @@ function ClusterAudit({ clients }: { clients: Clients }) {
       </div>
     </section>
   );
+}
+
+// ====== 面板设置 ======
+function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout: () => void }) {
+  const [options, setOptions] = useState<SecurityOptionsForm>(defaultSecurityOptions);
+  const [systemInfo, setSystemInfo] = useState({ hostname: "-", os: "-", kernel: "-", arch: "-" });
+  const [certs, setCerts] = useState<CertificateItem[]>([]);
+  const [importForm, setImportForm] = useState({
+    domain: "",
+    group: "default",
+    certificatePem: "",
+    privateKeyPem: ""
+  });
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const refresh = useCallback(async () => {
+    try {
+      const [security, info, certResponse] = await Promise.all([
+        clients.security.listFirewallRules({}),
+        clients.system.getSystemInfo({}),
+        clients.ssl.listCertificates({})
+      ]);
+      if (security.options) {
+        setOptions({
+          disablePing: security.options.disablePing,
+          scanProtectionEnabled: security.options.scanProtectionEnabled,
+          scanBurst: security.options.scanBurst,
+          scanWindowSeconds: security.options.scanWindowSeconds,
+          backendPreference: security.options.backendPreference,
+          lastApplyMessage: security.options.lastApplyMessage,
+          panelAccessPath: security.options.panelAccessPath,
+          panelListenAddr: security.options.panelListenAddr,
+          twoFactorRequired: security.options.twoFactorRequired
+        });
+      }
+      setSystemInfo({
+        hostname: info.hostname || "-",
+        os: info.operatingSystem || "-",
+        kernel: info.kernelVersion || "-",
+        arch: info.architecture || "-"
+      });
+      setCerts(certResponse.certificates);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const saveOptions = async () => {
+    try {
+      const response = await clients.security.updateSecurityOptions({ options });
+      if (response.options) {
+        setOptions({ ...defaultSecurityOptions, ...response.options });
+      }
+      setMessage(response.options?.lastApplyMessage || "设置已保存");
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const importCert = async () => {
+    try {
+      await clients.ssl.importCertificate(importForm);
+      setMessage("证书已导入");
+      setImportForm({ domain: "", group: "default", certificatePem: "", privateKeyPem: "" });
+      void refresh();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-5 max-w-4xl">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight m-0">面板设置</h1>
+        <p className="text-sm text-muted-foreground m-0">控制面板访问入口、安全策略与 SSL 证书</p>
+      </header>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+          {message}
+        </div>
+      )}
+
+      <Tabs defaultValue="basic">
+        <TabsList>
+          <TabsTrigger value="basic">基础</TabsTrigger>
+          <TabsTrigger value="security">安全</TabsTrigger>
+          <TabsTrigger value="ssl">SSL</TabsTrigger>
+          <TabsTrigger value="about">关于</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="basic" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>访问入口</CardTitle>
+              <CardDescription>修改面板监听地址与访问路径以增强安全</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="grid gap-2">
+                <UILabel htmlFor="settings-listen">监听地址</UILabel>
+                <UIInput
+                  id="settings-listen"
+                  placeholder="0.0.0.0:8443"
+                  value={options.panelListenAddr}
+                  onChange={(event) =>
+                    setOptions((prev) => ({ ...prev, panelListenAddr: event.target.value }))
+                  }
+                />
+                <span className="text-xs text-muted-foreground">
+                  修改监听地址需要重启面板服务才能生效
+                </span>
+              </div>
+              <div className="grid gap-2">
+                <UILabel htmlFor="settings-path">访问路径</UILabel>
+                <UIInput
+                  id="settings-path"
+                  placeholder="/admin"
+                  value={options.panelAccessPath}
+                  onChange={(event) =>
+                    setOptions((prev) => ({ ...prev, panelAccessPath: event.target.value }))
+                  }
+                />
+                <span className="text-xs text-muted-foreground">
+                  设置自定义路径可降低被扫描器探测到的概率
+                </span>
+              </div>
+              <div className="flex justify-end">
+                <UIButton onClick={() => void saveOptions()}>
+                  <Save className="size-4" />
+                  保存基础设置
+                </UIButton>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="security" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>登录与请求保护</CardTitle>
+              <CardDescription>两步验证、ICMP 与端口扫描防护</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3">
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-medium">强制两步验证</span>
+                  <span className="text-xs text-muted-foreground">
+                    所有面板用户登录时必须输入 TOTP 验证码
+                  </span>
+                </div>
+                <Switch
+                  checked={options.twoFactorRequired}
+                  onCheckedChange={(checked) =>
+                    setOptions((prev) => ({ ...prev, twoFactorRequired: checked }))
+                  }
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3">
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-medium">禁用 ICMP Ping</span>
+                  <span className="text-xs text-muted-foreground">
+                    阻止外部使用 ping 探测主机存活
+                  </span>
+                </div>
+                <Switch
+                  checked={options.disablePing}
+                  onCheckedChange={(checked) =>
+                    setOptions((prev) => ({ ...prev, disablePing: checked }))
+                  }
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3">
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-medium">端口扫描防护</span>
+                  <span className="text-xs text-muted-foreground">
+                    阈值 {options.scanBurst} 次 / {options.scanWindowSeconds} 秒
+                  </span>
+                </div>
+                <Switch
+                  checked={options.scanProtectionEnabled}
+                  onCheckedChange={(checked) =>
+                    setOptions((prev) => ({ ...prev, scanProtectionEnabled: checked }))
+                  }
+                />
+              </div>
+              <div className="flex justify-end">
+                <UIButton onClick={() => void saveOptions()}>
+                  <Save className="size-4" />
+                  保存安全设置
+                </UIButton>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ssl" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>SSL 证书</CardTitle>
+              <CardDescription>导入手工签发或商用 SSL 证书</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-2">
+                  <UILabel htmlFor="ssl-domain">域名</UILabel>
+                  <UIInput
+                    id="ssl-domain"
+                    placeholder="example.com"
+                    value={importForm.domain}
+                    onChange={(event) =>
+                      setImportForm((prev) => ({ ...prev, domain: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <UILabel htmlFor="ssl-group">分组</UILabel>
+                  <UIInput
+                    id="ssl-group"
+                    placeholder="default"
+                    value={importForm.group}
+                    onChange={(event) =>
+                      setImportForm((prev) => ({ ...prev, group: event.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <UILabel htmlFor="ssl-cert">证书 PEM</UILabel>
+                <textarea
+                  id="ssl-cert"
+                  className="pem-input"
+                  placeholder="-----BEGIN CERTIFICATE-----"
+                  value={importForm.certificatePem}
+                  onChange={(event) =>
+                    setImportForm((prev) => ({ ...prev, certificatePem: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <UILabel htmlFor="ssl-key">私钥 PEM</UILabel>
+                <textarea
+                  id="ssl-key"
+                  className="pem-input"
+                  placeholder="-----BEGIN PRIVATE KEY-----"
+                  value={importForm.privateKeyPem}
+                  onChange={(event) =>
+                    setImportForm((prev) => ({ ...prev, privateKeyPem: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="flex justify-end">
+                <UIButton onClick={() => void importCert()}>
+                  <Upload className="size-4" />
+                  导入证书
+                </UIButton>
+              </div>
+
+              <div className="mt-2">
+                <h3 className="text-sm font-medium mb-2">已托管证书 ({certs.length})</h3>
+                {certs.length === 0 ? (
+                  <div className="empty-state text-sm">尚未导入任何证书</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <UITableRow>
+                        <TableHead>域名</TableHead>
+                        <TableHead>分组</TableHead>
+                        <TableHead>状态</TableHead>
+                      </UITableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {certs.map((cert) => (
+                        <UITableRow key={`${cert.domain}-${cert.group}`}>
+                          <TableCell className="font-medium">{cert.domain}</TableCell>
+                          <TableCell>{cert.group || "default"}</TableCell>
+                          <TableCell>
+                            <Badge variant="muted">{cert.warningLevel || "已导入"}</Badge>
+                          </TableCell>
+                        </UITableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="about" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>关于</CardTitle>
+              <CardDescription>面板与系统信息</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">主机名</span>
+                  <span className="font-medium">{systemInfo.hostname}</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">操作系统</span>
+                  <span className="font-medium">{systemInfo.os}</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">内核</span>
+                  <span className="font-medium">{systemInfo.kernel}</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs text-muted-foreground">架构</span>
+                  <span className="font-medium">{systemInfo.arch}</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <UIButton variant="outline" asChild>
+                  <a href="https://github.com/" target="_blank" rel="noopener noreferrer">
+                    <Info className="size-4" />
+                    查看项目仓库
+                  </a>
+                </UIButton>
+                <UIButton variant="outline" onClick={onLogout}>
+                  <LogOut className="size-4" />
+                  退出登录
+                </UIButton>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </section>
+  );
+}
+
+// ====== FTP 占位 ======
+function FtpPage() {
+  return (
+    <section className="flex flex-col gap-5 max-w-4xl">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight m-0">FTP</h1>
+        <p className="text-sm text-muted-foreground m-0">FTP 用户与共享目录管理</p>
+      </header>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HardDrive className="size-5 text-muted-foreground" />
+            尚未实现
+          </CardTitle>
+          <CardDescription>
+            FTP 服务后端尚未实现,该功能已计入 v3.x 任务规划。当前可使用文件管理器或 SFTP/Web 终端替代。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
+            状态:<Badge variant="warning" className="ml-2">BLOCKED · 后端待实现</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            如需提前传输文件,可访问 <Badge variant="muted">资源 → 文件</Badge> 模块进行上传/下载;或在
+            <Badge variant="muted" className="mx-1">工具 → 终端</Badge> 中通过 sftp/scp 命令操作。
+          </p>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+// ====== 审计日志 ======
+function AuditPage({ clients }: { clients: Clients }) {
+  const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [moduleFilter, setModuleFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const response = await clients.audit.listAuditEvents({
+        module: moduleFilter,
+        query,
+        limit: 200
+      });
+      setEvents(response.events);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients, moduleFilter, query]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight m-0">操作日志</h1>
+          <p className="text-sm text-muted-foreground m-0">面板内所有操作的审计追踪</p>
+        </div>
+        <UIButton variant="outline" size="sm" onClick={() => void load()}>
+          <RefreshCw className="size-4" />
+          刷新
+        </UIButton>
+      </header>
+
+      <Card>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <UIInput
+              className="flex-1 min-w-[160px]"
+              placeholder="模块,如 security / files"
+              value={moduleFilter}
+              onChange={(event) => setModuleFilter(event.target.value)}
+            />
+            <UIInput
+              className="flex-1 min-w-[200px]"
+              placeholder="搜索关键字"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <UIButton size="sm" onClick={() => void load()}>
+              <RefreshCw className="size-4" />
+              查询
+            </UIButton>
+          </div>
+
+          {error && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
+          {events.length === 0 ? (
+            <div className="empty-state text-sm">暂无符合条件的日志</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>时间</TableHead>
+                  <TableHead>用户</TableHead>
+                  <TableHead>模块</TableHead>
+                  <TableHead>动作</TableHead>
+                  <TableHead>级别</TableHead>
+                  <TableHead>来源 IP</TableHead>
+                  <TableHead>说明</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {events.map((event) => (
+                  <UITableRow key={event.id}>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {new Date(Number(event.timestampSeconds) * 1000).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="font-medium">{event.user || "-"}</TableCell>
+                    <TableCell>{event.module}</TableCell>
+                    <TableCell>{event.action}</TableCell>
+                    <TableCell>
+                      <Badge variant={auditLevelVariant(event.level)}>{event.level || "info"}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs">{event.sourceIp || "-"}</TableCell>
+                    <TableCell className="max-w-[320px] truncate" title={event.description}>
+                      {event.description}
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+function auditLevelVariant(level: string): "destructive" | "warning" | "info" | "muted" {
+  const normalized = level.toLowerCase();
+  if (normalized === "error" || normalized === "critical" || normalized === "alert") return "destructive";
+  if (normalized === "warn" || normalized === "warning") return "warning";
+  if (normalized === "info" || normalized === "notice") return "info";
+  return "muted";
 }
 
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
