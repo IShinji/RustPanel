@@ -577,8 +577,46 @@ export default function App() {
   return <AppShell onLogout={handleLogout} />;
 }
 
+/** 把 URL #hash 解析成 TabId。未知 hash 或空 → 返回 null,
+ *  让 caller 决定回退到哪(通常是 dashboard)。 */
+function tabIdFromHash(): TabId | null {
+  const raw = window.location.hash.replace(/^#/, "").trim();
+  if (!raw) return null;
+  // 收紧:hash 必须正好是 TabId 之一,不接受 query string / 子路径
+  const candidates: TabId[] = [
+    "dashboard",
+    "sites",
+    "ftp",
+    "database",
+    "files",
+    "cron",
+    "appstore",
+    "docker",
+    "security",
+    "audit",
+    "cluster",
+    "terminal",
+    "micro",
+    "network",
+    "settings"
+  ];
+  return (candidates as string[]).includes(raw) ? (raw as TabId) : null;
+}
+
 function AppShell({ onLogout }: { onLogout: () => void }) {
-  const [active, setActive] = useState<TabId>("dashboard");
+  // 路由:URL hash 是唯一真源,active 只是把它转成强类型 TabId。
+  // 第一次渲染就读 hash,刷新页面能停在当前 Tab,深链接(/#sites)直达。
+  const [active, setActiveState] = useState<TabId>(
+    () => tabIdFromHash() ?? "dashboard"
+  );
+  const setActive = useCallback((next: TabId) => {
+    setActiveState(next);
+    // 只在和当前 hash 不同时写,避免 hashchange 自循环
+    const currentHash = window.location.hash.replace(/^#/, "");
+    if (currentHash !== next) {
+      window.location.hash = next;
+    }
+  }, []);
   const [terminalCwd, setTerminalCwd] = useState("/");
   const [modules, setModules] = useState<RuntimeModule[]>([]);
   const enabledModules = useMemo(
@@ -605,11 +643,23 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
     return () => window.removeEventListener("rustpanel:modules-changed", onChanged);
   }, []);
 
+  // 路由 ↔ active 双向同步:浏览器前进 / 后退按钮(触发 hashchange)
+  // 或用户手改 URL → setActiveState 跟进。setActive 那一侧写 hash
+  // 已经做了同值短路,不会和这里形成循环。
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = tabIdFromHash();
+      if (next) setActiveState(next);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.id === active)) {
       setActive("dashboard");
     }
-  }, [active, visibleTabs]);
+  }, [active, visibleTabs, setActive]);
 
   const activeTab = visibleTabs.find((tab) => tab.id === active);
   const groupedTabs = useMemo(() => {
