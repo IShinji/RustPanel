@@ -299,58 +299,63 @@ pub fn app_templates() -> Vec<AppTemplate> {
         native_template(
             "rpxy",
             "rpxy (Rust 反代)",
-            "github.com/junkurihara/rust-rpxy:Rust 写的 HTTPS 反向代理,内置 ACME / 多站点 / h2/h3,常驻 RAM ~15MB。RustPanel 提供配置模板并与 sites / ssl 模块联动,二进制保持上游官方版本。",
+            "Rust 写的 HTTPS 反向代理,内置 ACME / 多站点 / h2/h3,常驻 RAM ~15MB。RustPanel 提供配置模板并与 sites / ssl 模块联动,二进制保持上游官方版本。\n\n官网: https://github.com/junkurihara/rust-rpxy",
             AppCategory::WebServer,
             32,
             15,
             15,
             true,
         )
-        .with_install(InstallMethod::BinaryDownload),
+        .with_install(InstallMethod::BinaryDownload)
+        .with_versions(native_versions(&[("latest", true)]), "latest"),
         native_template(
             "static-web-server",
             "static-web-server (SWS)",
-            "github.com/static-web-server/static-web-server:Rust 写的纯静态文件服务器,常驻 RAM ~5MB。可作 rpxy 上游或独立运行,与 static-sites 模块联动。",
+            "Rust 写的纯静态文件服务器,常驻 RAM ~5MB。可作 rpxy 上游或独立运行,与 static-sites 模块联动。\n\n官网: https://github.com/static-web-server/static-web-server",
             AppCategory::WebServer,
             16,
             8,
             5,
             true,
         )
-        .with_install(InstallMethod::BinaryDownload),
+        .with_install(InstallMethod::BinaryDownload)
+        .with_versions(native_versions(&[("latest", true)]), "latest"),
         native_template(
             "leaf",
             "leaf (Rust 多协议代理)",
-            "github.com/eycorsican/leaf:Rust 写的多协议代理,单实例同时暴露 SS / VLESS / Trojan / WireGuard / h2 / ws / tls。常驻 RAM ~25MB。默认 off,在面板软件商店主动启用。",
+            "Rust 写的多协议代理,单实例同时暴露 SS / VLESS / Trojan / WireGuard / h2 / ws / tls。常驻 RAM ~25MB。默认 off,在面板软件商店主动启用。\n\n官网: https://github.com/eycorsican/leaf",
             AppCategory::Vpn,
             64,
             20,
             25,
             false,
         )
-        .with_install(InstallMethod::BinaryDownload),
+        .with_install(InstallMethod::BinaryDownload)
+        .with_versions(native_versions(&[("latest", true)]), "latest"),
         native_template(
             "vsmtp",
             "vSMTP (Rust 邮件中转)",
-            "github.com/viridIT/vSMTP:Rust filter-MTA,做 alias 转发与回复改写;不收件、不存信。出站强制走 SMTP relay (Resend / SES / Postmark),绝不直连 25 端口。常驻 RAM ~35MB。社区维护,默认 off。",
+            "Rust filter-MTA,做 alias 转发与回复改写;不收件、不存信。出站强制走 SMTP relay (Resend / SES / Postmark),绝不直连 25 端口。常驻 RAM ~35MB。社区维护,默认 off。\n\n官网: https://github.com/viridIT/vSMTP",
             AppCategory::Tool,
             96,
             30,
             35,
             false,
         )
-        .with_install(InstallMethod::BinaryDownload),
+        .with_install(InstallMethod::BinaryDownload)
+        .with_versions(native_versions(&[("latest", true)]), "latest"),
         native_template(
             "tuic",
             "TUIC v5 (实验性)",
-            "github.com/EAimTY/tuic:基于 QUIC 的 UDP 代理,作为 leaf 的抗封锁备用线路。要求宿主对 UDP 友好。社区维护,标实验性,默认 off。",
+            "基于 QUIC 的 UDP 代理,作为 leaf 的抗封锁备用线路。要求宿主对 UDP 友好。社区维护,标实验性,默认 off。\n\n官网: https://github.com/EAimTY/tuic",
             AppCategory::Vpn,
             64,
             15,
             20,
             false,
         )
-        .with_install(InstallMethod::BinaryDownload),
+        .with_install(InstallMethod::BinaryDownload)
+        .with_versions(native_versions(&[("latest", true)]), "latest"),
         // ====== Docker 路线(只有 can_run_docker 时才显示) ======
         AppTemplate {
             slug: "mysql".to_owned(),
@@ -499,6 +504,7 @@ fn native_template(
 
 trait AppTemplateExt {
     fn with_install(self, method: InstallMethod) -> Self;
+    fn with_versions(self, versions: Vec<AppVersion>, default: &str) -> Self;
 }
 
 impl AppTemplateExt for AppTemplate {
@@ -506,6 +512,25 @@ impl AppTemplateExt for AppTemplate {
         self.install_method = method as i32;
         self
     }
+
+    fn with_versions(mut self, versions: Vec<AppVersion>, default: &str) -> Self {
+        self.versions = versions;
+        self.default_version = default.to_owned();
+        self
+    }
+}
+
+/// 给 native(无 Docker 镜像)的模板构造 versions 列表的简化器:
+/// 只接 (version, recommended);image 字段保持空串。
+fn native_versions(values: &[(&str, bool)]) -> Vec<AppVersion> {
+    values
+        .iter()
+        .map(|(version, recommended)| AppVersion {
+            version: (*version).to_owned(),
+            image: String::new(),
+            recommended: *recommended,
+        })
+        .collect()
 }
 
 // 结合主机能力 + 资源预算,给模板打上 compatibility 状态。
@@ -819,6 +844,256 @@ struct ComposeService {
     command: Option<String>,
 }
 
+/// Phase G 二进制包的"安装计划"。这里只描述装一个包需要哪些原料,
+/// 不执行实际下载、解压、systemctl —— executor 在后续 commit 接进
+/// deploy_app。命名为 plan 强调这是数据契约,执行是另一回事。
+///
+/// 字段语义
+/// - `upstream_repo`: owner/repo,executor 拼 GitHub Releases API
+/// - `asset_pattern`: release asset 文件名模板,`{version}` 由 executor
+///   替换为 GitHub 上拿到的 tag(去掉前缀 v)
+/// - `binary_path_in_archive`: 归档内二进制的相对路径;空串表示归档
+///   本身就是裸二进制(部分项目用单文件 .gz)
+/// - `install_to`: 二进制最终路径
+/// - `config_path`: 配置文件最终路径
+/// - `systemd_unit` / `config_template`: RustPanel 提供的胶水,
+///   保持上游软件自身配置语义不变
+/// - `post_install_hint`: 装完后给用户看的一句话下一步指引
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(dead_code)] // executor 在下一个 commit 接进 deploy_app
+pub(crate) struct BinaryInstallPlan {
+    pub upstream_repo: &'static str,
+    pub asset_pattern: &'static str,
+    pub binary_path_in_archive: &'static str,
+    pub install_to: &'static str,
+    pub config_path: &'static str,
+    pub systemd_unit: &'static str,
+    pub config_template: &'static str,
+    pub post_install_hint: &'static str,
+}
+
+/// Phase G 5 个 Rust 栈包的安装计划。
+///
+/// asset_pattern 锚 linux-amd64 musl 静态链接版本(NAT VPS / OpenVZ
+/// 友好,不挑 glibc)。当上游切到 v* tag 但 asset 名沿用裸版本号时,
+/// `{version}` 由 executor 在调用时按需去掉前缀 v。
+///
+/// 当前 patterns 是基于上游 release 命名惯例的最佳估计,executor
+/// 接入后会做实际 404 回退(列出 release assets 模糊匹配)。
+#[allow(dead_code)] // executor 在下一个 commit 接进 deploy_app
+pub(crate) fn phase_g_install_plan(slug: &str) -> Option<BinaryInstallPlan> {
+    Some(match slug {
+        "rpxy" => BinaryInstallPlan {
+            upstream_repo: "junkurihara/rust-rpxy",
+            asset_pattern: "rpxy-{version}-x86_64-unknown-linux-musl.tar.gz",
+            binary_path_in_archive: "rpxy",
+            install_to: "/usr/local/bin/rpxy",
+            config_path: "/etc/rpxy/config.toml",
+            systemd_unit: RPXY_SERVICE,
+            config_template: RPXY_CONFIG,
+            post_install_hint: "编辑 /etc/rpxy/config.toml 加入站点条目后 `systemctl restart rpxy`;DNS-01 ACME 走 RustPanel ssl 模块。",
+        },
+        "static-web-server" => BinaryInstallPlan {
+            upstream_repo: "static-web-server/static-web-server",
+            asset_pattern: "static-web-server-v{version}-x86_64-unknown-linux-musl.tar.gz",
+            binary_path_in_archive: "static-web-server-v{version}-x86_64-unknown-linux-musl/static-web-server",
+            install_to: "/usr/local/bin/static-web-server",
+            config_path: "/etc/static-web-server/config.toml",
+            systemd_unit: SWS_SERVICE,
+            config_template: SWS_CONFIG,
+            post_install_hint: "把站点根目录挂到 /var/www/<site>,在 /etc/static-web-server/config.toml 指 root 后 `systemctl restart static-web-server`。",
+        },
+        "leaf" => BinaryInstallPlan {
+            upstream_repo: "eycorsican/leaf",
+            // leaf 的 release asset 是单文件 .gz,不是 tar.gz
+            asset_pattern: "leaf-{version}-x86_64-unknown-linux-gnu.gz",
+            binary_path_in_archive: "",
+            install_to: "/usr/local/bin/leaf",
+            config_path: "/etc/leaf/config.conf",
+            systemd_unit: LEAF_SERVICE,
+            config_template: LEAF_CONFIG,
+            post_install_hint: "在 /etc/leaf/config.conf 配置 inbounds(用 RustPanel security 模块分配的 NAT 端口),`systemctl restart leaf` 后用面板生成的订阅链接接入客户端。",
+        },
+        "vsmtp" => BinaryInstallPlan {
+            upstream_repo: "viridIT/vSMTP",
+            asset_pattern: "vsmtp-{version}-x86_64-unknown-linux-musl.tar.gz",
+            binary_path_in_archive: "vsmtp",
+            install_to: "/usr/local/bin/vsmtp",
+            config_path: "/etc/vsmtp/vsmtp.toml",
+            systemd_unit: VSMTP_SERVICE,
+            config_template: VSMTP_CONFIG,
+            post_install_hint: "出站必须配 SMTP relay(Resend/SES/Postmark),不要直连 25;在面板 vSMTP Tab 维护 alias 映射后 `systemctl restart vsmtp`。",
+        },
+        "tuic" => BinaryInstallPlan {
+            upstream_repo: "EAimTY/tuic",
+            // TUIC 发布裸二进制(无归档)
+            asset_pattern: "tuic-server-{version}-x86_64-unknown-linux-musl",
+            binary_path_in_archive: "",
+            install_to: "/usr/local/bin/tuic-server",
+            config_path: "/etc/tuic/config.json",
+            systemd_unit: TUIC_SERVICE,
+            config_template: TUIC_CONFIG,
+            post_install_hint: "TUIC 是实验性 UDP 备用线;在 /etc/tuic/config.json 填证书与 NAT 端口后 `systemctl restart tuic`。",
+        },
+        _ => return None,
+    })
+}
+
+// systemd unit 模板 —— 保持最小,刻意不开 ProtectSystem=strict / PrivateNetwork
+// 等沙箱选项,128MB OpenVZ 上启用这些会和服务自身的写盘/绑端口冲突,
+// 先稳后紧。每个 unit 自身的 ExecStart 参数对齐上游 README 的默认调用。
+
+const RPXY_SERVICE: &str = r#"[Unit]
+Description=rpxy reverse proxy (RustPanel managed)
+Documentation=https://github.com/junkurihara/rust-rpxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rpxy --config /etc/rpxy/config.toml
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
+"#;
+
+const RPXY_CONFIG: &str = r#"# RustPanel 默认 rpxy 配置骨架。
+# 站点条目由 sites 模块在用户增删站点时自动写入,这里只放全局段。
+listen_port = 8080
+listen_port_tls = 8443
+
+[apps]
+# 例:
+# [apps."example"]
+# server_name = "example.com"
+# reverse_proxy = [{ location = "/", upstream = [{ location = "127.0.0.1:3000" }] }]
+# tls = { https_redirection = true, acme = true }
+"#;
+
+const SWS_SERVICE: &str = r#"[Unit]
+Description=static-web-server (RustPanel managed)
+Documentation=https://github.com/static-web-server/static-web-server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/static-web-server --config-file /etc/static-web-server/config.toml
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
+"#;
+
+const SWS_CONFIG: &str = r#"# RustPanel 默认 SWS 配置骨架。
+# 多站点建议每个站起独立 unit(static-web-server@<site>.service),
+# 这里是单实例模式的默认值。
+[general]
+host = "127.0.0.1"
+port = 8081
+root = "/var/www/default"
+log-level = "info"
+compression = true
+cache-control-headers = true
+"#;
+
+const LEAF_SERVICE: &str = r#"[Unit]
+Description=leaf multi-protocol proxy (RustPanel managed)
+Documentation=https://github.com/eycorsican/leaf
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/leaf -c /etc/leaf/config.conf
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
+"#;
+
+const LEAF_CONFIG: &str = r#"# RustPanel 默认 leaf 配置骨架(占位)。
+# 实际 inbounds / outbounds 由 RustPanel 在用户启用代理协议时生成,
+# 这里只是单元能起来不报错的最小可加载形态。
+[General]
+loglevel = "info"
+
+[Proxy]
+Direct = direct
+"#;
+
+const VSMTP_SERVICE: &str = r#"[Unit]
+Description=vSMTP filter MTA (RustPanel managed)
+Documentation=https://github.com/viridIT/vSMTP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vsmtp --config /etc/vsmtp/vsmtp.toml
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
+"#;
+
+const VSMTP_CONFIG: &str = r#"# RustPanel 默认 vSMTP 配置骨架。
+# alias 表与 rhai 规则由 RustPanel vSMTP Tab 在用户操作时生成。
+# 出站强制走 relay,**绝不直连 25**。
+[server]
+domain = "rustpanel.local"
+
+[server.system]
+group_local = "vsmtp"
+user_local = "vsmtp"
+
+[app]
+dirpath = "/var/spool/vsmtp"
+
+# relay 凭证由面板向导写入对应 secret 文件,不放在这里。
+"#;
+
+const TUIC_SERVICE: &str = r#"[Unit]
+Description=TUIC v5 QUIC proxy (RustPanel managed, experimental)
+Documentation=https://github.com/EAimTY/tuic
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tuic-server -c /etc/tuic/config.json
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
+"#;
+
+const TUIC_CONFIG: &str = r#"{
+  "_comment": "RustPanel 默认 TUIC v5 骨架;证书路径与监听端口由面板向导填入。",
+  "server": "[::]:443",
+  "users": {},
+  "certificate": "/etc/tuic/cert.pem",
+  "private_key": "/etc/tuic/key.pem",
+  "congestion_control": "bbr",
+  "alpn": ["h3"],
+  "udp_relay_ipv6": true,
+  "zero_rtt_handshake": false,
+  "auth_timeout": "3s",
+  "task_negotiation_timeout": "3s",
+  "max_idle_time": "10s",
+  "max_external_packet_size": 1500,
+  "gc_interval": "3s",
+  "gc_lifetime": "15s",
+  "log_level": "info"
+}
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -849,17 +1124,25 @@ mod tests {
 
     #[test]
     fn phase_g_rust_stack_templates_present() {
-        // Phase G:5 个 Rust 栈包必须全部出现在 appstore,且都走 BinaryDownload
-        // (上游官方二进制,不 fork、不打补丁)。
+        // Phase G:5 个 Rust 栈包必须全部出现在 appstore,都走 BinaryDownload,
+        // 都至少给出 latest 这一项可选版本,description 末尾带官网链接。
         let templates = app_templates();
         let expected = [
-            ("rpxy", AppCategory::WebServer),
-            ("static-web-server", AppCategory::WebServer),
-            ("leaf", AppCategory::Vpn),
-            ("vsmtp", AppCategory::Tool),
-            ("tuic", AppCategory::Vpn),
+            (
+                "rpxy",
+                AppCategory::WebServer,
+                "github.com/junkurihara/rust-rpxy",
+            ),
+            (
+                "static-web-server",
+                AppCategory::WebServer,
+                "github.com/static-web-server/static-web-server",
+            ),
+            ("leaf", AppCategory::Vpn, "github.com/eycorsican/leaf"),
+            ("vsmtp", AppCategory::Tool, "github.com/viridIT/vSMTP"),
+            ("tuic", AppCategory::Vpn, "github.com/EAimTY/tuic"),
         ];
-        for (slug, category) in expected {
+        for (slug, category, homepage_substr) in expected {
             let template = templates
                 .iter()
                 .find(|template| template.slug == slug)
@@ -873,6 +1156,65 @@ mod tests {
                 template.category, category as i32,
                 "{slug} category mismatch"
             );
+            assert_eq!(
+                template.default_version, "latest",
+                "{slug} should default to latest"
+            );
+            assert!(
+                template
+                    .versions
+                    .iter()
+                    .any(|version| version.version == "latest" && version.recommended),
+                "{slug} should expose recommended latest version"
+            );
+            assert!(
+                template.description.contains(homepage_substr),
+                "{slug} description should contain upstream URL: {homepage_substr}"
+            );
         }
+    }
+
+    #[test]
+    fn phase_g_install_plans_present() {
+        // 每个 Phase G slug 都必须有一份 BinaryInstallPlan,且关键字段
+        // 非空、asset_pattern 包含 {version} 占位、install_to 是绝对路径。
+        // executor 后续 commit 会消费这份数据。
+        let slugs = ["rpxy", "static-web-server", "leaf", "vsmtp", "tuic"];
+        for slug in slugs {
+            let plan = phase_g_install_plan(slug)
+                .unwrap_or_else(|| panic!("no install plan for slug: {slug}"));
+            assert!(
+                !plan.upstream_repo.is_empty(),
+                "{slug} plan must set upstream_repo"
+            );
+            assert!(
+                plan.asset_pattern.contains("{version}"),
+                "{slug} asset_pattern must contain {{version}} placeholder"
+            );
+            assert!(
+                plan.install_to.starts_with('/'),
+                "{slug} install_to must be absolute path"
+            );
+            assert!(
+                plan.config_path.starts_with('/'),
+                "{slug} config_path must be absolute path"
+            );
+            assert!(
+                plan.systemd_unit.contains("[Service]"),
+                "{slug} systemd_unit must contain [Service] section"
+            );
+            assert!(
+                plan.systemd_unit.contains(plan.install_to),
+                "{slug} systemd_unit ExecStart should reference install_to"
+            );
+            assert!(
+                !plan.post_install_hint.is_empty(),
+                "{slug} should provide a post-install hint"
+            );
+        }
+        assert!(
+            phase_g_install_plan("not-a-real-slug").is_none(),
+            "unknown slugs must return None"
+        );
     }
 }
