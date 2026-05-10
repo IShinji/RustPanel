@@ -2392,6 +2392,7 @@ dependencies = [
  "sqlx",
  "sysinfo",
  "tar",
+ "tempfile",
  "tera",
  "tokio",
  "tokio-cron-scheduler",

@@ -33,6 +33,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 pub mod appstore;
 pub mod audit;
 pub mod auth;
+pub mod capability;
 pub mod cli;
 pub mod cluster;
 pub mod cron;
@@ -61,6 +62,7 @@ use proto::rustpanel::v1::{
     app_store_service_server::AppStoreServiceServer,
     audit_service_server::AuditServiceServer,
     auth_service_server::AuthServiceServer,
+    capability_service_server::CapabilityServiceServer,
     cluster_service_server::ClusterServiceServer,
     cron_service_server::CronServiceServer,
     database_service_server::DatabaseServiceServer,
@@ -322,6 +324,10 @@ fn multiplex_service_with_auth(
         ))
         .add_service(ProxyServiceServer::with_interceptor(
             proxy::ProxyServiceImpl::new(),
+            auth_interceptor.clone(),
+        ))
+        .add_service(CapabilityServiceServer::with_interceptor(
+            capability::CapabilityServiceImpl::new(),
             auth_interceptor,
         ))
         .into_service();

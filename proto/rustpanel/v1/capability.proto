@@ -1,0 +1,165 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// Capabilities 描述当前主机的内核与虚拟化能力探测结果。
+// 用于在 NAT VPS / OpenVZ / 容器等受限环境下,提前禁用跑不动的功能,
+// 而不是等用户点了之后报错。
+message Capabilities {
+  // 是否在 OpenVZ 容器里(检测 /proc/user_beancounters)
+  bool is_openvz = 1;
+  // 是否在常规 Docker / LXC 容器里
+  bool is_container = 2;
+  // 内核完整版本字符串,如 "5.15.0-91-generic"
+  string kernel_version = 3;
+  // overlay2 文件系统是否可用(Docker 推荐存储驱动)
+  bool has_overlay2 = 4;
+  // FUSE 用户态挂载是否可用
+  bool has_fuse = 5;
+  // iptables 用户态写入是否可用
+  bool has_iptables = 6;
+  // nf_nat 内核模块是否加载(NAT/端口转发依赖)
+  bool has_nf_nat = 7;
+  // swap 是否启用(0 表示无 swap)
+  bool has_swap = 8;
+  // BBR 拥塞控制可用
+  bool has_bbr = 9;
+  // cgroups v2 (统一层级)是否可用
+  bool has_cgroups_v2 = 10;
+  // user namespaces 是否可用(rootless 容器/沙箱依赖)
+  bool has_user_namespaces = 11;
+  // Docker daemon 是否在运行(socket 可达)
+  bool docker_running = 12;
+  // 综合判定:Docker 是否可以稳定使用
+  bool can_run_docker = 13;
+  // 探针运行时记录的、阻止 docker 运行的原因(供 UI 展示)
+  string docker_block_reason = 14;
+  // 探测时间戳(Unix 秒)
+  uint64 probed_at_seconds = 15;
+}
+
+message GetCapabilitiesRequest {}
+
+message GetCapabilitiesResponse {
+  Response status = 1;
+  Capabilities capabilities = 2;
+}
+
+// MemoryBudget 描述实时内存占用与可用空间。
+message MemoryBudget {
+  uint64 total_bytes = 1;
+  uint64 used_bytes = 2;
+  uint64 available_bytes = 3;
+  uint64 swap_total_bytes = 4;
+  uint64 swap_used_bytes = 5;
+}
+
+// DiskBudget 描述某挂载点的存储用量。
+message DiskBudget {
+  string mount_point = 1;
+  string filesystem = 2;
+  uint64 total_bytes = 3;
+  uint64 used_bytes = 4;
+  uint64 available_bytes = 5;
+}
+
+// PortBudget 描述 NAT 端口预算总数与已用数。
+message PortBudget {
+  // 用户拥有的 NAT 端口总数(默认 20,可通过 RUSTPANEL_NAT_PORT_TOTAL 覆盖)
+  uint32 total = 1;
+  // 已通过 RustPanel 预留的端口数
+  uint32 reserved = 2;
+  // 当前监听中的端口数(从 sysinfo / ss 探测)
+  uint32 listening = 3;
+}
+
+// ResourceBudget 汇总 RAM / 磁盘 / 端口 三类预算。
+message ResourceBudget {
+  MemoryBudget memory = 1;
+  repeated DiskBudget disks = 2;
+  PortBudget ports = 3;
+  uint32 cpu_count = 4;
+  // 1/5/15 分钟负载
+  double load_one = 5;
+  double load_five = 6;
+  double load_fifteen = 7;
+}
+
+message GetResourceBudgetRequest {}
+
+message GetResourceBudgetResponse {
+  Response status = 1;
+  ResourceBudget budget = 2;
+}
+
+// ReservedPort 描述 NAT 端口预留记录。
+message ReservedPort {
+  uint32 port = 1;
+  // 预留方,例如 "panel"、"site:my-blog"、"redis"
+  string owner = 2;
+  // 预留说明,展示给用户
+  string description = 3;
+  // bind to ipv4/ipv6/both
+  string protocol = 4;
+  uint64 reserved_at_seconds = 5;
+}
+
+message ListReservedPortsRequest {}
+
+message ListReservedPortsResponse {
+  Response status = 1;
+  repeated ReservedPort ports = 2;
+}
+
+message ReservePortRequest {
+  uint32 port = 1;
+  string owner = 2;
+  string description = 3;
+  string protocol = 4;
+}
+
+message ReservePortResponse {
+  Response status = 1;
+  ReservedPort reservation = 2;
+}
+
+message ReleasePortRequest {
+  uint32 port = 1;
+}
+
+message ReleasePortResponse {
+  Response status = 1;
+}
+
+// Ipv6Address 描述本机一个公网 IPv6 地址(从 /80 块或其他前缀获取)。
+message Ipv6Address {
+  string address = 1;
+  uint32 prefix_length = 2;
+  string interface_name = 3;
+  // 是否在 /80 公网前缀内 (剔除 link-local fe80::/10 / loopback ::1)
+  bool is_global = 4;
+}
+
+message ListIpv6AddressesRequest {}
+
+message ListIpv6AddressesResponse {
+  Response status = 1;
+  repeated Ipv6Address addresses = 2;
+  // 检测到的公网 /N 前缀(例如 "2001:db8:abcd::/80"),可能为空
+  repeated string prefixes = 3;
+}
+
+// CapabilityService 提供主机能力探测、资源预算与 NAT 端口/IPv6 地址池管理。
+//
+// 设计目标:在 128MB RAM / 2GB Disk / OpenVZ NAT VPS 这种受限环境里,
+// 给前端足够的事实来"提前置灰跑不动的功能 + 规划 20 个 NAT 端口"。
+service CapabilityService {
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+  rpc GetResourceBudget(GetResourceBudgetRequest) returns (GetResourceBudgetResponse);
+  rpc ListReservedPorts(ListReservedPortsRequest) returns (ListReservedPortsResponse);
+  rpc ReservePort(ReservePortRequest) returns (ReservePortResponse);
+  rpc ReleasePort(ReleasePortRequest) returns (ReleasePortResponse);
+  rpc ListIpv6Addresses(ListIpv6AddressesRequest) returns (ListIpv6AddressesResponse);
+}

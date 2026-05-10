@@ -61,6 +61,12 @@ import {
 
 import { AppTemplate, InstalledApp } from "./gen/rustpanel/v1/appstore_pb";
 import { AuditEvent } from "./gen/rustpanel/v1/audit_pb";
+import {
+  Capabilities,
+  Ipv6Address,
+  ReservedPort,
+  ResourceBudget
+} from "./gen/rustpanel/v1/capability_pb";
 import { ClusterNode, DistributionRecord } from "./gen/rustpanel/v1/cluster_pb";
 import { CronRunState, CronTask, CronTaskState } from "./gen/rustpanel/v1/cron_pb";
 import { ComposeProject, ContainerItem, ImageItem } from "./gen/rustpanel/v1/docker_pb";
@@ -152,6 +158,7 @@ type TabId =
   | "cluster"
   | "terminal"
   | "micro"
+  | "network"
   | "settings";
 type NavGroup = "overview" | "host" | "resource" | "security" | "tools" | "system";
 type NavTab = {
@@ -402,6 +409,7 @@ const tabs: NavTab[] = [
   { id: "cluster", label: "集群", icon: Network, group: "security", modules: ["cluster"] },
   { id: "terminal", label: "终端", icon: TerminalSquare, group: "tools", modules: ["terminal"] },
   { id: "micro", label: "Micro", icon: Power, group: "tools", modules: ["static-sites", "workloads", "proxy"] },
+  { id: "network", label: "网络与端口", icon: Wifi, group: "system" },
   { id: "settings", label: "面板设置", icon: SettingsIcon, group: "system" }
 ];
 
@@ -651,6 +659,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
           {active === "cluster" && <ClusterAudit clients={clients} />}
           {active === "terminal" && <TerminalPanel cwd={terminalCwd} />}
           {active === "micro" && <MicroPanel clients={clients} />}
+          {active === "network" && <NetworkPage clients={clients} />}
           {active === "settings" && <SettingsPage clients={clients} onLogout={onLogout} />}
         </div>
       </main>
@@ -694,6 +703,8 @@ function Dashboard({ clients }: { clients: Clients }) {
   const setCurrent = useMonitorStore((state) => state.setCurrent);
   const [system, setSystem] = useState({ hostname: "-", os: "-", kernel: "-", arch: "-" });
   const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
+  const [budget, setBudget] = useState<ResourceBudget | undefined>(undefined);
+  const [capabilities, setCapabilities] = useState<Capabilities | undefined>(undefined);
   const [error, setError] = useState("");
   const [range, setRange] = useState<MonitorRange>("1h");
   const [customStart, setCustomStart] = useState(() => toLocalInputValue(Date.now() - 60 * 60 * 1000));
@@ -710,6 +721,25 @@ function Dashboard({ clients }: { clients: Clients }) {
       .then((response) => setInstalledApps(response.apps))
       .catch(() => setInstalledApps([]));
   }, [clients]);
+
+  const loadBudget = useCallback(async () => {
+    try {
+      const response = await clients.capability.getResourceBudget({});
+      setBudget(response.budget);
+    } catch {
+      // 后端未启用 / OpenVZ 沙箱场景下静默降级,Dashboard 其他卡片继续工作
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void loadBudget();
+    void clients.capability
+      .getCapabilities({})
+      .then((response) => setCapabilities(response.capabilities))
+      .catch(() => undefined);
+    const interval = setInterval(() => void loadBudget(), 15_000);
+    return () => clearInterval(interval);
+  }, [clients, loadBudget]);
 
   const loadMetricHistory = useCallback(async () => {
     const window = resolveHistoryWindow(range, customStart, customEnd);
@@ -858,6 +888,8 @@ function Dashboard({ clients }: { clients: Clients }) {
           {error ? "离线" : "运行中"}
         </Badge>
       </header>
+
+      <BudgetBars budget={budget} capabilities={capabilities} />
 
       <Card>
         <CardContent>
@@ -1172,6 +1204,454 @@ function appStateVariant(
   if (normalized.includes("error") || normalized.includes("fail") || normalized === "dead") return "destructive";
   if (normalized.includes("paused") || normalized.includes("restart") || normalized.includes("starting")) return "warning";
   return "muted";
+}
+
+// ====== Phase A: 资源预算条 + 主机能力提示 ======
+
+function BudgetBars({
+  budget,
+  capabilities
+}: {
+  budget?: ResourceBudget;
+  capabilities?: Capabilities;
+}) {
+  const memory = budget?.memory;
+  const memoryPercent =
+    memory && memory.totalBytes > 0n
+      ? (Number(memory.usedBytes) / Number(memory.totalBytes)) * 100
+      : 0;
+  const rootDisk =
+    budget?.disks?.find((disk) => disk.mountPoint === "/") ?? budget?.disks?.[0];
+  const diskPercent =
+    rootDisk && rootDisk.totalBytes > 0n
+      ? (Number(rootDisk.usedBytes) / Number(rootDisk.totalBytes)) * 100
+      : 0;
+  const ports = budget?.ports;
+  const portTotal = ports?.total ?? 0;
+  const portReserved = ports?.reserved ?? 0;
+  const portPercent = portTotal > 0 ? (portReserved / portTotal) * 100 : 0;
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="size-4 text-primary" />
+            <span className="text-sm font-medium">资源预算</span>
+          </div>
+          {capabilities?.isOpenvz && (
+            <Badge variant="warning" title={capabilities.dockerBlockReason || "OpenVZ 容器"}>
+              OpenVZ
+            </Badge>
+          )}
+        </div>
+
+        <BudgetRow
+          label="内存"
+          icon={MemoryStick}
+          percent={memoryPercent}
+          detail={
+            memory
+              ? `${formatBytes(memory.usedBytes)} / ${formatBytes(memory.totalBytes)}`
+              : "-"
+          }
+          warnAt={75}
+          dangerAt={90}
+        />
+        <BudgetRow
+          label="磁盘"
+          icon={HardDrive}
+          percent={diskPercent}
+          detail={
+            rootDisk
+              ? `${formatBytes(rootDisk.usedBytes)} / ${formatBytes(rootDisk.totalBytes)}  ·  ${rootDisk.mountPoint}`
+              : "-"
+          }
+          warnAt={80}
+          dangerAt={92}
+        />
+        <BudgetRow
+          label="NAT 端口"
+          icon={Wifi}
+          percent={portPercent}
+          detail={portTotal > 0 ? `${portReserved} / ${portTotal} 已预留` : "未配置 NAT 端口预算"}
+          warnAt={70}
+          dangerAt={90}
+        />
+
+        {capabilities && !capabilities.canRunDocker && (
+          <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground flex items-center gap-2">
+            <Info className="size-3.5" />
+            <span>
+              Docker 在本机不可用 —— {capabilities.dockerBlockReason || "缺少必要内核能力"}
+            </span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function BudgetRow({
+  label,
+  icon: Icon,
+  percent,
+  detail,
+  warnAt,
+  dangerAt
+}: {
+  label: string;
+  icon: typeof Activity;
+  percent: number;
+  detail: string;
+  warnAt: number;
+  dangerAt: number;
+}) {
+  const clamped = Math.max(0, Math.min(100, percent));
+  const tone =
+    clamped >= dangerAt ? "danger" : clamped >= warnAt ? "warn" : "ok";
+  const indicatorClass =
+    tone === "danger"
+      ? "[&>[data-slot=progress-indicator]]:bg-destructive"
+      : tone === "warn"
+        ? "[&>[data-slot=progress-indicator]]:bg-warning"
+        : "[&>[data-slot=progress-indicator]]:bg-primary";
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <Icon className="size-3.5" />
+          <span>{label}</span>
+        </div>
+        <div className="flex items-center gap-2 tabular-nums">
+          <span className="font-medium text-foreground">{clamped.toFixed(1)}%</span>
+          <span className="text-muted-foreground">{detail}</span>
+        </div>
+      </div>
+      <Progress value={clamped} className={cn("h-1.5", indicatorClass)} />
+    </div>
+  );
+}
+
+// ====== Phase A: 网络与端口管理页 ======
+
+function NetworkPage({ clients }: { clients: Clients }) {
+  const [budget, setBudget] = useState<ResourceBudget | undefined>(undefined);
+  const [capabilities, setCapabilities] = useState<Capabilities | undefined>(undefined);
+  const [reservedPorts, setReservedPorts] = useState<ReservedPort[]>([]);
+  const [ipv6Addresses, setIpv6Addresses] = useState<Ipv6Address[]>([]);
+  const [ipv6Prefixes, setIpv6Prefixes] = useState<string[]>([]);
+  const [reserveForm, setReserveForm] = useState({
+    port: "",
+    owner: "",
+    description: "",
+    protocol: "tcp"
+  });
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const refresh = useCallback(async () => {
+    try {
+      const [budgetResp, capResp, portsResp, ipv6Resp] = await Promise.all([
+        clients.capability.getResourceBudget({}),
+        clients.capability.getCapabilities({}),
+        clients.capability.listReservedPorts({}),
+        clients.capability.listIpv6Addresses({})
+      ]);
+      setBudget(budgetResp.budget);
+      setCapabilities(capResp.capabilities);
+      setReservedPorts(portsResp.ports);
+      setIpv6Addresses(ipv6Resp.addresses);
+      setIpv6Prefixes(ipv6Resp.prefixes);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const reservePort = async () => {
+    const port = Number.parseInt(reserveForm.port, 10);
+    if (!Number.isFinite(port) || port < 1 || port > 65535) {
+      setError("端口号需为 1-65535");
+      return;
+    }
+    if (!reserveForm.owner.trim()) {
+      setError("请填写预留方");
+      return;
+    }
+    try {
+      await clients.capability.reservePort({
+        port,
+        owner: reserveForm.owner,
+        description: reserveForm.description,
+        protocol: reserveForm.protocol
+      });
+      setReserveForm({ port: "", owner: "", description: "", protocol: "tcp" });
+      setMessage(`端口 ${port} 已预留`);
+      setError("");
+      void refresh();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const releasePort = async (port: number) => {
+    try {
+      await clients.capability.releasePort({ port });
+      setMessage(`端口 ${port} 已释放`);
+      void refresh();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight m-0">网络与端口</h1>
+          <p className="text-sm text-muted-foreground m-0">
+            管理 NAT VPS 的 20 个公网端口预算 + 公网 IPv6 地址池
+          </p>
+        </div>
+        <UIButton variant="outline" size="sm" onClick={() => void refresh()}>
+          <RefreshCw className="size-4" />
+          刷新
+        </UIButton>
+      </header>
+
+      <BudgetBars budget={budget} capabilities={capabilities} />
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+          {message}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wifi className="size-4 text-primary" />
+            NAT 端口预算
+          </CardTitle>
+          <CardDescription>
+            登记每个端口给了谁用,避免装新软件时撞端口。建议把面板/SSH/已上线服务都登记一遍。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid gap-3 md:grid-cols-[120px_1fr_1fr_120px_auto] md:items-end">
+            <div className="grid gap-1">
+              <UILabel htmlFor="port-num">端口</UILabel>
+              <UIInput
+                id="port-num"
+                type="number"
+                min={1}
+                max={65535}
+                value={reserveForm.port}
+                onChange={(event) =>
+                  setReserveForm((prev) => ({ ...prev, port: event.target.value }))
+                }
+              />
+            </div>
+            <div className="grid gap-1">
+              <UILabel htmlFor="port-owner">预留方</UILabel>
+              <UIInput
+                id="port-owner"
+                placeholder="例如 panel / site:my-blog"
+                value={reserveForm.owner}
+                onChange={(event) =>
+                  setReserveForm((prev) => ({ ...prev, owner: event.target.value }))
+                }
+              />
+            </div>
+            <div className="grid gap-1">
+              <UILabel htmlFor="port-desc">说明</UILabel>
+              <UIInput
+                id="port-desc"
+                placeholder="可选"
+                value={reserveForm.description}
+                onChange={(event) =>
+                  setReserveForm((prev) => ({ ...prev, description: event.target.value }))
+                }
+              />
+            </div>
+            <div className="grid gap-1">
+              <UILabel htmlFor="port-proto">协议</UILabel>
+              <Select
+                value={reserveForm.protocol}
+                onValueChange={(value) =>
+                  setReserveForm((prev) => ({ ...prev, protocol: value }))
+                }
+              >
+                <SelectTrigger id="port-proto">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tcp">TCP</SelectItem>
+                  <SelectItem value="udp">UDP</SelectItem>
+                  <SelectItem value="both">TCP + UDP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <UIButton onClick={() => void reservePort()}>
+              <Plus className="size-4" />
+              预留
+            </UIButton>
+          </div>
+
+          {reservedPorts.length === 0 ? (
+            <div className="empty-state text-sm">尚未登记任何端口</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>端口</TableHead>
+                  <TableHead>协议</TableHead>
+                  <TableHead>预留方</TableHead>
+                  <TableHead>说明</TableHead>
+                  <TableHead>登记时间</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {reservedPorts.map((port) => (
+                  <UITableRow key={port.port}>
+                    <TableCell className="font-mono">{port.port}</TableCell>
+                    <TableCell>
+                      <Badge variant="muted">{port.protocol || "tcp"}</Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{port.owner}</TableCell>
+                    <TableCell className="text-muted-foreground">{port.description || "-"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {port.reservedAtSeconds > 0n
+                        ? new Date(Number(port.reservedAtSeconds) * 1000).toLocaleString()
+                        : "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <UIButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void releasePort(port.port)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        释放
+                      </UIButton>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="size-4 text-primary" />
+            公网 IPv6 地址池
+          </CardTitle>
+          <CardDescription>
+            NAT VPS 上 IPv6 是绕过 20 端口约束的关键 —— 每个站点直接绑一个 v6,无需占用 NAT 端口。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {ipv6Prefixes.length > 0 && (
+            <div className="rounded-md border border-info/40 bg-info/10 px-3 py-2 text-sm">
+              <div className="font-medium text-info mb-1">检测到的公网前缀</div>
+              <div className="flex flex-wrap gap-2">
+                {ipv6Prefixes.map((prefix) => (
+                  <Badge key={prefix} variant="info" className="font-mono">
+                    {prefix}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          {ipv6Addresses.length === 0 ? (
+            <div className="empty-state text-sm">未检测到公网 IPv6 地址(可能未开启 IPv6 或处于 link-local 模式)</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>地址</TableHead>
+                  <TableHead>前缀</TableHead>
+                  <TableHead>接口</TableHead>
+                  <TableHead>类型</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {ipv6Addresses.map((addr) => (
+                  <UITableRow key={`${addr.address}-${addr.interfaceName}`}>
+                    <TableCell className="font-mono text-xs">{addr.address}</TableCell>
+                    <TableCell className="font-mono">/{addr.prefixLength}</TableCell>
+                    <TableCell>{addr.interfaceName}</TableCell>
+                    <TableCell>
+                      <Badge variant={addr.isGlobal ? "success" : "muted"}>
+                        {addr.isGlobal ? "公网" : "本地"}
+                      </Badge>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {capabilities && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Info className="size-4 text-primary" />
+              主机能力探测
+            </CardTitle>
+            <CardDescription>开机探测一次,1 小时刷新一次</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 text-sm">
+              <CapabilityRow label="OpenVZ 容器" value={capabilities.isOpenvz} />
+              <CapabilityRow label="Docker / LXC 内" value={capabilities.isContainer} />
+              <CapabilityRow label="Docker 守护进程" value={capabilities.dockerRunning} />
+              <CapabilityRow label="Docker 可用" value={capabilities.canRunDocker} />
+              <CapabilityRow label="overlay2 文件系统" value={capabilities.hasOverlay2} />
+              <CapabilityRow label="FUSE" value={capabilities.hasFuse} />
+              <CapabilityRow label="iptables 二进制" value={capabilities.hasIptables} />
+              <CapabilityRow label="nf_nat 模块" value={capabilities.hasNfNat} />
+              <CapabilityRow label="Swap 分区" value={capabilities.hasSwap} />
+              <CapabilityRow label="BBR 拥塞控制" value={capabilities.hasBbr} />
+              <CapabilityRow label="cgroups v2" value={capabilities.hasCgroupsV2} />
+              <CapabilityRow label="user namespaces" value={capabilities.hasUserNamespaces} />
+            </div>
+            {capabilities.kernelVersion && (
+              <div className="mt-4 text-xs text-muted-foreground">
+                内核:<span className="font-mono">{capabilities.kernelVersion}</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </section>
+  );
+}
+
+function CapabilityRow({ label, value }: { label: string; value: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-muted-foreground">{label}</span>
+      <Badge variant={value ? "success" : "muted"}>{value ? "可用" : "不可用"}</Badge>
+    </div>
+  );
 }
 
 function resolveHistoryWindow(range: MonitorRange, customStart: string, customEnd: string) {

@@ -5,6 +5,7 @@ import { createGrpcWebTransport } from "@connectrpc/connect-web";
 import { AppStoreService } from "../gen/rustpanel/v1/appstore_pb";
 import { AuthService } from "../gen/rustpanel/v1/auth_pb";
 import { AuditService } from "../gen/rustpanel/v1/audit_pb";
+import { CapabilityService } from "../gen/rustpanel/v1/capability_pb";
 import { ClusterService } from "../gen/rustpanel/v1/cluster_pb";
 import { CronService } from "../gen/rustpanel/v1/cron_pb";
 import { DatabaseService } from "../gen/rustpanel/v1/db_pb";
@@ -90,6 +91,7 @@ export function createRpcClients(baseUrl = window.location.origin) {
     appStore: createClient(AppStoreService, transport),
     auth: createClient(AuthService, transport),
     audit: createClient(AuditService, transport),
+    capability: createClient(CapabilityService, transport),
     cluster: createClient(ClusterService, transport),
     cron: createClient(CronService, transport),
     database: createClient(DatabaseService, transport),
