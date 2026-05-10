@@ -629,6 +629,97 @@ pub(crate) async fn reload_rpxy_if_running() -> Result<(), Status> {
     systemctl(&["reload", "rpxy.service"]).await
 }
 
+// =====================================================================
+// static-sites ↔ SWS:每个静态站对应一个 sws@<name>.service instance。
+// 用 systemd template unit + per-site toml 配置,跟 rpxy fragment 同形。
+// =====================================================================
+
+const SWS_CONFIG_DIR: &str = "/etc/sws";
+
+const SWS_TEMPLATE_UNIT: &str = r#"[Unit]
+Description=static-web-server (RustPanel) instance %i
+Documentation=https://static-web-server.net/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/static-web-server --config-file /etc/sws/%i.toml
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
+"#;
+
+/// 纯函数:给一个静态站生成 SWS per-site TOML 配置文本。
+/// 监听 127.0.0.1 —— 公网入口由 rpxy 反代,SWS 自己不绑外。
+#[allow(dead_code)]
+pub(crate) fn render_sws_site_config(root: &str, port: u16) -> String {
+    format!(
+        "[general]\nhost = \"127.0.0.1\"\nport = {port}\nroot = \"{root}\"\nlog-level = \"info\"\ncompression = true\ncache-control-headers = true\n",
+        port = port,
+        root = root,
+    )
+}
+
+fn sws_config_dir() -> PathBuf {
+    env::var("RUSTPANEL_SWS_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(SWS_CONFIG_DIR))
+}
+
+fn sws_site_config_path(site_name: &str) -> PathBuf {
+    sws_config_dir().join(format!("{site_name}.toml"))
+}
+
+/// 写 SWS systemd template unit(只在不存在时写)。每台机器一份即可,
+/// 后续 sws@<site>.service 都共享它。
+#[allow(dead_code)]
+pub(crate) async fn ensure_sws_template_unit() -> Result<PathBuf, Status> {
+    let dir = systemd_unit_dir();
+    tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
+    let path = dir.join("sws@.service");
+    if tokio::fs::try_exists(&path).await.unwrap_or(false) {
+        return Ok(path);
+    }
+    let tmp = path.with_extension("service.rustpanel-tmp");
+    tokio::fs::write(&tmp, SWS_TEMPLATE_UNIT.as_bytes())
+        .await
+        .map_err(io_status)?;
+    tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
+    Ok(path)
+}
+
+/// 写一份 per-site SWS 配置;后续调用方再 `systemctl enable --now
+/// sws@<name>.service` 把 instance 拉起来。
+#[allow(dead_code)]
+pub(crate) async fn write_sws_site_config(
+    site_name: &str,
+    root: &str,
+    port: u16,
+) -> Result<PathBuf, Status> {
+    let dir = sws_config_dir();
+    tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
+    let path = sws_site_config_path(site_name);
+    let body = render_sws_site_config(root, port);
+    let tmp = path.with_extension("toml.rustpanel-tmp");
+    tokio::fs::write(&tmp, body.as_bytes())
+        .await
+        .map_err(io_status)?;
+    tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
+    Ok(path)
+}
+
+#[allow(dead_code)]
+pub(crate) async fn remove_sws_site_config(site_name: &str) -> Result<(), Status> {
+    let path = sws_site_config_path(site_name);
+    if tokio::fs::try_exists(&path).await.unwrap_or(false) {
+        tokio::fs::remove_file(&path).await.map_err(io_status)?;
+    }
+    Ok(())
+}
+
 pub fn app_templates() -> Vec<AppTemplate> {
     let mut templates = vec![
         // ====== 轻量 systemd-first(NAT VPS / OpenVZ 友好) ======
@@ -2068,6 +2159,17 @@ mod tests {
         site.domains.clear();
         site.proxy_target = "127.0.0.1:1".to_owned();
         assert!(site_to_rpxy_app_block(&site).is_none());
+    }
+
+    #[test]
+    fn render_sws_site_config_emits_required_fields() {
+        let config = render_sws_site_config("/var/www/blog", 9001);
+        assert!(config.contains("host = \"127.0.0.1\""));
+        assert!(config.contains("port = 9001"));
+        assert!(config.contains("root = \"/var/www/blog\""));
+        // 默认开压缩与 cache-control,符合 NAT VPS 带宽紧张的场景
+        assert!(config.contains("compression = true"));
+        assert!(config.contains("cache-control-headers = true"));
     }
 
     #[test]
