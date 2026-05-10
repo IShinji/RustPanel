@@ -15,6 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "../../proto/rustpanel/v1/fs.proto",
         "../../proto/rustpanel/v1/monitor.proto",
         "../../proto/rustpanel/v1/proxy.proto",
+        "../../proto/rustpanel/v1/rollback.proto",
         "../../proto/rustpanel/v1/security.proto",
         "../../proto/rustpanel/v1/site.proto",
         "../../proto/rustpanel/v1/ssl.proto",

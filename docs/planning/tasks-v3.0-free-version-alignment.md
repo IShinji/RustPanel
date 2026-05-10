@@ -252,12 +252,15 @@
 - [x] **P8-04-4** Cron 预设模板下拉:每日 SQLite 备份 / 每周 restic 增量 / 每月 logrotate / 磁盘 80% 告警 / SSL 续期检查 / fail2ban 状态汇报 6 个常用任务一键填表。
 - [ ] **P8-04-5** 真实 ACME 客户端集成 + 自动续期定时器：**@status: BLOCKED** —— instant-acme crate 已在 dependencies,但 ACME 完整 order/challenge/finalize 流程未接,目前 manual 模式只生成提示 TXT。需引入异步状态机:第一次请求建 order + 暂存 ACME nonce → 第二次请求拉 token → 写 cert。Cloudflare/Route53 provider API 调用同样未做。
 
-### P8-05 站点模型扩展(Static / Rust / 反代;NAT/IPv6/TLS) — **@status: BLOCKED**
-- [ ] **P8-05-1** site.rs 扩展 `SiteKind { Static, RustBinary, ReverseProxy }` + `BindAddress { NatPort, Ipv6Address }` + `TlsStrategy`。需要重做现有 SiteService 的内部结构,涉及 nginx vhost 模板生成、systemd unit 生成、与 Phase A 端口/v6 池联动。
-- [ ] **P8-05-2** 前端站点向导 (类型→绑定→SSL 三步)。需要等 P8-05-1 落地后才能做。
+### P8-05 站点模型扩展(Static / Rust / 反代;NAT/IPv6/TLS)— Phase C
+- [x] **P8-05-1** site.rs 扩展 SiteKind { STATIC, RUST_BINARY, REVERSE_PROXY } + SiteBinding { NAT_PORT, IPV6_ADDRESS } + SiteTlsStrategy { NONE, LETSENCRYPT_DNS01, IMPORTED };render_phase_c_site 按 kind/binding/tls 输出 nginx vhost(NAT 端口模式 listen <port>; listen [::]:<port>;,IPv6 模式 listen [<addr>]:443 ssl http2;);RUST_BINARY 自动生成 systemd unit 名 + 127.0.0.1:9100+ 内部端口。
+- [x] **P8-05-2** SitesSsl 加"新建站点(Phase C · NAT/IPv6 感知)"卡片,3 段表单(类型→绑定→TLS)+ 实时联动 v6 地址池下拉 + 已占 NAT 端口提示;创建后展示生成的 vhost + 自动调 capability.reservePort 锁定端口预算。
+- [x] **P8-05-3** 附带修复 IPv6 池误判公网(::2 等 ::/96 deprecated 段,fc00::/7 ULA 等)+ 面板自身监听端口在 NAT 预算上自动登记(seed_panel_port,启动时一次)。
 
-### P8-06 30 秒自动回滚护栏（NO SUPPORT VPS) — **@status: BLOCKED**
-- [ ] **P8-06-1** rollback.rs 模块:任何 SSH/iptables/面板端口修改先备份原配置 + 启动 systemd timer 30s 后回滚,前端弹倒计时对话框。挂载点:Settings 改面板端口、Security 改 SSH 端口、防火墙规则应用。需要后续单独一个 PR。
+### P8-06 30 秒自动回滚护栏(NO SUPPORT VPS)— Phase F
+- [x] **P8-06-1** rollback.rs:RollbackService 三 RPC(ScheduleRollback / ConfirmRollback / ListPendingRollbacks),tokio::spawn + Notify 实现"按时执行 revert_command 或被用户 confirm 取消";actions.json 持久化到 RUSTPANEL_ROLLBACK_ROOT。
+- [x] **P8-06-2** 前端 RollbackBanner 全局倒计时横幅(Topbar 下方,3s 轮询),展示最早过期动作的 title/description/进度条 + "保留(我能登录)"按钮,空闲时不显示。
+- [ ] **P8-06-3** 把 SettingsPage 改面板端口 / SecurityPanel 改 SSH 端口 / 防火墙规则 apply 三个具体调用点接到 ScheduleRollback。**@status: BLOCKED** —— 需要在 SecurityServiceImpl.UpdateSecurityOptions 内部 spawn 一份 schedule + 应用回滚命令(systemctl restart rustpanel-backend / iptables-restore <snapshot>),涉及 SecurityService 改造,后续单独 PR。当前 RollbackService 已就绪,能脚本化或前端手工调用。
 
 ---
  

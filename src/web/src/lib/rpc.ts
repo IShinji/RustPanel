@@ -13,6 +13,7 @@ import { DockerService } from "../gen/rustpanel/v1/docker_pb";
 import { FileSystemService } from "../gen/rustpanel/v1/fs_pb";
 import { MonitorService } from "../gen/rustpanel/v1/monitor_pb";
 import { ProxyService } from "../gen/rustpanel/v1/proxy_pb";
+import { RollbackService } from "../gen/rustpanel/v1/rollback_pb";
 import { SecurityService } from "../gen/rustpanel/v1/security_pb";
 import { SiteService } from "../gen/rustpanel/v1/site_pb";
 import { SslService } from "../gen/rustpanel/v1/ssl_pb";
@@ -99,6 +100,7 @@ export function createRpcClients(baseUrl = window.location.origin) {
     files: createClient(FileSystemService, transport),
     monitor: createClient(MonitorService, transport),
     proxy: createClient(ProxyService, transport),
+    rollback: createClient(RollbackService, transport),
     security: createClient(SecurityService, transport),
     site: createClient(SiteService, transport),
     ssl: createClient(SslService, transport),

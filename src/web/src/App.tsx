@@ -74,6 +74,7 @@ import {
   ResourceBudget
 } from "./gen/rustpanel/v1/capability_pb";
 import { RedisInfo, SqliteFile } from "./gen/rustpanel/v1/db_pb";
+import { PendingRollbackAction } from "./gen/rustpanel/v1/rollback_pb";
 import { ClusterNode, DistributionRecord } from "./gen/rustpanel/v1/cluster_pb";
 import { CronRunState, CronTask, CronTaskState } from "./gen/rustpanel/v1/cron_pb";
 import { ComposeProject, ContainerItem, ImageItem } from "./gen/rustpanel/v1/docker_pb";
@@ -652,6 +653,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
 
       <main className="min-w-0 flex flex-col overflow-hidden">
         <Topbar title={activeTab?.label ?? "仪表盘"} onLogout={onLogout} />
+        <RollbackBanner clients={clients} />
         <div className="workspace flex-1 overflow-auto">
           {active === "dashboard" && <Dashboard clients={clients} />}
           {active === "sites" && <SitesSsl clients={clients} />}
@@ -677,6 +679,87 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
           {active === "settings" && <SettingsPage clients={clients} onLogout={onLogout} />}
         </div>
       </main>
+    </div>
+  );
+}
+
+// Phase F: 30 秒自动回滚倒计时横幅。
+// 任何调用了 rollback.scheduleRollback 的高风险动作(改 SSH 端口 / 防火墙
+// 规则 / 面板端口)都会在这里产生倒计时,用户在到期前点"保留"才不会被
+// 还原。空闲时不显示。
+function RollbackBanner({ clients }: { clients: Clients }) {
+  const [pending, setPending] = useState<PendingRollbackAction | null>(null);
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const response = await clients.rollback.listPendingRollbacks({});
+        if (cancelled) return;
+        // 取最早过期的那个展示
+        const sorted = [...response.actions].sort((a, b) =>
+          Number(a.expiresAtSeconds - b.expiresAtSeconds)
+        );
+        setPending(sorted[0] ?? null);
+      } catch {
+        if (!cancelled) setPending(null);
+      }
+    };
+    void poll();
+    const interval = setInterval(poll, 3_000);
+    const tick = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      clearInterval(tick);
+    };
+  }, [clients]);
+
+  if (!pending) return null;
+
+  const remaining = Math.max(0, Number(pending.expiresAtSeconds) - now);
+  const total = Math.max(
+    1,
+    Number(pending.expiresAtSeconds - pending.scheduledAtSeconds)
+  );
+  const percent = (remaining / total) * 100;
+
+  const confirm = async () => {
+    try {
+      await clients.rollback.confirmRollback({ actionId: pending.actionId });
+      setPending(null);
+    } catch {
+      // 容错:就算确认失败,下次轮询会更新
+    }
+  };
+
+  return (
+    <div
+      role="alert"
+      className="border-b border-warning/40 bg-warning/10 px-4 py-2 flex items-center gap-3 text-sm"
+    >
+      <ShieldAlert className="size-4 text-warning shrink-0" />
+      <div className="flex flex-col flex-1 min-w-0">
+        <span className="font-medium truncate">
+          {pending.title} · 还剩 <span className="tabular-nums font-bold">{remaining}</span> 秒自动回滚
+        </span>
+        {pending.description && (
+          <span className="text-xs text-muted-foreground truncate">
+            {pending.description}
+          </span>
+        )}
+        <div className="mt-1 h-1 w-full bg-warning/20 rounded">
+          <div
+            className="h-1 bg-warning rounded transition-all"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      </div>
+      <UIButton size="sm" onClick={() => void confirm()}>
+        <ShieldCheck className="size-4" />
+        保留(我能登录)
+      </UIButton>
     </div>
   );
 }

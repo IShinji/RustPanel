@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// Phase F:30 秒自动回滚护栏。
+//
+// NO SUPPORT 的微型 VPS 上,改 SSH 端口 / iptables 规则 / 面板自身监听端口
+// 这种"动一刀就可能把自己锁外面"的动作必须有兜底机制。设计:
+// 1. 调用方先存一个回滚计划 (action_id + snapshot 描述 + revert 命令),
+//    backend 立即返回 expires_at_seconds = now + N。
+// 2. 调用方然后真正执行高风险操作(改配置 / 重启服务)。
+// 3. 用户在前端看到倒计时,确认仍能正常访问后点"保留",前端调
+//    ConfirmRollback,服务端取消 timer。
+// 4. 否则 expires_at 到期,服务端自动执行 revert,把面板/SSH 还原到之前
+//    可登录的状态。
+
+// PendingRollbackAction 描述一个等待用户确认的动作。
+message PendingRollbackAction {
+  string action_id = 1;
+  // 人类可读的动作标题,如"修改 SSH 端口 22 → 2200"
+  string title = 2;
+  // 详细说明
+  string description = 3;
+  // 回滚执行的命令(shell)。空时仅在 ports.json 类应用层做内存恢复。
+  string revert_command = 4;
+  // snapshot:JSON 字符串,调用方可塞任意可序列化数据用于内存级回滚,
+  // 例如改面板端口前的旧值。
+  string snapshot_json = 5;
+  // 计划创建时间戳(Unix 秒)
+  uint64 scheduled_at_seconds = 6;
+  // 自动回滚到期时间戳(Unix 秒);现在 > 此值就触发 revert。
+  uint64 expires_at_seconds = 7;
+}
+
+message ScheduleRollbackRequest {
+  string title = 1;
+  string description = 2;
+  string revert_command = 3;
+  string snapshot_json = 4;
+  // 多少秒后自动回滚(默认 30,上限 600)
+  uint32 rollback_after_seconds = 5;
+}
+
+message ScheduleRollbackResponse {
+  Response status = 1;
+  PendingRollbackAction action = 2;
+}
+
+message ConfirmRollbackRequest {
+  string action_id = 1;
+}
+
+message ConfirmRollbackResponse {
+  Response status = 1;
+}
+
+message ListPendingRollbacksRequest {}
+
+message ListPendingRollbacksResponse {
+  Response status = 1;
+  repeated PendingRollbackAction actions = 2;
+}
+
+// RollbackService 提供 30 秒自动回滚的护栏机制。
+service RollbackService {
+  rpc ScheduleRollback(ScheduleRollbackRequest) returns (ScheduleRollbackResponse);
+  rpc ConfirmRollback(ConfirmRollbackRequest) returns (ConfirmRollbackResponse);
+  rpc ListPendingRollbacks(ListPendingRollbacksRequest) returns (ListPendingRollbacksResponse);
+}

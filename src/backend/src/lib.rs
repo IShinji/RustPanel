@@ -42,6 +42,7 @@ pub mod docker;
 pub mod files;
 pub mod monitor;
 pub mod proxy;
+pub mod rollback;
 pub mod runtime;
 pub mod security;
 pub mod site;
@@ -70,6 +71,7 @@ use proto::rustpanel::v1::{
     file_system_service_server::FileSystemServiceServer,
     monitor_service_server::MonitorServiceServer,
     proxy_service_server::ProxyServiceServer,
+    rollback_service_server::RollbackServiceServer,
     security_service_server::SecurityServiceServer,
     site_service_server::SiteServiceServer,
     ssl_service_server::SslServiceServer,
@@ -343,6 +345,10 @@ fn multiplex_service_with_auth(
         ))
         .add_service(CapabilityServiceServer::with_interceptor(
             capability::CapabilityServiceImpl::new(),
+            auth_interceptor.clone(),
+        ))
+        .add_service(RollbackServiceServer::with_interceptor(
+            rollback::RollbackServiceImpl::new(),
             auth_interceptor,
         ))
         .into_service();
