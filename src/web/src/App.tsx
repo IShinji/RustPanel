@@ -73,6 +73,7 @@ import {
   ReservedPort,
   ResourceBudget
 } from "./gen/rustpanel/v1/capability_pb";
+import { RedisInfo, SqliteFile } from "./gen/rustpanel/v1/db_pb";
 import { ClusterNode, DistributionRecord } from "./gen/rustpanel/v1/cluster_pb";
 import { CronRunState, CronTask, CronTaskState } from "./gen/rustpanel/v1/cron_pb";
 import { ComposeProject, ContainerItem, ImageItem } from "./gen/rustpanel/v1/docker_pb";
@@ -3595,6 +3596,72 @@ function DatabasePanel({ clients }: { clients: Clients }) {
   });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  // ====== Phase D: SQLite 文件管理 ======
+  const [sqliteFiles, setSqliteFiles] = useState<SqliteFile[]>([]);
+  const [scanDirs, setScanDirs] = useState("");
+  const [newSqlitePath, setNewSqlitePath] = useState("");
+  // ====== Phase D: Redis 监控 ======
+  const [redisUrl, setRedisUrl] = useState("redis://127.0.0.1:6379");
+  const [redisInfo, setRedisInfo] = useState<RedisInfo | undefined>(undefined);
+
+  const refreshSqlite = useCallback(async () => {
+    try {
+      const response = await clients.database.listSqliteFiles({
+        scanDirs: scanDirs
+          .split(/[\s,]+/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      });
+      setSqliteFiles(response.files);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients, scanDirs]);
+
+  const createSqliteFile = async () => {
+    if (!newSqlitePath.trim()) {
+      setError("请填写 SQLite 文件路径");
+      return;
+    }
+    try {
+      await clients.database.createSqliteFile({ path: newSqlitePath.trim() });
+      setMessage(`已创建 ${newSqlitePath}`);
+      setNewSqlitePath("");
+      void refreshSqlite();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const vacuumSqliteFile = async (path: string) => {
+    try {
+      const response = await clients.database.vacuumSqlite({ path });
+      const saved =
+        Number(response.sizeBeforeBytes) - Number(response.sizeAfterBytes);
+      setMessage(
+        `VACUUM 完成,${saved > 0 ? `节省 ${formatBytes(BigInt(saved))}` : "无空间可压缩"}`
+      );
+      void refreshSqlite();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const refreshRedis = useCallback(async () => {
+    try {
+      const response = await clients.database.getRedisInfo({ url: redisUrl });
+      setRedisInfo(response.info);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients, redisUrl]);
+
+  useEffect(() => {
+    void refreshSqlite();
+    void refreshRedis();
+  }, [refreshSqlite, refreshRedis]);
 
   const listDatabases = useCallback(async () => {
     try {
@@ -3661,45 +3728,175 @@ function DatabasePanel({ clients }: { clients: Clients }) {
     <section className="flex flex-col gap-5">
       <header className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight m-0">数据库</h1>
-        <p className="text-sm text-muted-foreground m-0">MySQL / PostgreSQL / SQLite 连接、用户、备份与 SQL 控制台</p>
+        <p className="text-sm text-muted-foreground m-0">
+          轻量优先:SQLite 单文件 → Redis(可选)→ 通用 DSN(MySQL / PostgreSQL,需 ≥ 256MB RAM)
+        </p>
       </header>
 
-      <Card>
-        <CardContent className="flex flex-col gap-3">
-          <div className="grid gap-2">
-            <UILabel htmlFor="db-dsn">数据库连接 DSN</UILabel>
-            <div className="flex gap-2">
-              <UIInput
-                id="db-dsn"
-                placeholder="mysql://user:pass@host/db 或 sqlite::memory:"
-                value={dsn}
-                onChange={(event) => setDsn(event.target.value)}
-              />
-              <UIButton onClick={() => void listDatabases()}>
-                <RefreshCw className="size-4" />
-                连接
-              </UIButton>
-            </div>
-          </div>
-          {error && (
-            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          {message && !error && (
-            <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
-              {message}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+          {message}
+        </div>
+      )}
 
-      <Tabs defaultValue="databases">
+      <Tabs defaultValue="sqlite">
         <TabsList>
-          <TabsTrigger value="databases">数据库</TabsTrigger>
-          <TabsTrigger value="users">用户</TabsTrigger>
-          <TabsTrigger value="sql">SQL 控制台</TabsTrigger>
+          <TabsTrigger value="sqlite">SQLite</TabsTrigger>
+          <TabsTrigger value="redis">Redis</TabsTrigger>
+          <TabsTrigger value="dsn">通用 DSN</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="sqlite" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>SQLite 文件</CardTitle>
+              <CardDescription>
+                嵌入式数据库,无需常驻进程,RustPanel 在低配 VPS 上的默认推荐。每个站点
+                一个 .db 文件即可。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="grid gap-2">
+                <UILabel htmlFor="sqlite-dirs">扫描目录(可选,空格或逗号分隔)</UILabel>
+                <div className="flex gap-2">
+                  <UIInput
+                    id="sqlite-dirs"
+                    placeholder="留空使用默认 /var/lib/rustpanel/sqlite, /srv/sqlite ..."
+                    value={scanDirs}
+                    onChange={(event) => setScanDirs(event.target.value)}
+                  />
+                  <UIButton variant="outline" onClick={() => void refreshSqlite()}>
+                    <RefreshCw className="size-4" />
+                    扫描
+                  </UIButton>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <UIInput
+                  className="flex-1"
+                  placeholder="新建文件,如 /var/lib/rustpanel/sqlite/blog.db"
+                  value={newSqlitePath}
+                  onChange={(event) => setNewSqlitePath(event.target.value)}
+                />
+                <UIButton onClick={() => void createSqliteFile()}>
+                  <Plus className="size-4" />
+                  创建
+                </UIButton>
+              </div>
+              {sqliteFiles.length === 0 ? (
+                <div className="empty-state text-sm">
+                  未发现 SQLite 文件 —— 检查扫描目录是否存在,或先创建一个
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <UITableRow>
+                      <TableHead>路径</TableHead>
+                      <TableHead className="text-right">大小</TableHead>
+                      <TableHead>修改时间</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
+                    </UITableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sqliteFiles.map((file) => (
+                      <UITableRow key={file.path}>
+                        <TableCell className="font-mono text-xs">{file.path}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatBytes(file.sizeBytes)}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {file.modifiedAtSeconds > 0n
+                            ? new Date(Number(file.modifiedAtSeconds) * 1000).toLocaleString()
+                            : "-"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <UIButton
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void vacuumSqliteFile(file.path)}
+                          >
+                            <RotateCw className="size-3.5" />
+                            VACUUM
+                          </UIButton>
+                        </TableCell>
+                      </UITableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="redis" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Redis 连接监控</CardTitle>
+              <CardDescription>
+                小内存机器推荐安装 redis-tuned(maxmemory 30MB + LRU)。这里读 INFO 命令展示
+                关键指标。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="grid gap-2">
+                <UILabel htmlFor="redis-url">Redis URL</UILabel>
+                <div className="flex gap-2">
+                  <UIInput
+                    id="redis-url"
+                    placeholder="redis://127.0.0.1:6379 或 rediss://user:pass@host:6380/0"
+                    value={redisUrl}
+                    onChange={(event) => setRedisUrl(event.target.value)}
+                  />
+                  <UIButton onClick={() => void refreshRedis()}>
+                    <RefreshCw className="size-4" />
+                    连接
+                  </UIButton>
+                </div>
+              </div>
+
+              {redisInfo && (
+                <RedisInfoView info={redisInfo} />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="dsn" className="mt-4">
+          <Card>
+            <CardContent className="flex flex-col gap-3">
+              <div className="grid gap-2">
+                <UILabel htmlFor="db-dsn">数据库连接 DSN</UILabel>
+                <div className="flex gap-2">
+                  <UIInput
+                    id="db-dsn"
+                    placeholder="mysql://user:pass@host/db 或 postgres://user:pass@host/db"
+                    value={dsn}
+                    onChange={(event) => setDsn(event.target.value)}
+                  />
+                  <UIButton onClick={() => void listDatabases()}>
+                    <RefreshCw className="size-4" />
+                    连接
+                  </UIButton>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  提示:MySQL/PostgreSQL 容器运行时建议 ≥ 256MB RAM。低配机器请优先使用
+                  SQLite Tab。
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Tabs defaultValue="databases" className="mt-4">
+            <TabsList>
+              <TabsTrigger value="databases">数据库</TabsTrigger>
+              <TabsTrigger value="users">用户</TabsTrigger>
+              <TabsTrigger value="sql">SQL 控制台</TabsTrigger>
+            </TabsList>
 
         <TabsContent value="databases" className="mt-4">
           <Card>
@@ -3844,8 +4041,70 @@ function DatabasePanel({ clients }: { clients: Clients }) {
             </CardContent>
           </Card>
         </TabsContent>
+          </Tabs>
+        </TabsContent>
       </Tabs>
     </section>
+  );
+}
+
+function RedisInfoView({ info }: { info: RedisInfo }) {
+  if (!info.reachable) {
+    return (
+      <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        无法连接 Redis:{info.error || "未知错误"}
+      </div>
+    );
+  }
+  const hits = Number(info.keyspaceHits);
+  const misses = Number(info.keyspaceMisses);
+  const hitRate = hits + misses > 0 ? (hits / (hits + misses)) * 100 : 0;
+  const memoryPercent =
+    info.maxMemoryBytes > 0n
+      ? (Number(info.usedMemoryBytes) / Number(info.maxMemoryBytes)) * 100
+      : 0;
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <RedisStat label="版本" value={info.version || "-"} />
+      <RedisStat label="模式" value={info.mode || "-"} />
+      <RedisStat label="客户端" value={String(info.connectedClients)} />
+      <RedisStat
+        label="已用内存"
+        value={formatBytes(info.usedMemoryBytes)}
+        detail={
+          info.maxMemoryBytes > 0n
+            ? `${memoryPercent.toFixed(1)}% / ${formatBytes(info.maxMemoryBytes)}`
+            : "无 maxmemory 限制"
+        }
+      />
+      <RedisStat label="淘汰策略" value={info.maxMemoryPolicy || "noeviction"} />
+      <RedisStat
+        label="命中率"
+        value={`${hitRate.toFixed(1)}%`}
+        detail={`${hits} 命中 / ${misses} 未命中`}
+      />
+      <RedisStat label="累计命令" value={String(info.totalCommandsProcessed)} />
+      <RedisStat label="运行时长" value={formatDuration(info.uptimeSeconds)} />
+    </div>
+  );
+}
+
+function RedisStat({
+  label,
+  value,
+  detail
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 rounded-md border border-border bg-card p-3">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="font-medium tabular-nums">{value}</span>
+      {detail && <span className="text-xs text-muted-foreground">{detail}</span>}
+    </div>
   );
 }
 

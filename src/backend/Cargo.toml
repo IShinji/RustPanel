@@ -22,11 +22,12 @@ futures-util = "0.3"
 hmac = "0.12"
 http-body-util = "0.1"
 instant-acme = "0.7"
-jsonwebtoken = "10"
+jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
 mime_guess = "2"
 portable-pty = "0.8"
 prost = "0.13"
 prost-types = "0.13"
+redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
 regex = "1"
 rust-embed = "8"
 serde = { version = "1", features = ["derive"] }

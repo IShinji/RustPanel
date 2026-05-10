@@ -1,4 +1,9 @@
-use std::sync::Once;
+use std::{
+    env,
+    path::{Path, PathBuf},
+    sync::Once,
+    time::UNIX_EPOCH,
+};
 
 use sqlx::{any::AnyPoolOptions, Column, Row};
 use tonic::{Request, Response as GrpcResponse, Status};
@@ -8,10 +13,19 @@ use crate::{
     proto::rustpanel::v1::{
         database_service_server::DatabaseService, BackupDatabaseRequest, BackupDatabaseResponse,
         CreateDatabaseRequest, CreateDatabaseResponse, CreateDatabaseUserRequest,
-        CreateDatabaseUserResponse, DatabaseItem, ExecuteSqlRequest, ExecuteSqlResponse,
-        ListDatabasesRequest, ListDatabasesResponse, SqlRow,
+        CreateDatabaseUserResponse, CreateSqliteFileRequest, CreateSqliteFileResponse,
+        DatabaseItem, ExecuteSqlRequest, ExecuteSqlResponse, GetRedisInfoRequest,
+        GetRedisInfoResponse, ListDatabasesRequest, ListDatabasesResponse, ListSqliteFilesRequest,
+        ListSqliteFilesResponse, RedisInfo, SqlRow, SqliteFile, VacuumSqliteRequest,
+        VacuumSqliteResponse,
     },
 };
+
+const DEFAULT_SQLITE_ROOTS: &[&str] = &[
+    "/var/lib/rustpanel/sqlite",
+    "/srv/sqlite",
+    "/opt/rustpanel/data/sqlite",
+];
 
 static SQLX_DRIVERS: Once = Once::new();
 
@@ -197,6 +211,232 @@ impl DatabaseService for DatabaseServiceImpl {
             download_url,
         }))
     }
+
+    // ====== Phase D: 轻量数据库优先 ======
+
+    async fn list_sqlite_files(
+        &self,
+        request: Request<ListSqliteFilesRequest>,
+    ) -> Result<GrpcResponse<ListSqliteFilesResponse>, Status> {
+        let req = request.into_inner();
+        let mut roots: Vec<PathBuf> = if req.scan_dirs.is_empty() {
+            sqlite_default_roots()
+        } else {
+            req.scan_dirs.into_iter().map(PathBuf::from).collect()
+        };
+        roots.sort();
+        roots.dedup();
+
+        let mut files = Vec::new();
+        for root in roots {
+            collect_sqlite_files(&root, &mut files).await;
+        }
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+
+        Ok(GrpcResponse::new(ListSqliteFilesResponse {
+            status: Some(ok_response("ok")),
+            files,
+        }))
+    }
+
+    async fn create_sqlite_file(
+        &self,
+        request: Request<CreateSqliteFileRequest>,
+    ) -> Result<GrpcResponse<CreateSqliteFileResponse>, Status> {
+        let req = request.into_inner();
+        let path = PathBuf::from(req.path.trim());
+        if path.as_os_str().is_empty() {
+            return Err(Status::invalid_argument("path is required"));
+        }
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(io_status)?;
+        }
+        let dsn = format!("sqlite:{}?mode=rwc", path.display());
+        SQLX_DRIVERS.call_once(sqlx::any::install_default_drivers);
+        let pool = AnyPoolOptions::new()
+            .max_connections(1)
+            .connect(&dsn)
+            .await
+            .map_err(db_status)?;
+        // 跑一句 PRAGMA 以确保文件落盘
+        sqlx::query("PRAGMA journal_mode=WAL")
+            .execute(&pool)
+            .await
+            .map_err(db_status)?;
+        let metadata = tokio::fs::metadata(&path).await.map_err(io_status)?;
+        let modified_at_seconds = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        Ok(GrpcResponse::new(CreateSqliteFileResponse {
+            status: Some(ok_response("created")),
+            file: Some(SqliteFile {
+                path: path.to_string_lossy().into_owned(),
+                size_bytes: metadata.len(),
+                modified_at_seconds,
+            }),
+        }))
+    }
+
+    async fn vacuum_sqlite(
+        &self,
+        request: Request<VacuumSqliteRequest>,
+    ) -> Result<GrpcResponse<VacuumSqliteResponse>, Status> {
+        let req = request.into_inner();
+        let path = PathBuf::from(req.path.trim());
+        let before = tokio::fs::metadata(&path).await.map_err(io_status)?.len();
+        let dsn = format!("sqlite:{}", path.display());
+        SQLX_DRIVERS.call_once(sqlx::any::install_default_drivers);
+        let pool = AnyPoolOptions::new()
+            .max_connections(1)
+            .connect(&dsn)
+            .await
+            .map_err(db_status)?;
+        sqlx::query("VACUUM")
+            .execute(&pool)
+            .await
+            .map_err(db_status)?;
+        let after = tokio::fs::metadata(&path).await.map_err(io_status)?.len();
+        Ok(GrpcResponse::new(VacuumSqliteResponse {
+            status: Some(ok_response("vacuumed")),
+            size_before_bytes: before,
+            size_after_bytes: after,
+        }))
+    }
+
+    async fn get_redis_info(
+        &self,
+        request: Request<GetRedisInfoRequest>,
+    ) -> Result<GrpcResponse<GetRedisInfoResponse>, Status> {
+        let url = {
+            let raw = request.into_inner().url;
+            if raw.trim().is_empty() {
+                "redis://127.0.0.1:6379".to_owned()
+            } else {
+                raw
+            }
+        };
+        let info = match probe_redis_info(&url).await {
+            Ok(value) => value,
+            Err(err) => RedisInfo {
+                reachable: false,
+                error: err.to_string(),
+                ..Default::default()
+            },
+        };
+        Ok(GrpcResponse::new(GetRedisInfoResponse {
+            status: Some(ok_response("ok")),
+            info: Some(info),
+        }))
+    }
+}
+
+fn sqlite_default_roots() -> Vec<PathBuf> {
+    if let Ok(value) = env::var("RUSTPANEL_SQLITE_ROOTS") {
+        return value
+            .split(':')
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect();
+    }
+    DEFAULT_SQLITE_ROOTS.iter().map(PathBuf::from).collect()
+}
+
+// 异步递归扫一层目录,识别 SQLite 文件(magic bytes "SQLite format 3\0")
+async fn collect_sqlite_files(root: &Path, files: &mut Vec<SqliteFile>) {
+    let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let meta = match entry.metadata().await {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if meta.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !meta.is_file() {
+                continue;
+            }
+            // 仅打开前 16 字节验证 SQLite 头
+            if !is_sqlite_file(&path).await {
+                continue;
+            }
+            let modified_at_seconds = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            files.push(SqliteFile {
+                path: path.to_string_lossy().into_owned(),
+                size_bytes: meta.len(),
+                modified_at_seconds,
+            });
+        }
+    }
+}
+
+async fn is_sqlite_file(path: &Path) -> bool {
+    use tokio::io::AsyncReadExt;
+    let mut file = match tokio::fs::File::open(path).await {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    let mut buf = [0u8; 16];
+    if file.read_exact(&mut buf).await.is_err() {
+        return false;
+    }
+    &buf == b"SQLite format 3\x00"
+}
+
+async fn probe_redis_info(url: &str) -> Result<RedisInfo, redis::RedisError> {
+    let client = redis::Client::open(url)?;
+    let mut conn = client.get_multiplexed_async_connection().await?;
+    let raw: String = redis::cmd("INFO").query_async(&mut conn).await?;
+    let mut info = RedisInfo {
+        reachable: true,
+        ..Default::default()
+    };
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let (key, value) = match line.split_once(':') {
+            Some(pair) => pair,
+            None => continue,
+        };
+        match key {
+            "redis_version" => info.version = value.to_owned(),
+            "redis_mode" => info.mode = value.to_owned(),
+            "connected_clients" => info.connected_clients = value.parse().unwrap_or(0),
+            "used_memory" => info.used_memory_bytes = value.parse().unwrap_or(0),
+            "maxmemory" => info.max_memory_bytes = value.parse().unwrap_or(0),
+            "maxmemory_policy" => info.max_memory_policy = value.to_owned(),
+            "keyspace_hits" => info.keyspace_hits = value.parse().unwrap_or(0),
+            "keyspace_misses" => info.keyspace_misses = value.parse().unwrap_or(0),
+            "total_commands_processed" => {
+                info.total_commands_processed = value.parse().unwrap_or(0)
+            }
+            "uptime_in_seconds" => info.uptime_seconds = value.parse().unwrap_or(0),
+            _ => {}
+        }
+    }
+    Ok(info)
+}
+
+fn io_status(error: impl std::fmt::Display) -> Status {
+    Status::internal(error.to_string())
 }
 
 async fn connect_any(dsn: &str) -> Result<sqlx::AnyPool, Status> {

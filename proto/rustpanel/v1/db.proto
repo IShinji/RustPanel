@@ -84,6 +84,68 @@ message BackupDatabaseResponse {
   string download_url = 2;
 }
 
+// SqliteFile 描述一个 SQLite 数据库文件。
+message SqliteFile {
+  string path = 1;
+  uint64 size_bytes = 2;
+  uint64 modified_at_seconds = 3;
+}
+
+message ListSqliteFilesRequest {
+  // 扫描目录,空时使用 RUSTPANEL_SQLITE_ROOTS 环境变量或默认路径
+  repeated string scan_dirs = 1;
+}
+
+message ListSqliteFilesResponse {
+  Response status = 1;
+  repeated SqliteFile files = 2;
+}
+
+message CreateSqliteFileRequest {
+  string path = 1;
+}
+
+message CreateSqliteFileResponse {
+  Response status = 1;
+  SqliteFile file = 2;
+}
+
+message VacuumSqliteRequest {
+  string path = 1;
+}
+
+message VacuumSqliteResponse {
+  Response status = 1;
+  uint64 size_before_bytes = 2;
+  uint64 size_after_bytes = 3;
+}
+
+// RedisInfo 是 Redis INFO 命令解析后的精简视图,只保留监控关心的关键指标。
+message RedisInfo {
+  bool reachable = 1;
+  string version = 2;
+  string mode = 3;
+  uint64 connected_clients = 4;
+  uint64 used_memory_bytes = 5;
+  uint64 max_memory_bytes = 6;
+  string max_memory_policy = 7;
+  uint64 keyspace_hits = 8;
+  uint64 keyspace_misses = 9;
+  uint64 total_commands_processed = 10;
+  uint64 uptime_seconds = 11;
+  string error = 12;
+}
+
+message GetRedisInfoRequest {
+  // 默认 redis://127.0.0.1:6379
+  string url = 1;
+}
+
+message GetRedisInfoResponse {
+  Response status = 1;
+  RedisInfo info = 2;
+}
+
 // DatabaseService 提供数据库直连管理能力。
 service DatabaseService {
   rpc ListDatabases(ListDatabasesRequest) returns (ListDatabasesResponse);
@@ -91,4 +153,9 @@ service DatabaseService {
   rpc CreateDatabaseUser(CreateDatabaseUserRequest) returns (CreateDatabaseUserResponse);
   rpc ExecuteSql(ExecuteSqlRequest) returns (ExecuteSqlResponse);
   rpc BackupDatabase(BackupDatabaseRequest) returns (BackupDatabaseResponse);
+  // === Phase D: 轻量数据库优先 ===
+  rpc ListSqliteFiles(ListSqliteFilesRequest) returns (ListSqliteFilesResponse);
+  rpc CreateSqliteFile(CreateSqliteFileRequest) returns (CreateSqliteFileResponse);
+  rpc VacuumSqlite(VacuumSqliteRequest) returns (VacuumSqliteResponse);
+  rpc GetRedisInfo(GetRedisInfoRequest) returns (GetRedisInfoResponse);
 }
