@@ -26,6 +26,7 @@ import {
   Info,
   LineChart as LineChartIcon,
   LogOut,
+  Mail,
   MemoryStick,
   Network,
   Pause,
@@ -67,6 +68,7 @@ import {
   InstallMethod,
   InstalledApp
 } from "./gen/rustpanel/v1/appstore_pb";
+import { VsmtpAlias } from "./gen/rustpanel/v1/vsmtp_pb";
 import { AuditEvent } from "./gen/rustpanel/v1/audit_pb";
 import {
   Capabilities,
@@ -169,6 +171,7 @@ type TabId =
   | "files"
   | "cron"
   | "appstore"
+  | "vsmtp"
   | "docker"
   | "security"
   | "audit"
@@ -421,6 +424,7 @@ const tabs: NavTab[] = [
   { id: "files", label: "文件", icon: Folder, group: "resource", modules: ["files"] },
   { id: "cron", label: "计划任务", icon: Clock, group: "resource", modules: ["cron"] },
   { id: "appstore", label: "软件商店", icon: Store, group: "resource", modules: ["appstore"] },
+  { id: "vsmtp", label: "邮件别名", icon: Mail, group: "resource", modules: ["appstore"] },
   { id: "docker", label: "容器", icon: Boxes, group: "resource", modules: ["docker"] },
   { id: "security", label: "安全", icon: Shield, group: "security", modules: ["security"] },
   { id: "audit", label: "日志", icon: ScrollText, group: "security", modules: ["cluster"] },
@@ -591,6 +595,7 @@ function tabIdFromHash(): TabId | null {
     "files",
     "cron",
     "appstore",
+    "vsmtp",
     "docker",
     "security",
     "audit",
@@ -730,6 +735,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
           )}
           {active === "cron" && <CronPanel clients={clients} />}
           {active === "appstore" && <SoftwareStorePage clients={clients} />}
+          {active === "vsmtp" && <VsmtpAliasPage clients={clients} />}
           {active === "docker" && <DockerApps clients={clients} />}
           {active === "security" && <SecurityPanel clients={clients} />}
           {active === "audit" && <AuditPage clients={clients} />}
@@ -3091,6 +3097,164 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
                       <UIButton variant="ghost" size="sm" onClick={() => void uninstallApp(app)}>
                         <Trash2 className="size-3.5" />
                         卸载
+                      </UIButton>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+function VsmtpAliasPage({ clients }: { clients: Clients }) {
+  const [aliases, setAliases] = useState<VsmtpAlias[]>([]);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [form, setForm] = useState({ alias: "", forwardTo: "", note: "" });
+
+  const load = useCallback(async () => {
+    try {
+      const response = await clients.vsmtpAlias.listVsmtpAliases({});
+      setAliases(response.aliases);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const upsert = async () => {
+    if (!form.alias.trim() || !form.forwardTo.trim()) {
+      setError("alias 与转发邮箱都不能为空");
+      return;
+    }
+    try {
+      await clients.vsmtpAlias.upsertVsmtpAlias({
+        alias: {
+          alias: form.alias.trim(),
+          forwardTo: form.forwardTo.trim(),
+          note: form.note.trim(),
+          createdAtSeconds: 0n,
+          updatedAtSeconds: 0n
+        }
+      });
+      setMessage(`${form.alias} 已保存`);
+      setForm({ alias: "", forwardTo: "", note: "" });
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const remove = async (alias: string) => {
+    try {
+      await clients.vsmtpAlias.deleteVsmtpAlias({ alias });
+      setMessage(`${alias} 已删除`);
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight m-0">邮件别名(vSMTP)</h1>
+          <p className="text-sm text-muted-foreground m-0">
+            外部发到 alias@你的域名 的邮件会按下方规则转发到 forward_to。
+            出站必须在 vSMTP 配置里走 SMTP relay(Resend / SES / Postmark),
+            **绝不直连 25 端口**。
+          </p>
+        </div>
+        <UIButton variant="outline" size="sm" onClick={() => void load()}>
+          <RefreshCw className="size-4" />
+          刷新
+        </UIButton>
+      </header>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+          {message}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>添加 / 更新 alias</CardTitle>
+          <CardDescription>同名 alias 会被覆盖,创建时间保留</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
+            <Input
+              label="alias(小写 / 数字 / . _ -)"
+              value={form.alias}
+              onChange={(alias) => setForm((prev) => ({ ...prev, alias }))}
+            />
+            <Input
+              label="forward_to"
+              value={form.forwardTo}
+              onChange={(forwardTo) => setForm((prev) => ({ ...prev, forwardTo }))}
+            />
+            <Input
+              label="备注(可选)"
+              value={form.note}
+              onChange={(note) => setForm((prev) => ({ ...prev, note }))}
+            />
+            <UIButton size="sm" onClick={() => void upsert()}>
+              <Plus className="size-3.5" />
+              保存
+            </UIButton>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>已有 alias</CardTitle>
+          <CardDescription>共 {aliases.length} 条</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {aliases.length === 0 ? (
+            <div className="empty-state text-sm">尚未配置任何 alias</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>alias</TableHead>
+                  <TableHead>转发到</TableHead>
+                  <TableHead>备注</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {aliases.map((item) => (
+                  <UITableRow key={item.alias}>
+                    <TableCell className="font-mono text-xs">{item.alias}</TableCell>
+                    <TableCell className="font-mono text-xs">{item.forwardTo}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {item.note || "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <UIButton
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void remove(item.alias)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        删除
                       </UIButton>
                     </TableCell>
                   </UITableRow>

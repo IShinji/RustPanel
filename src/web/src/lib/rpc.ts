@@ -18,6 +18,7 @@ import { SecurityService } from "../gen/rustpanel/v1/security_pb";
 import { SiteService } from "../gen/rustpanel/v1/site_pb";
 import { SslService } from "../gen/rustpanel/v1/ssl_pb";
 import { SystemService } from "../gen/rustpanel/v1/system_pb";
+import { VsmtpAliasService } from "../gen/rustpanel/v1/vsmtp_pb";
 import { WorkloadService } from "../gen/rustpanel/v1/workload_pb";
 
 const TOKEN_KEY = "rustpanel.token";
@@ -105,6 +106,7 @@ export function createRpcClients(baseUrl = window.location.origin) {
     site: createClient(SiteService, transport),
     ssl: createClient(SslService, transport),
     system: createClient(SystemService, transport),
+    vsmtpAlias: createClient(VsmtpAliasService, transport),
     workload: createClient(WorkloadService, transport)
   };
 }
