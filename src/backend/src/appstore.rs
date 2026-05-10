@@ -510,7 +510,6 @@ const RPXY_FRAGMENT_DIR: &str = "/etc/rpxy/sites.d";
 /// 同一 site 多 domain 时,**只取第一个作为 server_name** —— rpxy
 /// 单个 app 块只支持一个 SNI;多域名要在调用方为每个 domain 生成
 /// 独立的 app 块。
-#[allow(dead_code)] // 等 site.rs 在 create_site 里接入 "backend = rpxy" 分支后启用
 pub(crate) fn site_to_rpxy_app_block(site: &SiteItem) -> Option<String> {
     let kind = SiteKind::try_from(site.kind).unwrap_or(SiteKind::Unspecified);
     let primary_domain = site.domains.first()?;
@@ -561,7 +560,6 @@ pub(crate) fn site_to_rpxy_app_block(site: &SiteItem) -> Option<String> {
 /// 给静态站点生成 systemd template-unit 调用所需的"--root + --port"
 /// 参数对,供未来 sws@<site>.service 的 EnvironmentFile / drop-in 用。
 /// Static 之外的 kind 返回 None。
-#[allow(dead_code)] // 等 static-sites 接 sws template unit 时启用
 pub(crate) fn static_site_to_sws_args(site: &SiteItem) -> Option<(String, u16)> {
     let kind = SiteKind::try_from(site.kind).unwrap_or(SiteKind::Unspecified);
     if kind != SiteKind::Static {
@@ -593,7 +591,6 @@ fn rpxy_fragment_path(site_name: &str) -> PathBuf {
 
 /// 把 site_to_rpxy_app_block 生成的片段原子写入 sites.d 目录。
 /// 调用方应当确保 site_name 已经做过 sanitize_app_name。
-#[allow(dead_code)] // 等 site.rs 接入 "backend = rpxy" 分支时启用
 pub(crate) async fn write_rpxy_site_fragment(
     site_name: &str,
     block: &str,
@@ -620,7 +617,6 @@ pub(crate) async fn remove_rpxy_site_fragment(site_name: &str) -> Result<(), Sta
 
 /// rpxy reload —— 容错 systemctl,unit 不存在时返回 failed_precondition
 /// 提示用户先在软件商店启用 rpxy。
-#[allow(dead_code)]
 pub(crate) async fn reload_rpxy_if_running() -> Result<(), Status> {
     if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
         return Ok(());
@@ -684,7 +680,6 @@ fn sws_site_config_path(site_name: &str) -> PathBuf {
 
 /// 写 SWS systemd template unit(只在不存在时写)。每台机器一份即可,
 /// 后续 sws@<site>.service 都共享它。
-#[allow(dead_code)]
 pub(crate) async fn ensure_sws_template_unit() -> Result<PathBuf, Status> {
     let dir = systemd_unit_dir();
     tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
@@ -702,7 +697,6 @@ pub(crate) async fn ensure_sws_template_unit() -> Result<PathBuf, Status> {
 
 /// 写一份 per-site SWS 配置;后续调用方再 `systemctl enable --now
 /// sws@<name>.service` 把 instance 拉起来。
-#[allow(dead_code)]
 pub(crate) async fn write_sws_site_config(
     site_name: &str,
     root: &str,
@@ -727,6 +721,35 @@ pub(crate) async fn remove_sws_site_config(site_name: &str) -> Result<(), Status
         tokio::fs::remove_file(&path).await.map_err(io_status)?;
     }
     Ok(())
+}
+
+/// 检查 static-web-server 二进制是否已安装,作为"要不要起 sws@instance"
+/// 的判断条件。没装的话,site.rs 那边的 hook 会直接跳过,不会留下
+/// orphan systemd unit。
+pub(crate) async fn is_sws_installed() -> bool {
+    tokio::fs::try_exists("/usr/local/bin/static-web-server")
+        .await
+        .unwrap_or(false)
+}
+
+/// 给一个静态站点起 sws@<name>.service:写 template unit(幂等)+ per-site
+/// 配置 + daemon-reload + enable --now。SKIP_EXECUTE 干跑跳过 systemctl。
+/// 返回 Ok(true) 表示已起,Ok(false) 表示 SWS 没装 / 跳过。
+pub(crate) async fn start_sws_for_site(
+    site_name: &str,
+    root: &str,
+    port: u16,
+) -> Result<bool, Status> {
+    if !is_sws_installed().await {
+        return Ok(false);
+    }
+    ensure_sws_template_unit().await?;
+    write_sws_site_config(site_name, root, port).await?;
+    if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
+        systemctl(&["daemon-reload"]).await?;
+        systemctl(&["enable", "--now", &format!("sws@{site_name}.service")]).await?;
+    }
+    Ok(true)
 }
 
 pub fn app_templates() -> Vec<AppTemplate> {

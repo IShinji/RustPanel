@@ -135,11 +135,14 @@ impl SiteService for SiteServiceImpl {
         } else {
             String::new()
         };
-        // RustBinary 内部 nginx → 本地 127.0.0.1:internal_port,默认 9100+ 区段
-        let internal_port = if kind == SiteKind::RustBinary {
-            9100 + (hash_name_to_port_offset(&request.name) % 800)
-        } else {
-            0
+        // RustBinary 内部 nginx → 本地 127.0.0.1:internal_port,默认 9100+ 区段。
+        // Static 在 sws 装上时也分配一个 internal_port(8200+ 区段),
+        // 让"装上 SWS 后切到 SWS 后端"成为零额外配置的事;没装 SWS 时
+        // 这个端口什么都不占,nginx vhost 照常服务静态文件。
+        let internal_port = match kind {
+            SiteKind::RustBinary => 9100 + (hash_name_to_port_offset(&request.name) % 800),
+            SiteKind::Static => 8200 + (hash_name_to_port_offset(&request.name) % 800),
+            _ => 0,
         };
 
         let site = SiteItem {
@@ -158,6 +161,54 @@ impl SiteService for SiteServiceImpl {
             systemd_unit,
             internal_port,
         };
+
+        // 机会主义起 sws@<name>.service:Static 站点 + SWS 已装时,
+        // 写 per-site 配置并 enable --now;SWS 没装就跳过,什么都不留下。
+        // 失败不阻塞站点创建。
+        if let Some((root, port)) = crate::appstore::static_site_to_sws_args(&site) {
+            let safe = safe_name(&site.name).unwrap_or_else(|_| site.name.clone());
+            match crate::appstore::start_sws_for_site(&safe, &root, port).await {
+                Ok(true) => tracing::info!(
+                    target = "site.sws",
+                    site = %site.name,
+                    port = port,
+                    "sws@instance started"
+                ),
+                Ok(false) => {} // SWS 没装,静默跳过
+                Err(error) => tracing::warn!(
+                    target = "site.sws",
+                    site = %site.name,
+                    error = %error,
+                    "sws@instance start failed (non-fatal)"
+                ),
+            }
+        }
+
+        // 机会主义写一份 rpxy 站点片段:
+        // - rpxy 没装 / 没启用时,文件静静躺在 sites.d 里,装上 rpxy
+        //   后它会自动读到(rpxy 默认 watch 该目录)
+        // - 写失败不阻塞 site 创建 —— 用户已经看到 nginx vhost 落了盘,
+        //   rpxy 这条腿就算暂时 broken,不影响主流程
+        // - Static 站点 site_to_rpxy_app_block 返回 None(rpxy 不直接
+        //   服务静态文件,需 sws 上游配合,见 static_site_to_sws_args)
+        if let Some(block) = crate::appstore::site_to_rpxy_app_block(&site) {
+            let safe = safe_name(&site.name).unwrap_or_else(|_| site.name.clone());
+            if let Err(error) = crate::appstore::write_rpxy_site_fragment(&safe, &block).await {
+                tracing::warn!(
+                    target = "site.rpxy",
+                    site = %site.name,
+                    error = %error,
+                    "rpxy site fragment write failed (non-fatal)"
+                );
+            } else if let Err(error) = crate::appstore::reload_rpxy_if_running().await {
+                tracing::warn!(
+                    target = "site.rpxy",
+                    site = %site.name,
+                    error = %error,
+                    "rpxy reload failed (non-fatal)"
+                );
+            }
+        }
 
         Ok(GrpcResponse::new(CreateSiteResponse {
             status: Some(ok_response("site created")),

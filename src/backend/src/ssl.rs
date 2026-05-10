@@ -515,7 +515,6 @@ fn domain_cert_dir(domain: &str) -> PathBuf {
 /// 给其他模块(rpxy / leaf / vSMTP 等)用的"按域名取 fullchain + privkey
 /// 路径"统一入口。证书是否实际存在由调用方再 metadata 验证 ——
 /// 这里只是路径合约,不做 IO。
-#[allow(dead_code)] // 等 site.rs 接入 rpxy backend 分支时启用
 pub(crate) fn acme_cert_paths(domain: &str) -> (PathBuf, PathBuf) {
     let dir = domain_cert_dir(domain);
     (dir.join("fullchain.pem"), dir.join("privkey.pem"))
