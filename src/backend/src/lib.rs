@@ -49,6 +49,7 @@ pub mod security;
 pub mod site;
 pub mod ssl;
 pub mod terminal;
+pub mod vsmtp;
 pub mod workload;
 
 mod assets;
@@ -78,6 +79,7 @@ use proto::rustpanel::v1::{
     ssl_service_server::SslServiceServer,
     system_service_server::{SystemService, SystemServiceServer},
     terminal_service_server::TerminalServiceServer,
+    vsmtp_alias_service_server::VsmtpAliasServiceServer,
     workload_service_server::WorkloadServiceServer,
     GetSystemInfoRequest, GetSystemInfoResponse, HealthCheckRequest, HealthCheckResponse,
     HealthStatus, ListRuntimeModulesRequest, ListRuntimeModulesResponse, Response,
@@ -382,6 +384,10 @@ fn multiplex_service_with_auth(
         ))
         .add_service(CronServiceServer::with_interceptor(
             cron::CronServiceImpl::new(),
+            auth_interceptor.clone(),
+        ))
+        .add_service(VsmtpAliasServiceServer::with_interceptor(
+            vsmtp::VsmtpAliasServiceImpl,
             auth_interceptor.clone(),
         ))
         .add_service(WorkloadServiceServer::with_interceptor(

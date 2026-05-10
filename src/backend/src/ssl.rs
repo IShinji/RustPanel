@@ -512,6 +512,15 @@ fn domain_cert_dir(domain: &str) -> PathBuf {
     cert_root().join(domain)
 }
 
+/// 给其他模块(rpxy / leaf / vSMTP 等)用的"按域名取 fullchain + privkey
+/// 路径"统一入口。证书是否实际存在由调用方再 metadata 验证 ——
+/// 这里只是路径合约,不做 IO。
+#[allow(dead_code)] // 等 site.rs 接入 rpxy backend 分支时启用
+pub(crate) fn acme_cert_paths(domain: &str) -> (PathBuf, PathBuf) {
+    let dir = domain_cert_dir(domain);
+    (dir.join("fullchain.pem"), dir.join("privkey.pem"))
+}
+
 fn current_timestamp() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -539,6 +548,16 @@ mod tests {
         assert_eq!(warning_level(30), "warning");
         assert_eq!(warning_level(7), "danger");
         assert_eq!(warning_level(1), "critical");
+    }
+
+    #[test]
+    fn acme_cert_paths_returns_per_domain_fullchain_and_privkey() {
+        let (cert, key) = acme_cert_paths("example.com");
+        assert!(cert.ends_with("example.com/fullchain.pem"));
+        assert!(key.ends_with("example.com/privkey.pem"));
+        // cert 与 key 必须在同一目录下,后续模块(rpxy / leaf)可以
+        // 把目录作为单位 watch
+        assert_eq!(cert.parent(), key.parent());
     }
 
     #[test]
