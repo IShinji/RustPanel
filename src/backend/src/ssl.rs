@@ -68,9 +68,7 @@ impl SslService for SslServiceImpl {
                 );
                 let (record_name, record_value) = build_manual_dns_challenge(&request.domain);
                 return Ok(GrpcResponse::new(RequestCertificateResponse {
-                    status: Some(ok_response(
-                        "请把下方 TXT 记录加到 DNS,完成后再点一次申请",
-                    )),
+                    status: Some(ok_response("请把下方 TXT 记录加到 DNS,完成后再点一次申请")),
                     certificate: None,
                     dns_record_name: record_name,
                     dns_record_value: record_value,

@@ -249,9 +249,7 @@ impl DatabaseService for DatabaseServiceImpl {
             return Err(Status::invalid_argument("path is required"));
         }
         if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(io_status)?;
+            tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
         }
         let dsn = format!("sqlite:{}?mode=rwc", path.display());
         SQLX_DRIVERS.call_once(sqlx::any::install_default_drivers);
