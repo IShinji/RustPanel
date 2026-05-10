@@ -167,6 +167,7 @@ type TabId =
   | "database"
   | "files"
   | "cron"
+  | "appstore"
   | "docker"
   | "security"
   | "audit"
@@ -418,7 +419,8 @@ const tabs: NavTab[] = [
   { id: "database", label: "数据库", icon: Database, group: "host", modules: ["database"] },
   { id: "files", label: "文件", icon: Folder, group: "resource", modules: ["files"] },
   { id: "cron", label: "计划任务", icon: Clock, group: "resource", modules: ["cron"] },
-  { id: "docker", label: "软件商店", icon: Boxes, group: "resource", modules: ["docker", "appstore"] },
+  { id: "appstore", label: "软件商店", icon: Store, group: "resource", modules: ["appstore"] },
+  { id: "docker", label: "容器", icon: Boxes, group: "resource", modules: ["docker"] },
   { id: "security", label: "安全", icon: Shield, group: "security", modules: ["security"] },
   { id: "audit", label: "日志", icon: ScrollText, group: "security", modules: ["cluster"] },
   { id: "cluster", label: "集群", icon: Network, group: "security", modules: ["cluster"] },
@@ -669,6 +671,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
             />
           )}
           {active === "cron" && <CronPanel clients={clients} />}
+          {active === "appstore" && <SoftwareStorePage clients={clients} />}
           {active === "docker" && <DockerApps clients={clients} />}
           {active === "security" && <SecurityPanel clients={clients} />}
           {active === "audit" && <AuditPage clients={clients} />}
@@ -1086,7 +1089,13 @@ function Dashboard({ clients }: { clients: Clients }) {
               <LineChart data={chartData} onClick={(state) => handleChartClick(state as ChartClickState)}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="time" minTickGap={24} stroke="var(--muted-foreground)" fontSize={12} />
-                <YAxis domain={[0, 100]} stroke="var(--muted-foreground)" fontSize={12} />
+                <YAxis
+                  domain={[0, 100]}
+                  stroke="var(--muted-foreground)"
+                  fontSize={12}
+                  tickFormatter={(value) => `${Math.round(Number(value))}%`}
+                  width={40}
+                />
                 <Tooltip
                   contentStyle={{
                     background: "var(--popover)",
@@ -1094,9 +1103,13 @@ function Dashboard({ clients }: { clients: Clients }) {
                     borderRadius: 8,
                     color: "var(--popover-foreground)"
                   }}
+                  formatter={(value) => {
+                    const num = typeof value === "number" ? value : Number(value);
+                    return Number.isFinite(num) ? `${num.toFixed(1)}%` : String(value);
+                  }}
                 />
-                <Line dataKey="cpu" dot={false} stroke="var(--chart-1)" strokeWidth={2} name="CPU %" />
-                <Line dataKey="memory" dot={false} stroke="var(--chart-2)" strokeWidth={2} name="内存 %" />
+                <Line dataKey="cpu" dot={false} stroke="var(--chart-1)" strokeWidth={2} name="CPU" />
+                <Line dataKey="memory" dot={false} stroke="var(--chart-2)" strokeWidth={2} name="内存" />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -2871,6 +2884,145 @@ function FileManager({ clients, openTerminal }: { clients: Clients; openTerminal
   );
 }
 
+// Phase B 后续修补:把"软件商店"从 DockerApps 抽成独立页,不再跟着
+// Docker daemon 一起挂掉。OpenVZ 上 docker.* 全部 reject 也能正常使用。
+function SoftwareStorePage({ clients }: { clients: Clients }) {
+  const [templates, setTemplates] = useState<AppTemplate[]>([]);
+  const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
+  const [selectedVersions, setSelectedVersions] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const [tplResp, installedResp] = await Promise.all([
+        clients.appStore.listAppTemplates({}),
+        clients.appStore.listInstalledApps({}).catch(() => ({ apps: [] as InstalledApp[] }))
+      ]);
+      setTemplates(tplResp.templates);
+      setInstalledApps(installedResp.apps);
+      setSelectedVersions((current) => ({
+        ...Object.fromEntries(
+          tplResp.templates.map((tpl) => [tpl.slug, tpl.defaultVersion])
+        ),
+        ...current
+      }));
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const deployTemplate = async (template: AppTemplate) => {
+    try {
+      const version = selectedVersions[template.slug] || template.defaultVersion;
+      await clients.appStore.deployApp({
+        slug: template.slug,
+        appName: `${template.slug}-${version || "default"}`.replaceAll(".", "-"),
+        version
+      });
+      setMessage(`${template.name} 已开始部署`);
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const uninstallApp = async (app: InstalledApp) => {
+    try {
+      await clients.appStore.uninstallApp({ appName: app.appName });
+      setMessage(`${app.appName} 已卸载`);
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight m-0">软件商店</h1>
+          <p className="text-sm text-muted-foreground m-0">
+            按当前主机能力分组(可用 / 资源不足 / 内核不支持 / 需要 Docker)。
+            轻量包优先,docker 路线在 OpenVZ 上自动折叠。
+          </p>
+        </div>
+        <UIButton variant="outline" size="sm" onClick={() => void load()}>
+          <RefreshCw className="size-4" />
+          刷新
+        </UIButton>
+      </header>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+          {message}
+        </div>
+      )}
+
+      <SoftwareStore
+        templates={templates}
+        selectedVersions={selectedVersions}
+        onVersionChange={(slug, version) =>
+          setSelectedVersions((prev) => ({ ...prev, [slug]: version }))
+        }
+        onDeploy={(template) => void deployTemplate(template)}
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>已安装运行环境</CardTitle>
+          <CardDescription>面板托管的应用与状态</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {installedApps.length === 0 ? (
+            <div className="empty-state text-sm">尚未安装任何应用</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>名称</TableHead>
+                  <TableHead>镜像 / 版本</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {installedApps.map((app) => (
+                  <UITableRow key={app.appName}>
+                    <TableCell className="font-medium">{app.appName}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {app.image} · {app.version || "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={appStateVariant(app.state)}>{app.state || "unknown"}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <UIButton variant="ghost" size="sm" onClick={() => void uninstallApp(app)}>
+                        <Trash2 className="size-3.5" />
+                        卸载
+                      </UIButton>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
 function DockerApps({ clients }: { clients: Clients }) {
   const [containers, setContainers] = useState<ContainerItem[]>([]);
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -2887,27 +3039,32 @@ function DockerApps({ clients }: { clients: Clients }) {
   const [error, setError] = useState("");
 
   const load = async () => {
-    try {
-      const [containerResponse, imageResponse, composeResponse, templateResponse, installedResponse] = await Promise.all([
-        clients.docker.listContainers({ all: true }),
-        clients.docker.listImages({ all: true }),
-        clients.docker.listComposeProjects({}),
-        clients.appStore.listAppTemplates({}),
-        clients.appStore.listInstalledApps({})
-      ]);
-      setContainers(containerResponse.containers);
-      setImages(imageResponse.images);
-      setComposeProjects(composeResponse.projects);
-      setTemplates(templateResponse.templates);
-      setInstalledApps(installedResponse.apps);
+    // Promise.allSettled 而不是 Promise.all:OpenVZ 上 Docker 不通也不能让
+    // 同页面的 SoftwareStore / 已装应用列表跟着挂掉。每个调用各自吞错。
+    const [containerR, imageR, composeR, templateR, installedR] = await Promise.allSettled([
+      clients.docker.listContainers({ all: true }),
+      clients.docker.listImages({ all: true }),
+      clients.docker.listComposeProjects({}),
+      clients.appStore.listAppTemplates({}),
+      clients.appStore.listInstalledApps({})
+    ]);
+    if (containerR.status === "fulfilled") setContainers(containerR.value.containers);
+    if (imageR.status === "fulfilled") setImages(imageR.value.images);
+    if (composeR.status === "fulfilled") setComposeProjects(composeR.value.projects);
+    if (templateR.status === "fulfilled") {
+      setTemplates(templateR.value.templates);
       setSelectedVersions((current) => ({
-        ...Object.fromEntries(templateResponse.templates.map((template) => [template.slug, template.defaultVersion])),
+        ...Object.fromEntries(
+          templateR.value.templates.map((template) => [template.slug, template.defaultVersion])
+        ),
         ...current
       }));
-      setError("");
-    } catch (err) {
-      setError(safeError(err));
     }
+    if (installedR.status === "fulfilled") setInstalledApps(installedR.value.apps);
+    const failures = [containerR, imageR, composeR, templateR, installedR]
+      .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+      .map((r) => safeError(r.reason));
+    setError(failures.length ? failures.join("; ") : "");
   };
 
   useEffect(() => {
