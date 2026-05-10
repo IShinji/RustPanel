@@ -535,10 +535,19 @@ pub(crate) fn site_to_rpxy_app_block(site: &SiteItem) -> Option<String> {
         // 调用方应当走 static_site_to_sws_args 这条路径。
         _ => return None,
     };
+    // ssl_enabled 时显式指向 RustPanel ssl 模块按域签下的证书,**不让 rpxy
+    // 自己跑 ACME** —— NAT VPS 没有 80/443,只能走 DNS-01,ACME 客户端
+    // 已经是 ssl 模块的工作。证书是否实际存在由调用方在写入前自行验证;
+    // 这里只发出"路径合约"。
     let tls_line = if site.ssl_enabled {
-        "tls = { https_redirection = true, acme = true }\n"
+        let (cert, key) = crate::ssl::acme_cert_paths(primary_domain);
+        format!(
+            "tls = {{ https_redirection = true, tls_cert_path = \"{}\", tls_cert_key_path = \"{}\" }}\n",
+            cert.display(),
+            key.display(),
+        )
     } else {
-        ""
+        String::new()
     };
     Some(format!(
         "[apps.\"{name}\"]\nserver_name = \"{domain}\"\nreverse_proxy = [{{ location = \"/\", upstream = [{{ location = \"{upstream}\" }}] }}]\n{tls}",
@@ -2125,7 +2134,12 @@ mod tests {
         assert!(block.contains("[apps.\"blog\"]"));
         assert!(block.contains("server_name = \"blog.example.com\""));
         assert!(block.contains("location = \"127.0.0.1:8080\""));
-        assert!(block.contains("acme = true"));
+        // ssl_enabled → 显式指向 ssl 模块按域签下的证书,不让 rpxy 自跑 ACME
+        assert!(block.contains("tls_cert_path = "));
+        assert!(block.contains("tls_cert_key_path = "));
+        assert!(block.contains("blog.example.com/fullchain.pem"));
+        assert!(block.contains("blog.example.com/privkey.pem"));
+        assert!(!block.contains("acme = true"));
     }
 
     #[test]
@@ -2135,7 +2149,8 @@ mod tests {
         let block = site_to_rpxy_app_block(&site).expect("rust-binary 块应生成");
         assert!(block.contains("location = \"127.0.0.1:4321\""));
         // 默认 ssl_enabled=false 时不出 tls 段
-        assert!(!block.contains("acme = true"));
+        assert!(!block.contains("tls_cert_path"));
+        assert!(!block.contains("tls = "));
     }
 
     #[test]

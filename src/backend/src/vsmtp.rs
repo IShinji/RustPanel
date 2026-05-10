@@ -36,6 +36,7 @@ use crate::{
 };
 
 const DEFAULT_RUNTIME_ROOT: &str = "/var/lib/rustpanel/runtime";
+const DEFAULT_VSMTP_CONFIG_DIR: &str = "/etc/vsmtp";
 
 #[derive(Clone, Debug, Default)]
 pub struct VsmtpAliasServiceImpl;
@@ -83,6 +84,7 @@ impl VsmtpAliasService for VsmtpAliasServiceImpl {
         aliases.push(stored.clone());
         sort_aliases(&mut aliases);
         save_aliases(&aliases).await?;
+        apply_vsmtp_runtime(&aliases).await?;
         Ok(GrpcResponse::new(UpsertVsmtpAliasResponse {
             status: Some(ok_response("alias saved")),
             alias: Some(stored),
@@ -102,6 +104,7 @@ impl VsmtpAliasService for VsmtpAliasServiceImpl {
             return Err(Status::not_found("alias not found"));
         }
         save_aliases(&aliases).await?;
+        apply_vsmtp_runtime(&aliases).await?;
         Ok(GrpcResponse::new(DeleteVsmtpAliasResponse {
             status: Some(ok_response("alias deleted")),
         }))
@@ -247,6 +250,90 @@ fn io_status(error: impl std::fmt::Display) -> Status {
     Status::internal(error.to_string())
 }
 
+// =====================================================================
+// vSMTP runtime artifact:把 alias 表落到 vSMTP 进程可读的两份文件:
+// - /etc/vsmtp/aliases.json:紧凑表数据,适合脚本 / debug
+// - /etc/vsmtp/rules/aliases.rhai:Rhai 常量 map,vSMTP 的 .rhai 主
+//   规则文件可以直接 import 这一份 const ALIASES
+// 两份都原子写。reload vSMTP 不在这里做(独立 lifecycle,且 vSMTP
+// 一般 watch 配置文件自动 reload)。
+// =====================================================================
+
+fn vsmtp_config_dir() -> PathBuf {
+    env::var("RUSTPANEL_VSMTP_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_VSMTP_CONFIG_DIR))
+}
+
+/// 纯函数:把 alias 表序列化成给外部脚本读的紧凑 JSON。
+pub(crate) fn render_vsmtp_aliases_json(aliases: &[VsmtpAlias]) -> String {
+    let stored: Vec<StoredAlias> = aliases
+        .iter()
+        .cloned()
+        .map(StoredAlias::from_proto)
+        .collect();
+    serde_json::to_string_pretty(&stored).unwrap_or_else(|_| "[]".to_owned())
+}
+
+/// 纯函数:把 alias 表生成 Rhai const map。vSMTP 主脚本里
+/// `import "aliases" as a;` 然后 `a::ALIASES["amazon"]` 拿目标地址。
+/// 转发链路逻辑(改 Reply-To / 走 relay)在主脚本里写,这里只供数据。
+pub(crate) fn render_vsmtp_rhai(aliases: &[VsmtpAlias]) -> String {
+    let mut body = String::new();
+    body.push_str("// RustPanel-managed vSMTP alias map. Regenerated on every UI change.\n");
+    body.push_str("// Do not edit by hand — changes will be overwritten.\n");
+    body.push_str("const ALIASES = #{\n");
+    // 已按 alias 升序持久化,这里也按入参顺序输出,保证 diff 稳定
+    for alias in aliases {
+        body.push_str("    ");
+        // alias 已经过 validate_alias_local 校验,只含安全字符;
+        // 仍然走标准转义防御性 escape。
+        body.push_str(&format!(
+            "\"{}\": \"{}\",\n",
+            escape_rhai_string(&alias.alias),
+            escape_rhai_string(&alias.forward_to)
+        ));
+    }
+    body.push_str("};\n");
+    body
+}
+
+fn escape_rhai_string(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+async fn write_atomic(path: PathBuf, body: &[u8]) -> Result<(), Status> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+    let tmp = path.with_extension("rustpanel-tmp");
+    tokio::fs::write(&tmp, body).await.map_err(io_status)?;
+    tokio::fs::rename(&tmp, &path).await.map_err(io_status)
+}
+
+/// 把 alias 表同时落到 aliases.json + rules/aliases.rhai。
+async fn apply_vsmtp_runtime(aliases: &[VsmtpAlias]) -> Result<(), Status> {
+    let dir = vsmtp_config_dir();
+    let json_path = dir.join("aliases.json");
+    let rhai_path = dir.join("rules").join("aliases.rhai");
+    let json_body = render_vsmtp_aliases_json(aliases);
+    let rhai_body = render_vsmtp_rhai(aliases);
+    write_atomic(json_path, json_body.as_bytes()).await?;
+    write_atomic(rhai_path, rhai_body.as_bytes()).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,6 +360,62 @@ mod tests {
         assert!(validate_forward_to("me@localhost").is_err());
         assert!(validate_forward_to("@example.com").is_err());
         assert!(validate_forward_to("me@").is_err());
+    }
+
+    #[test]
+    fn render_vsmtp_rhai_emits_const_alias_map() {
+        let aliases = vec![
+            VsmtpAlias {
+                alias: "amazon".to_owned(),
+                forward_to: "me@example.com".to_owned(),
+                note: String::new(),
+                created_at_seconds: 0,
+                updated_at_seconds: 0,
+            },
+            VsmtpAlias {
+                alias: "github".to_owned(),
+                forward_to: "other@example.com".to_owned(),
+                note: String::new(),
+                created_at_seconds: 0,
+                updated_at_seconds: 0,
+            },
+        ];
+        let rhai = render_vsmtp_rhai(&aliases);
+        assert!(rhai.contains("const ALIASES = #{"));
+        assert!(rhai.contains("\"amazon\": \"me@example.com\""));
+        assert!(rhai.contains("\"github\": \"other@example.com\""));
+        // 空表也要是合法 rhai —— 至少有 const ALIASES = #{};
+        let empty = render_vsmtp_rhai(&[]);
+        assert!(empty.contains("const ALIASES = #{"));
+        assert!(empty.contains("};"));
+    }
+
+    #[test]
+    fn escape_rhai_string_handles_quotes_and_backslashes() {
+        assert_eq!(escape_rhai_string("abc"), "abc");
+        assert_eq!(escape_rhai_string("a\"b"), "a\\\"b");
+        assert_eq!(escape_rhai_string("a\\b"), "a\\\\b");
+        assert_eq!(escape_rhai_string("line1\nline2"), "line1\\nline2");
+    }
+
+    #[test]
+    fn render_vsmtp_aliases_json_round_trips() {
+        let aliases = vec![VsmtpAlias {
+            alias: "amazon".to_owned(),
+            forward_to: "me@example.com".to_owned(),
+            note: "amazon 注册".to_owned(),
+            created_at_seconds: 1234,
+            updated_at_seconds: 5678,
+        }];
+        let json = render_vsmtp_aliases_json(&aliases);
+        let parsed: Vec<StoredAlias> =
+            serde_json::from_str(&json).expect("regenerated json must be parseable back");
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].alias, "amazon");
+        assert_eq!(parsed[0].forward_to, "me@example.com");
+        assert_eq!(parsed[0].note, "amazon 注册");
+        assert_eq!(parsed[0].created_at_seconds, 1234);
+        assert_eq!(parsed[0].updated_at_seconds, 5678);
     }
 
     #[test]
