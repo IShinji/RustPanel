@@ -590,11 +590,18 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
   );
 
   useEffect(() => {
-    clients.system.listRuntimeModules({}).then((response) => {
-      setModules(response.modules);
-    }).catch(() => {
-      setModules([]);
-    });
+    const refresh = () => {
+      clients.system
+        .listRuntimeModules({})
+        .then((response) => setModules(response.modules))
+        .catch(() => setModules([]));
+    };
+    refresh();
+    // ModulesPanel toggle 后会 dispatch rustpanel:modules-changed,这里收到就
+    // 重拉一次模块清单 → visibleTabs 重算 → 侧栏立刻反映新状态。
+    const onChanged = () => refresh();
+    window.addEventListener("rustpanel:modules-changed", onChanged);
+    return () => window.removeEventListener("rustpanel:modules-changed", onChanged);
   }, []);
 
   useEffect(() => {
@@ -5032,8 +5039,13 @@ function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout: () =>
           <TabsTrigger value="basic">基础</TabsTrigger>
           <TabsTrigger value="security">安全</TabsTrigger>
           <TabsTrigger value="ssl">SSL</TabsTrigger>
+          <TabsTrigger value="modules">模块</TabsTrigger>
           <TabsTrigger value="about">关于</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="modules" className="mt-4">
+          <ModulesPanel clients={clients} />
+        </TabsContent>
 
         <TabsContent value="basic" className="mt-4">
           <Card>
@@ -5356,6 +5368,111 @@ function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout: () =>
 }
 
 // ====== FTP 占位 ======
+// ModulesPanel:面板里直接 toggle 启用/禁用功能模块。
+// 切换后立即生效(后端写 modules.json override),不需要改 .env / 重启。
+// 同时 dispatch 自定义事件 rustpanel:modules-changed,让侧栏刷新可见 Tab。
+function ModulesPanel({ clients }: { clients: Clients }) {
+  const [modules, setModules] = useState<RuntimeModule[]>([]);
+  const [profile, setProfile] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const response = await clients.system.listRuntimeModules({});
+      setModules(response.modules);
+      setProfile(response.profile);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const toggle = async (module: RuntimeModule, enabled: boolean) => {
+    if (module.required) return;
+    setBusy(module.id);
+    try {
+      const response = await clients.system.setModuleEnabled({
+        moduleId: module.id,
+        enabled
+      });
+      setModules(response.modules);
+      setProfile(response.profile);
+      setMessage(`${module.name} 已${enabled ? "启用" : "禁用"}`);
+      setError("");
+      // 通知 AppShell 重新拉模块清单刷新侧栏
+      window.dispatchEvent(new CustomEvent("rustpanel:modules-changed"));
+    } catch (err) {
+      setError(safeError(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <SettingsIcon className="size-4 text-primary" />
+          功能模块开关
+        </CardTitle>
+        <CardDescription>
+          启用/禁用立即生效,不需要重启面板。当前 profile:
+          <Badge variant="muted" className="ml-2">{profile || "custom"}</Badge>
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {error && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+        {message && !error && (
+          <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+            {message}
+          </div>
+        )}
+        <div className="flex flex-col divide-y divide-border rounded-md border border-border">
+          {modules.map((m) => (
+            <div
+              key={m.id}
+              className="flex items-center justify-between gap-3 px-4 py-3"
+            >
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium">{m.name}</span>
+                  <Badge variant="outline" className="font-mono text-[10px]">
+                    {m.id}
+                  </Badge>
+                  {m.required && <Badge variant="info">核心</Badge>}
+                </div>
+                <span className="text-xs text-muted-foreground truncate">
+                  {m.reason}
+                </span>
+              </div>
+              <Switch
+                checked={m.enabled}
+                disabled={m.required || busy === m.id}
+                onCheckedChange={(checked) => void toggle(m, checked)}
+              />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          配置写到 <code className="font-mono">/var/lib/rustpanel/runtime/modules.json</code>,优先级高于 .env 中
+          的 <code className="font-mono">RUSTPANEL_ENABLED_MODULES</code> /
+          <code className="font-mono">RUSTPANEL_DISABLED_MODULES</code>。
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function FtpPage() {
   return (
     <section className="flex flex-col gap-5 max-w-4xl">

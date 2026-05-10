@@ -52,9 +52,24 @@ message ListRuntimeModulesResponse {
   string profile = 3;
 }
 
+// SetModuleEnabledRequest 切换某个模块启用状态。
+message SetModuleEnabledRequest {
+  string module_id = 1;
+  bool enabled = 2;
+}
+
+// SetModuleEnabledResponse 返回切换后的最新模块清单。
+message SetModuleEnabledResponse {
+  Response status = 1;
+  repeated RuntimeModule modules = 2;
+  string profile = 3;
+}
+
 // SystemService 提供系统守护进程的基础探测能力。
 service SystemService {
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
   rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
   rpc ListRuntimeModules(ListRuntimeModulesRequest) returns (ListRuntimeModulesResponse);
+  // 切换某个模块启用状态;立即生效,无需重启面板。
+  rpc SetModuleEnabled(SetModuleEnabledRequest) returns (SetModuleEnabledResponse);
 }

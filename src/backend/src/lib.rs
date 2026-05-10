@@ -80,8 +80,8 @@ use proto::rustpanel::v1::{
     terminal_service_server::TerminalServiceServer,
     workload_service_server::WorkloadServiceServer,
     GetSystemInfoRequest, GetSystemInfoResponse, HealthCheckRequest, HealthCheckResponse,
-    HealthStatus, ListRuntimeModulesRequest, ListRuntimeModulesResponse, Response, SystemStatus,
-    TerminalResize,
+    HealthStatus, ListRuntimeModulesRequest, ListRuntimeModulesResponse, Response,
+    SetModuleEnabledRequest, SetModuleEnabledResponse, SystemStatus, TerminalResize,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -140,6 +140,51 @@ impl SystemService for SystemServiceImpl {
 
         Ok(GrpcResponse::new(ListRuntimeModulesResponse {
             status: Some(ok_response("ok")),
+            modules: modules.statuses().into_iter().map(Into::into).collect(),
+            profile: modules.profile().to_owned(),
+        }))
+    }
+
+    async fn set_module_enabled(
+        &self,
+        request: GrpcRequest<SetModuleEnabledRequest>,
+    ) -> Result<GrpcResponse<SetModuleEnabledResponse>, Status> {
+        let req = request.into_inner();
+        if req.module_id.trim().is_empty() {
+            return Err(Status::invalid_argument("module_id is required"));
+        }
+        let module_id = req.module_id.trim().to_owned();
+
+        // 读当前 override(没有就基于 env 起一份初始 vec),按目标状态更新,
+        // 落盘后清缓存。下一次任意 RPC 重新 from_env() 就会读到新值。
+        let mut over = runtime::current_override().unwrap_or_default();
+        // 从两个列表里先删干净,再按 enabled 选择放回哪边
+        over.enabled.retain(|m| m != &module_id);
+        over.disabled.retain(|m| m != &module_id);
+        if req.enabled {
+            // enabled 留空表示"除 disabled 外都开",我们这里只显式禁掉时记录;
+            // 但如果 env 里有白名单(enabled set),override.enabled 必须包含
+            // 用户想开的所有模块,否则会被白名单卡住。所以一旦切到 enabled,
+            // 就把当前所有 enabled 模块都同步进 override.enabled。
+            let current = runtime::from_env();
+            let mut all_enabled: Vec<String> = current
+                .statuses()
+                .into_iter()
+                .filter(|s| s.enabled)
+                .map(|s| s.id.to_owned())
+                .collect();
+            if !all_enabled.contains(&module_id) {
+                all_enabled.push(module_id.clone());
+            }
+            over.enabled = all_enabled;
+        } else {
+            over.disabled.push(module_id);
+        }
+        runtime::save_override(&over)?;
+
+        let modules = runtime::from_env();
+        Ok(GrpcResponse::new(SetModuleEnabledResponse {
+            status: Some(ok_response("module state updated")),
             modules: modules.statuses().into_iter().map(Into::into).collect(),
             profile: modules.profile().to_owned(),
         }))

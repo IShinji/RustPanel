@@ -1,8 +1,93 @@
-use std::{collections::HashSet, env};
+use std::{
+    collections::HashSet,
+    env,
+    path::PathBuf,
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 
+use serde::{Deserialize, Serialize};
 use tonic::Status;
 
 use crate::proto::rustpanel::v1::RuntimeModule;
+
+const DEFAULT_RUNTIME_ROOT: &str = "/var/lib/rustpanel/runtime";
+const OVERRIDE_CACHE_TTL: Duration = Duration::from_secs(2);
+
+/// 文件级 override:写到 $RUSTPANEL_RUNTIME_ROOT/modules.json。
+/// 存在时覆盖 env 变量,允许从面板 UI 改 toggle 即时生效,无需重启。
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ModuleOverride {
+    /// 显式启用的模块 id;empty 表示"除 disabled 外都启用"。
+    #[serde(default)]
+    pub enabled: Vec<String>,
+    /// 显式禁用的模块 id。优先级高于 enabled。
+    #[serde(default)]
+    pub disabled: Vec<String>,
+}
+
+fn runtime_root() -> PathBuf {
+    env::var("RUSTPANEL_RUNTIME_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_RUNTIME_ROOT))
+}
+
+fn override_path() -> PathBuf {
+    runtime_root().join("modules.json")
+}
+
+struct OverrideCache {
+    value: Option<ModuleOverride>,
+    expires_at: Instant,
+}
+
+fn cache() -> &'static Mutex<Option<OverrideCache>> {
+    static CACHE: OnceLock<Mutex<Option<OverrideCache>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn load_override() -> Option<ModuleOverride> {
+    let mut guard = cache().lock().ok()?;
+    if let Some(entry) = guard.as_ref() {
+        if entry.expires_at > Instant::now() {
+            return entry.value.clone();
+        }
+    }
+    let parsed = match std::fs::read_to_string(override_path()) {
+        Ok(content) => serde_json::from_str::<ModuleOverride>(&content).ok(),
+        Err(_) => None,
+    };
+    *guard = Some(OverrideCache {
+        value: parsed.clone(),
+        expires_at: Instant::now() + OVERRIDE_CACHE_TTL,
+    });
+    parsed
+}
+
+/// 把当前 override 写到 modules.json,清缓存让下次读取立刻生效。
+pub fn save_override(value: &ModuleOverride) -> Result<(), Status> {
+    let path = override_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| Status::internal(format!("create runtime root: {e}")))?;
+    }
+    let serialized = serde_json::to_string_pretty(value)
+        .map_err(|e| Status::internal(format!("serialize override: {e}")))?;
+    // 写到临时文件再 rename 保证原子性,避免半写状态被读到。
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serialized)
+        .map_err(|e| Status::internal(format!("write override tmp: {e}")))?;
+    std::fs::rename(&tmp, &path).map_err(|e| Status::internal(format!("rename override: {e}")))?;
+    if let Ok(mut guard) = cache().lock() {
+        *guard = None; // 立即失效
+    }
+    Ok(())
+}
+
+/// 读当前 override(给 RPC 列表用)。文件不存在返回 None。
+pub fn current_override() -> Option<ModuleOverride> {
+    load_override()
+}
 
 pub const MODULE_CORE: &str = "core";
 pub const MODULE_AUDIT: &str = "audit";
@@ -46,16 +131,43 @@ pub struct RuntimeModules {
 
 impl RuntimeModules {
     pub fn from_env() -> Self {
-        let enabled = env::var("RUSTPANEL_ENABLED_MODULES")
+        let env_enabled = env::var("RUSTPANEL_ENABLED_MODULES")
             .ok()
             .map(|value| parse_module_set(&value));
-        let disabled = env::var("RUSTPANEL_DISABLED_MODULES")
+        let env_disabled = env::var("RUSTPANEL_DISABLED_MODULES")
             .ok()
             .map(|value| parse_module_set(&value))
             .unwrap_or_default();
         let profile = env::var("RUSTPANEL_INSTALL_PROFILE")
             .or_else(|_| env::var("RUSTPANEL_PROFILE"))
             .unwrap_or_else(|_| "custom".to_owned());
+
+        // modules.json override 优先于 env:用户在面板 toggle 后立刻反映,
+        // 不需要重启 / 改 .env。文件不存在或读失败时退回 env。
+        let (enabled, disabled) = match load_override() {
+            Some(over) => {
+                let enabled = if over.enabled.is_empty() {
+                    env_enabled
+                } else {
+                    Some(
+                        over.enabled
+                            .iter()
+                            .map(|s| normalize_module_id(s))
+                            .collect(),
+                    )
+                };
+                let disabled = if over.disabled.is_empty() {
+                    env_disabled
+                } else {
+                    over.disabled
+                        .iter()
+                        .map(|s| normalize_module_id(s))
+                        .collect()
+                };
+                (enabled, disabled)
+            }
+            None => (env_enabled, env_disabled),
+        };
 
         Self {
             enabled,
