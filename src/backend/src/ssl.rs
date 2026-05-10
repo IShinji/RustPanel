@@ -51,8 +51,8 @@ impl SslService for SslServiceImpl {
         let challenge_type =
             AcmeChallengeType::try_from(request.challenge_type).unwrap_or_default();
         // NAT VPS 上 80 端口通常拿不到,DNS-01 是唯一可行的挑战方式。
-        // 当前 manual 模式:面板生成确定性的 TXT 记录提示给用户,
-        // 用户在 DNS 控制台加完后,再调一次 RequestCertificate 跑实际验证。
+        // P8-04-5:走真实 instant-acme 状态机,第一次返回真 TXT,第二次完成
+        // 验证拿到证书。manual 模式默认走 staging,生产需要 RUSTPANEL_ACME_PRODUCTION=1。
         if challenge_type == AcmeChallengeType::Dns01 {
             let provider = if request.dns_provider.trim().is_empty() {
                 "manual"
@@ -64,15 +64,53 @@ impl SslService for SslServiceImpl {
                     &sender,
                     &request.domain,
                     CertificateState::Pending,
-                    "dns-01 manual: 等待用户添加 TXT 记录",
+                    "dns-01: 调用 ACME 服务器创建 order",
                 );
-                let (record_name, record_value) = build_manual_dns_challenge(&request.domain);
-                return Ok(GrpcResponse::new(RequestCertificateResponse {
-                    status: Some(ok_response("请把下方 TXT 记录加到 DNS,完成后再点一次申请")),
-                    certificate: None,
-                    dns_record_name: record_name,
-                    dns_record_value: record_value,
-                }));
+                let outcome = crate::acme::request_or_resume_dns01(&request.domain, &request.email)
+                    .await
+                    .map_err(|e| Status::internal(format!("acme error: {e}")))?;
+                match outcome {
+                    crate::acme::RequestOutcome::Challenge(c) => {
+                        send_progress(
+                            &sender,
+                            &request.domain,
+                            CertificateState::Pending,
+                            "等待用户添加 TXT 记录后再调用一次申请继续",
+                        );
+                        return Ok(GrpcResponse::new(RequestCertificateResponse {
+                            status: Some(ok_response(
+                                "请把下方 TXT 记录加到 DNS,生效后再点一次申请",
+                            )),
+                            certificate: None,
+                            dns_record_name: c.record_name,
+                            dns_record_value: c.record_value,
+                        }));
+                    }
+                    crate::acme::RequestOutcome::Issued(cert) => {
+                        let cert_dir = domain_cert_dir(&request.domain);
+                        let (cert_path, key_path) =
+                            crate::acme::install_certificate(&request.domain, &cert, &cert_root())
+                                .await
+                                .map_err(|e| Status::internal(format!("acme install: {e}")))?;
+                        let _ = cert_dir; // 兼容旧路径
+                        let _ = (cert_path, key_path);
+                        send_progress(
+                            &sender,
+                            &request.domain,
+                            CertificateState::Issued,
+                            "certificate stored via ACME",
+                        );
+                        let _ = reload_nginx().await;
+                        let item =
+                            certificate_item(&request.domain, CertificateState::Issued).await?;
+                        return Ok(GrpcResponse::new(RequestCertificateResponse {
+                            status: Some(ok_response("certificate issued")),
+                            certificate: Some(item),
+                            dns_record_name: String::new(),
+                            dns_record_value: String::new(),
+                        }));
+                    }
+                }
             }
             // cloudflare/route53 等 provider 留待后续实现
             return Err(Status::unimplemented(format!(
@@ -223,16 +261,6 @@ impl SslServiceImpl {
             .or_insert_with(|| broadcast::channel(SSL_CHANNEL_SIZE).0)
             .clone())
     }
-}
-
-// DNS-01 manual:返回固定的 _acme-challenge.<domain> 提示。
-// 真实的 token 在用户提交两次时才由 ACME 服务器分配,这里仅给出 RR name 与
-// "需要从 ACME 拿到 token 后再填" 的占位 value,引导用户先建好 RR 结构。
-fn build_manual_dns_challenge(domain: &str) -> (String, String) {
-    (
-        format!("_acme-challenge.{domain}"),
-        "<panel 后续会填入 ACME 服务器返回的 token>".to_owned(),
-    )
 }
 
 async fn issue_certificate(domain: &str) -> Result<CertificateItem, Status> {

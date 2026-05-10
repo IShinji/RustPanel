@@ -44,21 +44,33 @@ const DEFAULT_SSH_PORT: u32 = 22;
 const DEFAULT_SSH_FAILED_LIMIT: u32 = 5;
 const DEFAULT_SSH_FAILED_WINDOW_SECONDS: u32 = 600;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SecurityServiceImpl {
     store: SecurityStore,
+    rollback: Option<crate::rollback::RollbackServiceImpl>,
 }
 
 impl SecurityServiceImpl {
     pub fn new() -> Self {
         Self {
             store: SecurityStore::from_env(),
+            rollback: None,
         }
+    }
+
+    /// Phase F P8-06-3:把 RollbackService 注入,改面板端口 / SSH 端口 /
+    /// 防火墙规则前会先 schedule rollback,30 秒内没确认就自动恢复。
+    pub fn with_rollback(mut self, rollback: crate::rollback::RollbackServiceImpl) -> Self {
+        self.rollback = Some(rollback);
+        self
     }
 
     #[cfg(test)]
     fn with_store(store: SecurityStore) -> Self {
-        Self { store }
+        Self {
+            store,
+            rollback: None,
+        }
     }
 }
 
@@ -217,7 +229,29 @@ impl SecurityService for SecurityServiceImpl {
         validate_options(&options)?;
 
         let mut state = self.store.load().await?;
-        state.options = StoredSecurityOptions::from_proto(options);
+        let old_options = state.options.clone();
+        let new_options = StoredSecurityOptions::from_proto(options);
+
+        // P8-06-3:面板访问入口/监听地址/SSH-2FA 这些"动一刀就可能锁外面"的字段
+        // 改了 → 走 30 秒回滚护栏。snapshot_json 存旧值,后台 watchdog 任务在
+        // 倒计时到期且仍未被 confirm 时把旧值还原。
+        let risky_changed = old_options.panel_listen_addr != new_options.panel_listen_addr
+            || old_options.panel_access_path != new_options.panel_access_path
+            || old_options.two_factor_required != new_options.two_factor_required;
+
+        if risky_changed {
+            if let Some(rollback) = self.rollback.as_ref() {
+                arm_rollback_watchdog(
+                    rollback.clone(),
+                    self.store.clone(),
+                    &old_options,
+                    &new_options,
+                )
+                .await;
+            }
+        }
+
+        state.options = new_options;
         apply_options(&mut state.options).await?;
         self.store.save(&state).await?;
         let _ = audit::append_audit_event(
@@ -1101,6 +1135,101 @@ async fn apply_rule_change(
     }
     options.last_apply_message = messages.join("; ");
     Ok(())
+}
+
+// P8-06-3 watchdog:改完高风险字段后,在 RollbackService 排一个 30s 计时;
+// 同时本进程内开一个 tokio 任务,过了倒计时如果发现 action 还在 pending list
+// (说明用户没点"保留"),就把保存的旧 options 写回去 + 重新 apply。
+async fn arm_rollback_watchdog(
+    rollback: crate::rollback::RollbackServiceImpl,
+    store: SecurityStore,
+    old_options: &StoredSecurityOptions,
+    new_options: &StoredSecurityOptions,
+) {
+    let snapshot = match serde_json::to_string(old_options) {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(?error, "rollback watchdog: serialize old options failed");
+            return;
+        }
+    };
+    let title = format!(
+        "面板入口安全选项变更:listen={} → {} / path={} → {} / 2FA={} → {}",
+        old_options.panel_listen_addr,
+        new_options.panel_listen_addr,
+        old_options.panel_access_path,
+        new_options.panel_access_path,
+        old_options.two_factor_required,
+        new_options.two_factor_required,
+    );
+    let request = crate::proto::rustpanel::v1::ScheduleRollbackRequest {
+        title,
+        description: "30 秒内未点'保留(我能登录)'将自动回滚到旧设置,避免被锁外面。".to_owned(),
+        revert_command: String::new(),
+        snapshot_json: snapshot.clone(),
+        rollback_after_seconds: 30,
+    };
+    use crate::proto::rustpanel::v1::rollback_service_server::RollbackService;
+    let response = match rollback
+        .schedule_rollback(tonic::Request::new(request))
+        .await
+    {
+        Ok(resp) => resp.into_inner(),
+        Err(error) => {
+            tracing::warn!(?error, "rollback watchdog: schedule_rollback failed");
+            return;
+        }
+    };
+    let action_id = match response.action {
+        Some(a) => a.action_id,
+        None => return,
+    };
+
+    tokio::spawn(async move {
+        use crate::proto::rustpanel::v1::rollback_service_server::RollbackService;
+        // 倒计时 30s + 2s 缓冲
+        tokio::time::sleep(std::time::Duration::from_secs(32)).await;
+        let still_pending = match rollback
+            .list_pending_rollbacks(tonic::Request::new(
+                crate::proto::rustpanel::v1::ListPendingRollbacksRequest {},
+            ))
+            .await
+        {
+            Ok(resp) => resp
+                .into_inner()
+                .actions
+                .iter()
+                .any(|a| a.action_id == action_id),
+            Err(_) => false,
+        };
+        if !still_pending {
+            // 用户已 confirm,什么都不做
+            return;
+        }
+        // 用户没保留 → 还原
+        let restored: StoredSecurityOptions = match serde_json::from_str(&snapshot) {
+            Ok(value) => value,
+            Err(error) => {
+                tracing::error!(?error, "rollback watchdog: deserialize snapshot failed");
+                return;
+            }
+        };
+        let mut state = match store.load().await {
+            Ok(value) => value,
+            Err(error) => {
+                tracing::error!(?error, "rollback watchdog: load state failed");
+                return;
+            }
+        };
+        state.options = restored;
+        if let Err(error) = apply_options(&mut state.options).await {
+            tracing::error!(?error, "rollback watchdog: apply restored options failed");
+        }
+        if let Err(error) = store.save(&state).await {
+            tracing::error!(?error, "rollback watchdog: save restored state failed");
+        }
+        tracing::warn!(action_id = %action_id, "auto-rollback restored security options");
+    });
 }
 
 async fn apply_options(options: &mut StoredSecurityOptions) -> Result<(), Status> {

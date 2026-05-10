@@ -30,6 +30,7 @@ use tower::{make::Shared, service_fn, ServiceExt};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+pub mod acme;
 pub mod appstore;
 pub mod audit;
 pub mod auth;
@@ -279,6 +280,9 @@ fn multiplex_service_with_auth(
     );
     // AuthService 自身必须公开,login 是无 token 状态下唯一能调用的 RPC;其余 15 个服务一律拦截。
     let auth_interceptor = auth::AuthInterceptor::new(authority);
+    // RollbackService 需要在 SecurityServiceImpl 之前构造,这样 SecurityService
+    // 就能在改面板端口 / 2FA 前调它的 ScheduleRollback 把 30s 计时器排上。
+    let rollback_service = rollback::RollbackServiceImpl::new();
     let grpc = Server::builder()
         .accept_http1(true)
         .layer(tonic_web::GrpcWebLayer::new())
@@ -300,7 +304,7 @@ fn multiplex_service_with_auth(
             auth_interceptor.clone(),
         ))
         .add_service(SecurityServiceServer::with_interceptor(
-            security::SecurityServiceImpl::new(),
+            security::SecurityServiceImpl::new().with_rollback(rollback_service.clone()),
             auth_interceptor.clone(),
         ))
         .add_service(TerminalServiceServer::with_interceptor(
@@ -348,7 +352,7 @@ fn multiplex_service_with_auth(
             auth_interceptor.clone(),
         ))
         .add_service(RollbackServiceServer::with_interceptor(
-            rollback::RollbackServiceImpl::new(),
+            rollback_service,
             auth_interceptor,
         ))
         .into_service();

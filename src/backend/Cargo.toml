@@ -27,6 +27,7 @@ mime_guess = "2"
 portable-pty = "0.8"
 prost = "0.13"
 prost-types = "0.13"
+rcgen = "0.13"
 redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
 regex = "1"
 rust-embed = "8"
@@ -38,6 +39,7 @@ sqlx = { version = "0.8", default-features = false, features = ["any", "json", "
 sysinfo = "0.30"
 tar = "0.4"
 tera = "1"
+thiserror = "2"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-cron-scheduler = "0.13"
 tokio-stream = { version = "0.1", features = ["sync"] }
