@@ -123,6 +123,30 @@ impl CapabilityServiceImpl {
             .await
             .map_err(io_status)
     }
+
+    /// 在后端启动时调用一次,把面板自身监听的端口写进预留表(owner=panel),
+    /// 让 NAT 端口预算自然算上"面板已经占了 1 个"。重复调用幂等。
+    pub async fn seed_panel_port(&self, port: u16) -> Result<(), Status> {
+        if port == 0 {
+            return Ok(());
+        }
+        let mut items = self.load_reservations().await?;
+        if items.iter().any(|i| i.port == port as u32) {
+            return Ok(());
+        }
+        items.push(StoredReservation {
+            port: port as u32,
+            owner: "panel".to_owned(),
+            description: "RustPanel 面板自身监听端口".to_owned(),
+            protocol: "tcp".to_owned(),
+            reserved_at_seconds: now_seconds(),
+        });
+        items.sort_by_key(|i| i.port);
+        self.save_reservations(&items).await?;
+        let mut guard = self.inner.reservations.lock().await;
+        *guard = items;
+        Ok(())
+    }
 }
 
 impl Default for CapabilityServiceImpl {
@@ -484,10 +508,7 @@ async fn collect_ipv6_addresses() -> (Vec<Ipv6Address>, Vec<String>) {
                     if let (Ok(IpAddr::V6(v6)), Ok(p)) =
                         (addr.parse::<IpAddr>(), prefix.parse::<u32>())
                     {
-                        let segs = v6.segments();
-                        let is_link_local = segs[0] & 0xffc0 == 0xfe80;
-                        let is_loopback = v6.is_loopback();
-                        if !is_link_local && !is_loopback {
+                        if is_real_global_ipv6(&v6) {
                             addresses.push(Ipv6Address {
                                 address: addr.to_owned(),
                                 prefix_length: p,
@@ -518,10 +539,7 @@ async fn collect_ipv6_addresses() -> (Vec<Ipv6Address>, Vec<String>) {
                     }
                     let formatted = groups.join(":");
                     if let Ok(IpAddr::V6(v6)) = formatted.parse::<IpAddr>() {
-                        let segs = v6.segments();
-                        let is_link_local = segs[0] & 0xffc0 == 0xfe80;
-                        let is_loopback = v6.is_loopback();
-                        if !is_link_local && !is_loopback {
+                        if is_real_global_ipv6(&v6) {
                             let prefix_length = u32::from_str_radix(prefix_hex, 16).unwrap_or(80);
                             addresses.push(Ipv6Address {
                                 address: v6.to_string(),
@@ -551,6 +569,52 @@ async fn collect_ipv6_addresses() -> (Vec<Ipv6Address>, Vec<String>) {
     prefixes.dedup();
 
     (addresses, prefixes)
+}
+
+// 判定一个 v6 地址是不是"真正的可用公网地址"。
+// 排除掉:
+//   ::          (unspecified)
+//   ::1         (loopback)
+//   ::/96       (deprecated IPv4-Compatible IPv6 Address, RFC 4291 §2.5.5.1,
+//                典型形如 ::2 / ::ffff:1.2.3.4 旧映射,大多数现代 OS 不再用)
+//   fe80::/10   (link-local)
+//   ::ffff:0:0/96 (IPv4-Mapped,nginx 不该把它当公网 v6 listen)
+//   fc00::/7    (Unique Local,私网,不是公网)
+//   fec0::/10   (deprecated site-local)
+//   ff00::/8    (multicast)
+fn is_real_global_ipv6(addr: &std::net::Ipv6Addr) -> bool {
+    if addr.is_unspecified() || addr.is_loopback() || addr.is_multicast() {
+        return false;
+    }
+    let segs = addr.segments();
+    // link-local fe80::/10
+    if segs[0] & 0xffc0 == 0xfe80 {
+        return false;
+    }
+    // site-local fec0::/10 (deprecated)
+    if segs[0] & 0xffc0 == 0xfec0 {
+        return false;
+    }
+    // ULA fc00::/7
+    if segs[0] & 0xfe00 == 0xfc00 {
+        return false;
+    }
+    // ::/96 deprecated IPv4-compatible:前 96 位全为 0
+    if segs[0] == 0 && segs[1] == 0 && segs[2] == 0 && segs[3] == 0 && segs[4] == 0 && segs[5] == 0
+    {
+        return false;
+    }
+    // ::ffff:0:0/96 IPv4-Mapped
+    if segs[0] == 0
+        && segs[1] == 0
+        && segs[2] == 0
+        && segs[3] == 0
+        && segs[4] == 0
+        && segs[5] == 0xffff
+    {
+        return false;
+    }
+    true
 }
 
 fn truncate_ipv6_prefix(address: &str, prefix_length: u32) -> String {

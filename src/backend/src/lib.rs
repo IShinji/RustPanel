@@ -173,6 +173,21 @@ pub async fn serve(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + S
     let local_addr = listener.local_addr()?;
     info!(%local_addr, "rustpanel backend listening");
 
+    // Phase A 后续修补:把面板自身监听端口写进 NAT 端口预留表,
+    // 让用户在"网络与端口"页直接看到"已占 1/20",而不是显示 0/20。
+    // RUSTPANEL_PANEL_PUBLIC_PORT 优先(NAT 用户 80→8080 转发场景下显式指定),
+    // 否则用 listen 端口本身(单机直连场景)。
+    let public_port = env::var("RUSTPANEL_PANEL_PUBLIC_PORT")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok())
+        .unwrap_or_else(|| local_addr.port());
+    if let Err(error) = capability::CapabilityServiceImpl::new()
+        .seed_panel_port(public_port)
+        .await
+    {
+        tracing::warn!(?error, "failed to seed panel port reservation");
+    }
+
     axum::serve(
         listener,
         Shared::new(multiplex_service_with_auth(auth_service, authority)),

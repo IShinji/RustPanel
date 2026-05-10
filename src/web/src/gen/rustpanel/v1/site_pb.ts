@@ -2,8 +2,8 @@
 // @generated from file rustpanel/v1/site.proto (package rustpanel.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Response } from "./common_pb";
 import { file_rustpanel_v1_common } from "./common_pb";
 import type { Message } from "@bufbuild/protobuf";
@@ -12,7 +12,40 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/site.proto.
  */
 export const file_rustpanel_v1_site: GenFile = /*@__PURE__*/
-  fileDesc("ChdydXN0cGFuZWwvdjEvc2l0ZS5wcm90bxIMcnVzdHBhbmVsLnYxIrEBCghTaXRlSXRlbRIMCgRuYW1lGAEgASgJEg8KB2RvbWFpbnMYAiADKAkSDAoEcm9vdBgDIAEoCRIUCgxwcm94eV90YXJnZXQYBCABKAkSEwoLc3NsX2VuYWJsZWQYBSABKAgSEwoLY29uZmlnX3BhdGgYBiABKAkSDgoGZW5naW5lGAcgASgJEhMKC3B1YmxpY19wYXRoGAggASgJEhMKC2xpc3Rlbl9hZGRyGAkgASgJIksKD1Jld3JpdGVUZW1wbGF0ZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg0KBXN0YWNrGAMgASgJEg8KB2NvbnRlbnQYBCABKAkiPgoOVXBzdHJlYW1UYXJnZXQSCwoDdXJsGAEgASgJEg4KBndlaWdodBgCIAEoDRIPCgdoZWFsdGh5GAMgASgIIrECChBSZXZlcnNlUHJveHlSdWxlEgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSDgoGZG9tYWluGAMgASgJEhMKC3BhdGhfcHJlZml4GAQgASgJEi0KB3RhcmdldHMYBSADKAsyHC5ydXN0cGFuZWwudjEuVXBzdHJlYW1UYXJnZXQSGwoTbG9hZF9iYWxhbmNlX21ldGhvZBgGIAEoCRIVCg1jYWNoZV9lbmFibGVkGAcgASgIEh0KFXJhdGVfbGltaXRfcGVyX21pbnV0ZRgIIAEoDRIPCgdlbmFibGVkGAkgASgIEhMKC2NvbmZpZ19wYXRoGAogASgJEhoKEmNyZWF0ZWRfYXRfc2Vjb25kcxgLIAEoBBIaChJ1cGRhdGVkX2F0X3NlY29uZHMYDCABKAQiEgoQTGlzdFNpdGVzUmVxdWVzdCJiChFMaXN0U2l0ZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USJQoFc2l0ZXMYAiADKAsyFi5ydXN0cGFuZWwudjEuU2l0ZUl0ZW0ikAEKEUNyZWF0ZVNpdGVSZXF1ZXN0EgwKBG5hbWUYASABKAkSDwoHZG9tYWlucxgCIAMoCRIMCgRyb290GAMgASgJEhQKDHByb3h5X3RhcmdldBgEIAEoCRITCgtzc2xfZW5hYmxlZBgFIAEoCBIOCgZlbmdpbmUYBiABKAkSEwoLbGlzdGVuX2FkZHIYByABKAkiewoSQ3JlYXRlU2l0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIkCgRzaXRlGAIgASgLMhYucnVzdHBhbmVsLnYxLlNpdGVJdGVtEhcKD3JlbmRlcmVkX2NvbmZpZxgDIAEoCSIUChJSZWxvYWROZ2lueFJlcXVlc3QiTQoTUmVsb2FkTmdpbnhSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USDgoGb3V0cHV0GAIgASgJIh0KG0xpc3RSZXdyaXRlVGVtcGxhdGVzUmVxdWVzdCJ4ChxMaXN0UmV3cml0ZVRlbXBsYXRlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIwCgl0ZW1wbGF0ZXMYAiADKAsyHS5ydXN0cGFuZWwudjEuUmV3cml0ZVRlbXBsYXRlIksKHFJlbmRlclJld3JpdGVUZW1wbGF0ZVJlcXVlc3QSEwoLdGVtcGxhdGVfaWQYASABKAkSFgoOY3VzdG9tX2NvbnRlbnQYAiABKAkiYAodUmVuZGVyUmV3cml0ZVRlbXBsYXRlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEhcKD3JlbmRlcmVkX2NvbmZpZxgCIAEoCSIeChxMaXN0UmV2ZXJzZVByb3h5UnVsZXNSZXF1ZXN0InYKHUxpc3RSZXZlcnNlUHJveHlSdWxlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRItCgVydWxlcxgCIAMoCzIeLnJ1c3RwYW5lbC52MS5SZXZlcnNlUHJveHlSdWxlIk0KHVVwc2VydFJldmVyc2VQcm94eVJ1bGVSZXF1ZXN0EiwKBHJ1bGUYASABKAsyHi5ydXN0cGFuZWwudjEuUmV2ZXJzZVByb3h5UnVsZSKPAQoeVXBzZXJ0UmV2ZXJzZVByb3h5UnVsZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIsCgRydWxlGAIgASgLMh4ucnVzdHBhbmVsLnYxLlJldmVyc2VQcm94eVJ1bGUSFwoPcmVuZGVyZWRfY29uZmlnGAMgASgJIisKHURlbGV0ZVJldmVyc2VQcm94eVJ1bGVSZXF1ZXN0EgoKAmlkGAEgASgJIkgKHkRlbGV0ZVJldmVyc2VQcm94eVJ1bGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UyvQYKC1NpdGVTZXJ2aWNlEkwKCUxpc3RTaXRlcxIeLnJ1c3RwYW5lbC52MS5MaXN0U2l0ZXNSZXF1ZXN0Gh8ucnVzdHBhbmVsLnYxLkxpc3RTaXRlc1Jlc3BvbnNlEk8KCkNyZWF0ZVNpdGUSHy5ydXN0cGFuZWwudjEuQ3JlYXRlU2l0ZVJlcXVlc3QaIC5ydXN0cGFuZWwudjEuQ3JlYXRlU2l0ZVJlc3BvbnNlElIKC1JlbG9hZE5naW54EiAucnVzdHBhbmVsLnYxLlJlbG9hZE5naW54UmVxdWVzdBohLnJ1c3RwYW5lbC52MS5SZWxvYWROZ2lueFJlc3BvbnNlEm0KFExpc3RSZXdyaXRlVGVtcGxhdGVzEikucnVzdHBhbmVsLnYxLkxpc3RSZXdyaXRlVGVtcGxhdGVzUmVxdWVzdBoqLnJ1c3RwYW5lbC52MS5MaXN0UmV3cml0ZVRlbXBsYXRlc1Jlc3BvbnNlEnAKFVJlbmRlclJld3JpdGVUZW1wbGF0ZRIqLnJ1c3RwYW5lbC52MS5SZW5kZXJSZXdyaXRlVGVtcGxhdGVSZXF1ZXN0GisucnVzdHBhbmVsLnYxLlJlbmRlclJld3JpdGVUZW1wbGF0ZVJlc3BvbnNlEnAKFUxpc3RSZXZlcnNlUHJveHlSdWxlcxIqLnJ1c3RwYW5lbC52MS5MaXN0UmV2ZXJzZVByb3h5UnVsZXNSZXF1ZXN0GisucnVzdHBhbmVsLnYxLkxpc3RSZXZlcnNlUHJveHlSdWxlc1Jlc3BvbnNlEnMKFlVwc2VydFJldmVyc2VQcm94eVJ1bGUSKy5ydXN0cGFuZWwudjEuVXBzZXJ0UmV2ZXJzZVByb3h5UnVsZVJlcXVlc3QaLC5ydXN0cGFuZWwudjEuVXBzZXJ0UmV2ZXJzZVByb3h5UnVsZVJlc3BvbnNlEnMKFkRlbGV0ZVJldmVyc2VQcm94eVJ1bGUSKy5ydXN0cGFuZWwudjEuRGVsZXRlUmV2ZXJzZVByb3h5UnVsZVJlcXVlc3QaLC5ydXN0cGFuZWwudjEuRGVsZXRlUmV2ZXJzZVByb3h5UnVsZVJlc3BvbnNlYgZwcm90bzM", [file_rustpanel_v1_common]);
+  fileDesc("ChdydXN0cGFuZWwvdjEvc2l0ZS5wcm90bxIMcnVzdHBhbmVsLnYxIl8KC1NpdGVCaW5kaW5nEigKBGtpbmQYASABKA4yGi5ydXN0cGFuZWwudjEuU2l0ZUJpbmRLaW5kEhAKCG5hdF9wb3J0GAIgASgNEhQKDGlwdjZfYWRkcmVzcxgDIAEoCSLlAgoIU2l0ZUl0ZW0SDAoEbmFtZRgBIAEoCRIPCgdkb21haW5zGAIgAygJEgwKBHJvb3QYAyABKAkSFAoMcHJveHlfdGFyZ2V0GAQgASgJEhMKC3NzbF9lbmFibGVkGAUgASgIEhMKC2NvbmZpZ19wYXRoGAYgASgJEg4KBmVuZ2luZRgHIAEoCRITCgtwdWJsaWNfcGF0aBgIIAEoCRITCgtsaXN0ZW5fYWRkchgJIAEoCRIkCgRraW5kGAogASgOMhYucnVzdHBhbmVsLnYxLlNpdGVLaW5kEioKB2JpbmRpbmcYCyABKAsyGS5ydXN0cGFuZWwudjEuU2l0ZUJpbmRpbmcSMwoMdGxzX3N0cmF0ZWd5GAwgASgOMh0ucnVzdHBhbmVsLnYxLlNpdGVUbHNTdHJhdGVneRIUCgxzeXN0ZW1kX3VuaXQYDSABKAkSFQoNaW50ZXJuYWxfcG9ydBgOIAEoDSJLCg9SZXdyaXRlVGVtcGxhdGUSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRINCgVzdGFjaxgDIAEoCRIPCgdjb250ZW50GAQgASgJIj4KDlVwc3RyZWFtVGFyZ2V0EgsKA3VybBgBIAEoCRIOCgZ3ZWlnaHQYAiABKA0SDwoHaGVhbHRoeRgDIAEoCCKxAgoQUmV2ZXJzZVByb3h5UnVsZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg4KBmRvbWFpbhgDIAEoCRITCgtwYXRoX3ByZWZpeBgEIAEoCRItCgd0YXJnZXRzGAUgAygLMhwucnVzdHBhbmVsLnYxLlVwc3RyZWFtVGFyZ2V0EhsKE2xvYWRfYmFsYW5jZV9tZXRob2QYBiABKAkSFQoNY2FjaGVfZW5hYmxlZBgHIAEoCBIdChVyYXRlX2xpbWl0X3Blcl9taW51dGUYCCABKA0SDwoHZW5hYmxlZBgJIAEoCBITCgtjb25maWdfcGF0aBgKIAEoCRIaChJjcmVhdGVkX2F0X3NlY29uZHMYCyABKAQSGgoSdXBkYXRlZF9hdF9zZWNvbmRzGAwgASgEIhIKEExpc3RTaXRlc1JlcXVlc3QiYgoRTGlzdFNpdGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiUKBXNpdGVzGAIgAygLMhYucnVzdHBhbmVsLnYxLlNpdGVJdGVtIqwCChFDcmVhdGVTaXRlUmVxdWVzdBIMCgRuYW1lGAEgASgJEg8KB2RvbWFpbnMYAiADKAkSDAoEcm9vdBgDIAEoCRIUCgxwcm94eV90YXJnZXQYBCABKAkSEwoLc3NsX2VuYWJsZWQYBSABKAgSDgoGZW5naW5lGAYgASgJEhMKC2xpc3Rlbl9hZGRyGAcgASgJEiQKBGtpbmQYCCABKA4yFi5ydXN0cGFuZWwudjEuU2l0ZUtpbmQSKgoHYmluZGluZxgJIAEoCzIZLnJ1c3RwYW5lbC52MS5TaXRlQmluZGluZxIzCgx0bHNfc3RyYXRlZ3kYCiABKA4yHS5ydXN0cGFuZWwudjEuU2l0ZVRsc1N0cmF0ZWd5EhMKC2JpbmFyeV9wYXRoGAsgASgJInsKEkNyZWF0ZVNpdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USJAoEc2l0ZRgCIAEoCzIWLnJ1c3RwYW5lbC52MS5TaXRlSXRlbRIXCg9yZW5kZXJlZF9jb25maWcYAyABKAkiFAoSUmVsb2FkTmdpbnhSZXF1ZXN0Ik0KE1JlbG9hZE5naW54UmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEg4KBm91dHB1dBgCIAEoCSIdChtMaXN0UmV3cml0ZVRlbXBsYXRlc1JlcXVlc3QieAocTGlzdFJld3JpdGVUZW1wbGF0ZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USMAoJdGVtcGxhdGVzGAIgAygLMh0ucnVzdHBhbmVsLnYxLlJld3JpdGVUZW1wbGF0ZSJLChxSZW5kZXJSZXdyaXRlVGVtcGxhdGVSZXF1ZXN0EhMKC3RlbXBsYXRlX2lkGAEgASgJEhYKDmN1c3RvbV9jb250ZW50GAIgASgJImAKHVJlbmRlclJld3JpdGVUZW1wbGF0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIXCg9yZW5kZXJlZF9jb25maWcYAiABKAkiHgocTGlzdFJldmVyc2VQcm94eVJ1bGVzUmVxdWVzdCJ2Ch1MaXN0UmV2ZXJzZVByb3h5UnVsZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLQoFcnVsZXMYAiADKAsyHi5ydXN0cGFuZWwudjEuUmV2ZXJzZVByb3h5UnVsZSJNCh1VcHNlcnRSZXZlcnNlUHJveHlSdWxlUmVxdWVzdBIsCgRydWxlGAEgASgLMh4ucnVzdHBhbmVsLnYxLlJldmVyc2VQcm94eVJ1bGUijwEKHlVwc2VydFJldmVyc2VQcm94eVJ1bGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLAoEcnVsZRgCIAEoCzIeLnJ1c3RwYW5lbC52MS5SZXZlcnNlUHJveHlSdWxlEhcKD3JlbmRlcmVkX2NvbmZpZxgDIAEoCSIrCh1EZWxldGVSZXZlcnNlUHJveHlSdWxlUmVxdWVzdBIKCgJpZBgBIAEoCSJICh5EZWxldGVSZXZlcnNlUHJveHlSdWxlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlKnMKCFNpdGVLaW5kEhkKFVNJVEVfS0lORF9VTlNQRUNJRklFRBAAEhQKEFNJVEVfS0lORF9TVEFUSUMQARIZChVTSVRFX0tJTkRfUlVTVF9CSU5BUlkQAhIbChdTSVRFX0tJTkRfUkVWRVJTRV9QUk9YWRADKmwKDFNpdGVCaW5kS2luZBIeChpTSVRFX0JJTkRfS0lORF9VTlNQRUNJRklFRBAAEhsKF1NJVEVfQklORF9LSU5EX05BVF9QT1JUEAESHwobU0lURV9CSU5EX0tJTkRfSVBWNl9BRERSRVNTEAIqmQEKD1NpdGVUbHNTdHJhdGVneRIhCh1TSVRFX1RMU19TVFJBVEVHWV9VTlNQRUNJRklFRBAAEhoKFlNJVEVfVExTX1NUUkFURUdZX05PTkUQARInCiNTSVRFX1RMU19TVFJBVEVHWV9MRVRTRU5DUllQVF9ETlMwMRACEh4KGlNJVEVfVExTX1NUUkFURUdZX0lNUE9SVEVEEAMyvQYKC1NpdGVTZXJ2aWNlEkwKCUxpc3RTaXRlcxIeLnJ1c3RwYW5lbC52MS5MaXN0U2l0ZXNSZXF1ZXN0Gh8ucnVzdHBhbmVsLnYxLkxpc3RTaXRlc1Jlc3BvbnNlEk8KCkNyZWF0ZVNpdGUSHy5ydXN0cGFuZWwudjEuQ3JlYXRlU2l0ZVJlcXVlc3QaIC5ydXN0cGFuZWwudjEuQ3JlYXRlU2l0ZVJlc3BvbnNlElIKC1JlbG9hZE5naW54EiAucnVzdHBhbmVsLnYxLlJlbG9hZE5naW54UmVxdWVzdBohLnJ1c3RwYW5lbC52MS5SZWxvYWROZ2lueFJlc3BvbnNlEm0KFExpc3RSZXdyaXRlVGVtcGxhdGVzEikucnVzdHBhbmVsLnYxLkxpc3RSZXdyaXRlVGVtcGxhdGVzUmVxdWVzdBoqLnJ1c3RwYW5lbC52MS5MaXN0UmV3cml0ZVRlbXBsYXRlc1Jlc3BvbnNlEnAKFVJlbmRlclJld3JpdGVUZW1wbGF0ZRIqLnJ1c3RwYW5lbC52MS5SZW5kZXJSZXdyaXRlVGVtcGxhdGVSZXF1ZXN0GisucnVzdHBhbmVsLnYxLlJlbmRlclJld3JpdGVUZW1wbGF0ZVJlc3BvbnNlEnAKFUxpc3RSZXZlcnNlUHJveHlSdWxlcxIqLnJ1c3RwYW5lbC52MS5MaXN0UmV2ZXJzZVByb3h5UnVsZXNSZXF1ZXN0GisucnVzdHBhbmVsLnYxLkxpc3RSZXZlcnNlUHJveHlSdWxlc1Jlc3BvbnNlEnMKFlVwc2VydFJldmVyc2VQcm94eVJ1bGUSKy5ydXN0cGFuZWwudjEuVXBzZXJ0UmV2ZXJzZVByb3h5UnVsZVJlcXVlc3QaLC5ydXN0cGFuZWwudjEuVXBzZXJ0UmV2ZXJzZVByb3h5UnVsZVJlc3BvbnNlEnMKFkRlbGV0ZVJldmVyc2VQcm94eVJ1bGUSKy5ydXN0cGFuZWwudjEuRGVsZXRlUmV2ZXJzZVByb3h5UnVsZVJlcXVlc3QaLC5ydXN0cGFuZWwudjEuRGVsZXRlUmV2ZXJzZVByb3h5UnVsZVJlc3BvbnNlYgZwcm90bzM", [file_rustpanel_v1_common]);
+
+/**
+ * SiteBinding 描述站点的对外绑定(Phase C 新增)。
+ *
+ * @generated from message rustpanel.v1.SiteBinding
+ */
+export type SiteBinding = Message<"rustpanel.v1.SiteBinding"> & {
+  /**
+   * @generated from field: rustpanel.v1.SiteBindKind kind = 1;
+   */
+  kind: SiteBindKind;
+
+  /**
+   * NAT_PORT: 端口号 1-65535
+   *
+   * @generated from field: uint32 nat_port = 2;
+   */
+  natPort: number;
+
+  /**
+   * IPV6_ADDRESS: 完整 v6 地址(从 /80 池选一个)
+   *
+   * @generated from field: string ipv6_address = 3;
+   */
+  ipv6Address: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.SiteBinding.
+ * Use `create(SiteBindingSchema)` to create a new message.
+ */
+export const SiteBindingSchema: GenMessage<SiteBinding> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 0);
 
 /**
  * SiteItem 描述一个站点配置。
@@ -64,6 +97,37 @@ export type SiteItem = Message<"rustpanel.v1.SiteItem"> & {
    * @generated from field: string listen_addr = 9;
    */
   listenAddr: string;
+
+  /**
+   * === Phase C 新增 ===
+   *
+   * @generated from field: rustpanel.v1.SiteKind kind = 10;
+   */
+  kind: SiteKind;
+
+  /**
+   * @generated from field: rustpanel.v1.SiteBinding binding = 11;
+   */
+  binding?: SiteBinding | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.SiteTlsStrategy tls_strategy = 12;
+   */
+  tlsStrategy: SiteTlsStrategy;
+
+  /**
+   * RUST_BINARY 时使用:systemd unit 名(rustpanel-site-<name>.service)
+   *
+   * @generated from field: string systemd_unit = 13;
+   */
+  systemdUnit: string;
+
+  /**
+   * RUST_BINARY 时本地监听端口(仅 nginx 反代用,不占 NAT 端口预算)
+   *
+   * @generated from field: uint32 internal_port = 14;
+   */
+  internalPort: number;
 };
 
 /**
@@ -71,7 +135,7 @@ export type SiteItem = Message<"rustpanel.v1.SiteItem"> & {
  * Use `create(SiteItemSchema)` to create a new message.
  */
 export const SiteItemSchema: GenMessage<SiteItem> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 0);
+  messageDesc(file_rustpanel_v1_site, 1);
 
 /**
  * RewriteTemplate 描述内置伪静态模板。
@@ -105,7 +169,7 @@ export type RewriteTemplate = Message<"rustpanel.v1.RewriteTemplate"> & {
  * Use `create(RewriteTemplateSchema)` to create a new message.
  */
 export const RewriteTemplateSchema: GenMessage<RewriteTemplate> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 1);
+  messageDesc(file_rustpanel_v1_site, 2);
 
 /**
  * UpstreamTarget 描述一个反向代理或负载均衡目标。
@@ -134,7 +198,7 @@ export type UpstreamTarget = Message<"rustpanel.v1.UpstreamTarget"> & {
  * Use `create(UpstreamTargetSchema)` to create a new message.
  */
 export const UpstreamTargetSchema: GenMessage<UpstreamTarget> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 2);
+  messageDesc(file_rustpanel_v1_site, 3);
 
 /**
  * ReverseProxyRule 描述一条图形化反向代理规则。
@@ -208,7 +272,7 @@ export type ReverseProxyRule = Message<"rustpanel.v1.ReverseProxyRule"> & {
  * Use `create(ReverseProxyRuleSchema)` to create a new message.
  */
 export const ReverseProxyRuleSchema: GenMessage<ReverseProxyRule> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 3);
+  messageDesc(file_rustpanel_v1_site, 4);
 
 /**
  * ListSitesRequest 表示站点列表请求。
@@ -223,7 +287,7 @@ export type ListSitesRequest = Message<"rustpanel.v1.ListSitesRequest"> & {
  * Use `create(ListSitesRequestSchema)` to create a new message.
  */
 export const ListSitesRequestSchema: GenMessage<ListSitesRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 4);
+  messageDesc(file_rustpanel_v1_site, 5);
 
 /**
  * ListSitesResponse 返回站点列表。
@@ -247,7 +311,7 @@ export type ListSitesResponse = Message<"rustpanel.v1.ListSitesResponse"> & {
  * Use `create(ListSitesResponseSchema)` to create a new message.
  */
 export const ListSitesResponseSchema: GenMessage<ListSitesResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 5);
+  messageDesc(file_rustpanel_v1_site, 6);
 
 /**
  * CreateSiteRequest 表示创建站点请求。
@@ -289,6 +353,30 @@ export type CreateSiteRequest = Message<"rustpanel.v1.CreateSiteRequest"> & {
    * @generated from field: string listen_addr = 7;
    */
   listenAddr: string;
+
+  /**
+   * === Phase C 新增 ===
+   *
+   * @generated from field: rustpanel.v1.SiteKind kind = 8;
+   */
+  kind: SiteKind;
+
+  /**
+   * @generated from field: rustpanel.v1.SiteBinding binding = 9;
+   */
+  binding?: SiteBinding | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.SiteTlsStrategy tls_strategy = 10;
+   */
+  tlsStrategy: SiteTlsStrategy;
+
+  /**
+   * RUST_BINARY 时:可执行文件路径(由用户上传或 cargo install 后填入)
+   *
+   * @generated from field: string binary_path = 11;
+   */
+  binaryPath: string;
 };
 
 /**
@@ -296,7 +384,7 @@ export type CreateSiteRequest = Message<"rustpanel.v1.CreateSiteRequest"> & {
  * Use `create(CreateSiteRequestSchema)` to create a new message.
  */
 export const CreateSiteRequestSchema: GenMessage<CreateSiteRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 6);
+  messageDesc(file_rustpanel_v1_site, 7);
 
 /**
  * CreateSiteResponse 返回创建站点结果。
@@ -325,7 +413,7 @@ export type CreateSiteResponse = Message<"rustpanel.v1.CreateSiteResponse"> & {
  * Use `create(CreateSiteResponseSchema)` to create a new message.
  */
 export const CreateSiteResponseSchema: GenMessage<CreateSiteResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 7);
+  messageDesc(file_rustpanel_v1_site, 8);
 
 /**
  * ReloadNginxRequest 表示 Nginx 配置测试和重载请求。
@@ -340,7 +428,7 @@ export type ReloadNginxRequest = Message<"rustpanel.v1.ReloadNginxRequest"> & {
  * Use `create(ReloadNginxRequestSchema)` to create a new message.
  */
 export const ReloadNginxRequestSchema: GenMessage<ReloadNginxRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 8);
+  messageDesc(file_rustpanel_v1_site, 9);
 
 /**
  * ReloadNginxResponse 返回 Nginx 重载结果。
@@ -364,7 +452,7 @@ export type ReloadNginxResponse = Message<"rustpanel.v1.ReloadNginxResponse"> & 
  * Use `create(ReloadNginxResponseSchema)` to create a new message.
  */
 export const ReloadNginxResponseSchema: GenMessage<ReloadNginxResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 9);
+  messageDesc(file_rustpanel_v1_site, 10);
 
 /**
  * ListRewriteTemplatesRequest 表示伪静态模板列表请求。
@@ -379,7 +467,7 @@ export type ListRewriteTemplatesRequest = Message<"rustpanel.v1.ListRewriteTempl
  * Use `create(ListRewriteTemplatesRequestSchema)` to create a new message.
  */
 export const ListRewriteTemplatesRequestSchema: GenMessage<ListRewriteTemplatesRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 10);
+  messageDesc(file_rustpanel_v1_site, 11);
 
 /**
  * ListRewriteTemplatesResponse 返回内置伪静态模板。
@@ -403,7 +491,7 @@ export type ListRewriteTemplatesResponse = Message<"rustpanel.v1.ListRewriteTemp
  * Use `create(ListRewriteTemplatesResponseSchema)` to create a new message.
  */
 export const ListRewriteTemplatesResponseSchema: GenMessage<ListRewriteTemplatesResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 11);
+  messageDesc(file_rustpanel_v1_site, 12);
 
 /**
  * RenderRewriteTemplateRequest 表示模板预览请求。
@@ -427,7 +515,7 @@ export type RenderRewriteTemplateRequest = Message<"rustpanel.v1.RenderRewriteTe
  * Use `create(RenderRewriteTemplateRequestSchema)` to create a new message.
  */
 export const RenderRewriteTemplateRequestSchema: GenMessage<RenderRewriteTemplateRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 12);
+  messageDesc(file_rustpanel_v1_site, 13);
 
 /**
  * RenderRewriteTemplateResponse 返回伪静态配置片段。
@@ -451,7 +539,7 @@ export type RenderRewriteTemplateResponse = Message<"rustpanel.v1.RenderRewriteT
  * Use `create(RenderRewriteTemplateResponseSchema)` to create a new message.
  */
 export const RenderRewriteTemplateResponseSchema: GenMessage<RenderRewriteTemplateResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 13);
+  messageDesc(file_rustpanel_v1_site, 14);
 
 /**
  * ListReverseProxyRulesRequest 表示反向代理规则列表请求。
@@ -466,7 +554,7 @@ export type ListReverseProxyRulesRequest = Message<"rustpanel.v1.ListReverseProx
  * Use `create(ListReverseProxyRulesRequestSchema)` to create a new message.
  */
 export const ListReverseProxyRulesRequestSchema: GenMessage<ListReverseProxyRulesRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 14);
+  messageDesc(file_rustpanel_v1_site, 15);
 
 /**
  * ListReverseProxyRulesResponse 返回反向代理规则。
@@ -490,7 +578,7 @@ export type ListReverseProxyRulesResponse = Message<"rustpanel.v1.ListReversePro
  * Use `create(ListReverseProxyRulesResponseSchema)` to create a new message.
  */
 export const ListReverseProxyRulesResponseSchema: GenMessage<ListReverseProxyRulesResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 15);
+  messageDesc(file_rustpanel_v1_site, 16);
 
 /**
  * UpsertReverseProxyRuleRequest 表示创建或更新反向代理规则请求。
@@ -509,7 +597,7 @@ export type UpsertReverseProxyRuleRequest = Message<"rustpanel.v1.UpsertReverseP
  * Use `create(UpsertReverseProxyRuleRequestSchema)` to create a new message.
  */
 export const UpsertReverseProxyRuleRequestSchema: GenMessage<UpsertReverseProxyRuleRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 16);
+  messageDesc(file_rustpanel_v1_site, 17);
 
 /**
  * UpsertReverseProxyRuleResponse 返回保存后的反向代理规则。
@@ -538,7 +626,7 @@ export type UpsertReverseProxyRuleResponse = Message<"rustpanel.v1.UpsertReverse
  * Use `create(UpsertReverseProxyRuleResponseSchema)` to create a new message.
  */
 export const UpsertReverseProxyRuleResponseSchema: GenMessage<UpsertReverseProxyRuleResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 17);
+  messageDesc(file_rustpanel_v1_site, 18);
 
 /**
  * DeleteReverseProxyRuleRequest 表示删除反向代理规则请求。
@@ -557,7 +645,7 @@ export type DeleteReverseProxyRuleRequest = Message<"rustpanel.v1.DeleteReverseP
  * Use `create(DeleteReverseProxyRuleRequestSchema)` to create a new message.
  */
 export const DeleteReverseProxyRuleRequestSchema: GenMessage<DeleteReverseProxyRuleRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 18);
+  messageDesc(file_rustpanel_v1_site, 19);
 
 /**
  * DeleteReverseProxyRuleResponse 返回删除结果。
@@ -576,7 +664,115 @@ export type DeleteReverseProxyRuleResponse = Message<"rustpanel.v1.DeleteReverse
  * Use `create(DeleteReverseProxyRuleResponseSchema)` to create a new message.
  */
 export const DeleteReverseProxyRuleResponseSchema: GenMessage<DeleteReverseProxyRuleResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 19);
+  messageDesc(file_rustpanel_v1_site, 20);
+
+/**
+ * SiteKind 描述站点的部署形态(Phase C)。
+ *
+ * @generated from enum rustpanel.v1.SiteKind
+ */
+export enum SiteKind {
+  /**
+   * @generated from enum value: SITE_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * 静态文件:nginx 直接 serve root_dir
+   *
+   * @generated from enum value: SITE_KIND_STATIC = 1;
+   */
+  STATIC = 1,
+
+  /**
+   * Rust 二进制:systemd 启动用户上传的可执行文件,nginx 反代到本地端口
+   *
+   * @generated from enum value: SITE_KIND_RUST_BINARY = 2;
+   */
+  RUST_BINARY = 2,
+
+  /**
+   * 反向代理:nginx 转发到 upstream URL
+   *
+   * @generated from enum value: SITE_KIND_REVERSE_PROXY = 3;
+   */
+  REVERSE_PROXY = 3,
+}
+
+/**
+ * Describes the enum rustpanel.v1.SiteKind.
+ */
+export const SiteKindSchema: GenEnum<SiteKind> = /*@__PURE__*/
+  enumDesc(file_rustpanel_v1_site, 0);
+
+/**
+ * SiteBindKind 描述站点对外绑定方式(NAT VPS 关键决策)。
+ *
+ * @generated from enum rustpanel.v1.SiteBindKind
+ */
+export enum SiteBindKind {
+  /**
+   * @generated from enum value: SITE_BIND_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * 占用 NAT VPS 的 1 个公网端口(默认 20 个里挑一)
+   *
+   * @generated from enum value: SITE_BIND_KIND_NAT_PORT = 1;
+   */
+  NAT_PORT = 1,
+
+  /**
+   * 直接绑定 /80 IPv6 地址池里的一个 v6,不消耗 NAT 端口
+   *
+   * @generated from enum value: SITE_BIND_KIND_IPV6_ADDRESS = 2;
+   */
+  IPV6_ADDRESS = 2,
+}
+
+/**
+ * Describes the enum rustpanel.v1.SiteBindKind.
+ */
+export const SiteBindKindSchema: GenEnum<SiteBindKind> = /*@__PURE__*/
+  enumDesc(file_rustpanel_v1_site, 1);
+
+/**
+ * SiteTlsStrategy 描述 TLS 来源。
+ *
+ * @generated from enum rustpanel.v1.SiteTlsStrategy
+ */
+export enum SiteTlsStrategy {
+  /**
+   * @generated from enum value: SITE_TLS_STRATEGY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SITE_TLS_STRATEGY_NONE = 1;
+   */
+  NONE = 1,
+
+  /**
+   * 走 Phase E 的 ACME DNS-01,适合 NAT VPS
+   *
+   * @generated from enum value: SITE_TLS_STRATEGY_LETSENCRYPT_DNS01 = 2;
+   */
+  LETSENCRYPT_DNS01 = 2,
+
+  /**
+   * 用户自带证书(已通过 Settings → SSL 导入)
+   *
+   * @generated from enum value: SITE_TLS_STRATEGY_IMPORTED = 3;
+   */
+  IMPORTED = 3,
+}
+
+/**
+ * Describes the enum rustpanel.v1.SiteTlsStrategy.
+ */
+export const SiteTlsStrategySchema: GenEnum<SiteTlsStrategy> = /*@__PURE__*/
+  enumDesc(file_rustpanel_v1_site, 2);
 
 /**
  * SiteService 提供站点与反向代理配置能力。

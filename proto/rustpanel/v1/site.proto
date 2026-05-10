@@ -4,6 +4,45 @@ package rustpanel.v1;
 
 import "rustpanel/v1/common.proto";
 
+// SiteKind 描述站点的部署形态(Phase C)。
+enum SiteKind {
+  SITE_KIND_UNSPECIFIED = 0;
+  // 静态文件:nginx 直接 serve root_dir
+  SITE_KIND_STATIC = 1;
+  // Rust 二进制:systemd 启动用户上传的可执行文件,nginx 反代到本地端口
+  SITE_KIND_RUST_BINARY = 2;
+  // 反向代理:nginx 转发到 upstream URL
+  SITE_KIND_REVERSE_PROXY = 3;
+}
+
+// SiteBindKind 描述站点对外绑定方式(NAT VPS 关键决策)。
+enum SiteBindKind {
+  SITE_BIND_KIND_UNSPECIFIED = 0;
+  // 占用 NAT VPS 的 1 个公网端口(默认 20 个里挑一)
+  SITE_BIND_KIND_NAT_PORT = 1;
+  // 直接绑定 /80 IPv6 地址池里的一个 v6,不消耗 NAT 端口
+  SITE_BIND_KIND_IPV6_ADDRESS = 2;
+}
+
+// SiteTlsStrategy 描述 TLS 来源。
+enum SiteTlsStrategy {
+  SITE_TLS_STRATEGY_UNSPECIFIED = 0;
+  SITE_TLS_STRATEGY_NONE = 1;
+  // 走 Phase E 的 ACME DNS-01,适合 NAT VPS
+  SITE_TLS_STRATEGY_LETSENCRYPT_DNS01 = 2;
+  // 用户自带证书(已通过 Settings → SSL 导入)
+  SITE_TLS_STRATEGY_IMPORTED = 3;
+}
+
+// SiteBinding 描述站点的对外绑定(Phase C 新增)。
+message SiteBinding {
+  SiteBindKind kind = 1;
+  // NAT_PORT: 端口号 1-65535
+  uint32 nat_port = 2;
+  // IPV6_ADDRESS: 完整 v6 地址(从 /80 池选一个)
+  string ipv6_address = 3;
+}
+
 // SiteItem 描述一个站点配置。
 message SiteItem {
   string name = 1;
@@ -15,6 +54,14 @@ message SiteItem {
   string engine = 7;
   string public_path = 8;
   string listen_addr = 9;
+  // === Phase C 新增 ===
+  SiteKind kind = 10;
+  SiteBinding binding = 11;
+  SiteTlsStrategy tls_strategy = 12;
+  // RUST_BINARY 时使用:systemd unit 名(rustpanel-site-<name>.service)
+  string systemd_unit = 13;
+  // RUST_BINARY 时本地监听端口(仅 nginx 反代用,不占 NAT 端口预算)
+  uint32 internal_port = 14;
 }
 
 // RewriteTemplate 描述内置伪静态模板。
@@ -66,6 +113,12 @@ message CreateSiteRequest {
   bool ssl_enabled = 5;
   string engine = 6;
   string listen_addr = 7;
+  // === Phase C 新增 ===
+  SiteKind kind = 8;
+  SiteBinding binding = 9;
+  SiteTlsStrategy tls_strategy = 10;
+  // RUST_BINARY 时:可执行文件路径(由用户上传或 cargo install 后填入)
+  string binary_path = 11;
 }
 
 // CreateSiteResponse 返回创建站点结果。

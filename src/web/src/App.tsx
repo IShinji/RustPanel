@@ -93,7 +93,14 @@ import {
   WafRule,
   WafRuleKind
 } from "./gen/rustpanel/v1/security_pb";
-import { ReverseProxyRule, RewriteTemplate, SiteItem } from "./gen/rustpanel/v1/site_pb";
+import {
+  ReverseProxyRule,
+  RewriteTemplate,
+  SiteBindKind,
+  SiteItem,
+  SiteKind,
+  SiteTlsStrategy
+} from "./gen/rustpanel/v1/site_pb";
 import { AcmeChallengeType, CertificateItem } from "./gen/rustpanel/v1/ssl_pb";
 import { RuntimeModule } from "./gen/rustpanel/v1/system_pb";
 import { WorkloadItem, WorkloadState } from "./gen/rustpanel/v1/workload_pb";
@@ -3362,6 +3369,25 @@ function SitesSsl({ clients }: { clients: Clients }) {
   const [form, setForm] = useState({ name: "demo", domains: "example.com", root: "/var/www/html", proxyTarget: "" });
   const [sslDomain, setSslDomain] = useState("example.com");
   const [importForm, setImportForm] = useState({ domain: "example.com", group: "default", certificatePem: "", privateKeyPem: "" });
+  // ====== Phase C: NAT/IPv6 感知的站点向导 ======
+  const [phaseCForm, setPhaseCForm] = useState({
+    name: "blog",
+    domain: "blog.example.com",
+    kind: "static" as "static" | "rust-binary" | "reverse-proxy",
+    bindKind: "ipv6" as "nat-port" | "ipv6",
+    natPort: "",
+    ipv6Address: "",
+    root: "/var/www/blog",
+    proxyTarget: "",
+    binaryPath: "/usr/local/bin/blog-server",
+    tls: "dns01" as "none" | "dns01" | "imported"
+  });
+  const [phaseCResult, setPhaseCResult] = useState<{
+    config: string;
+    site: SiteItem;
+  } | null>(null);
+  const [reservedPorts, setReservedPorts] = useState<ReservedPort[]>([]);
+  const [ipv6Pool, setIpv6Pool] = useState<Ipv6Address[]>([]);
   const [proxyForm, setProxyForm] = useState({
     name: "api",
     domain: "example.com",
@@ -3374,11 +3400,15 @@ function SitesSsl({ clients }: { clients: Clients }) {
   const [status, setStatus] = useState("");
 
   const load = async () => {
-    const [siteResponse, certResponse, templateResponse, proxyResponse] = await Promise.all([
+    const [siteResponse, certResponse, templateResponse, proxyResponse, portsResponse, ipv6Response] = await Promise.all([
       clients.site.listSites({}),
       clients.ssl.listCertificates({}),
       clients.site.listRewriteTemplates({}),
-      clients.site.listReverseProxyRules({})
+      clients.site.listReverseProxyRules({}),
+      clients.capability.listReservedPorts({}).catch(() => ({ ports: [] as ReservedPort[] })),
+      clients.capability
+        .listIpv6Addresses({})
+        .catch(() => ({ addresses: [] as Ipv6Address[], prefixes: [] as string[] }))
     ]);
     setSites(siteResponse.sites);
     setCertificates(certResponse.certificates);
@@ -3387,6 +3417,71 @@ function SitesSsl({ clients }: { clients: Clients }) {
       setRewriteContent(templateResponse.templates[0].content);
     }
     setProxyRules(proxyResponse.rules);
+    setReservedPorts(portsResponse.ports);
+    setIpv6Pool(ipv6Response.addresses);
+  };
+
+  const submitPhaseCSite = async () => {
+    const kind =
+      phaseCForm.kind === "static"
+        ? SiteKind.STATIC
+        : phaseCForm.kind === "rust-binary"
+          ? SiteKind.RUST_BINARY
+          : SiteKind.REVERSE_PROXY;
+    const tls =
+      phaseCForm.tls === "dns01"
+        ? SiteTlsStrategy.LETSENCRYPT_DNS01
+        : phaseCForm.tls === "imported"
+          ? SiteTlsStrategy.IMPORTED
+          : SiteTlsStrategy.NONE;
+    const binding = {
+      kind:
+        phaseCForm.bindKind === "nat-port"
+          ? SiteBindKind.NAT_PORT
+          : SiteBindKind.IPV6_ADDRESS,
+      natPort:
+        phaseCForm.bindKind === "nat-port"
+          ? Number.parseInt(phaseCForm.natPort, 10) || 0
+          : 0,
+      ipv6Address:
+        phaseCForm.bindKind === "ipv6" ? phaseCForm.ipv6Address : ""
+    };
+    try {
+      const response = await clients.site.createSite({
+        name: phaseCForm.name,
+        domains: phaseCForm.domain
+          .split(/[\s,]+/)
+          .map((d) => d.trim())
+          .filter(Boolean),
+        root: phaseCForm.root,
+        proxyTarget: phaseCForm.proxyTarget,
+        sslEnabled: tls !== SiteTlsStrategy.NONE,
+        engine: "nginx",
+        listenAddr: "",
+        kind,
+        binding,
+        tlsStrategy: tls,
+        binaryPath: phaseCForm.binaryPath
+      });
+      if (response.site) {
+        setPhaseCResult({ config: response.renderedConfig, site: response.site });
+        setStatus(`站点 ${response.site.name} 已创建,vhost 写入 ${response.site.configPath}`);
+      }
+      // 自动登记 NAT 端口预算(IPv6 模式不消耗 NAT 端口)
+      if (binding.kind === SiteBindKind.NAT_PORT && binding.natPort > 0) {
+        await clients.capability
+          .reservePort({
+            port: binding.natPort,
+            owner: `site:${phaseCForm.name}`,
+            description: phaseCForm.domain,
+            protocol: "tcp"
+          })
+          .catch(() => undefined);
+      }
+      await load();
+    } catch (err) {
+      setStatus(safeError(err));
+    }
   };
 
   useEffect(() => {
@@ -3461,8 +3556,128 @@ function SitesSsl({ clients }: { clients: Clients }) {
         </div>
       </header>
 
+      <div className="panel full-span flex flex-col gap-3">
+        <div className="panel-title"><Globe size={18} /><span>新建站点(Phase C · NAT/IPv6 感知)</span></div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-1">
+            <UILabel htmlFor="pc-name">站点名</UILabel>
+            <UIInput id="pc-name" value={phaseCForm.name} onChange={(e) => setPhaseCForm((p) => ({ ...p, name: e.target.value }))} />
+          </div>
+          <div className="grid gap-1">
+            <UILabel htmlFor="pc-domain">域名(空格或逗号分隔)</UILabel>
+            <UIInput id="pc-domain" value={phaseCForm.domain} onChange={(e) => setPhaseCForm((p) => ({ ...p, domain: e.target.value }))} />
+          </div>
+          <div className="grid gap-1">
+            <UILabel>① 类型</UILabel>
+            <Select value={phaseCForm.kind} onValueChange={(v) => setPhaseCForm((p) => ({ ...p, kind: v as typeof phaseCForm.kind }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="static">静态站点 (nginx serve root)</SelectItem>
+                <SelectItem value="rust-binary">Rust 二进制 (systemd + nginx 反代)</SelectItem>
+                <SelectItem value="reverse-proxy">反向代理 (转发 upstream)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1">
+            <UILabel>② 绑定</UILabel>
+            <Select value={phaseCForm.bindKind} onValueChange={(v) => setPhaseCForm((p) => ({ ...p, bindKind: v as typeof phaseCForm.bindKind }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ipv6">IPv6 直连(不占 NAT 端口,推荐)</SelectItem>
+                <SelectItem value="nat-port">NAT 端口(占用 1/20 公网端口)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {phaseCForm.bindKind === "ipv6" ? (
+            <div className="grid gap-1 md:col-span-2">
+              <UILabel htmlFor="pc-v6">公网 IPv6 地址(从 /80 池)</UILabel>
+              <Select
+                value={phaseCForm.ipv6Address}
+                onValueChange={(v) => setPhaseCForm((p) => ({ ...p, ipv6Address: v }))}
+              >
+                <SelectTrigger id="pc-v6"><SelectValue placeholder="选择一个 v6 地址" /></SelectTrigger>
+                <SelectContent>
+                  {ipv6Pool.length === 0 && <SelectItem value="__none__" disabled>未检测到公网 IPv6</SelectItem>}
+                  {ipv6Pool.map((addr) => (
+                    <SelectItem key={addr.address} value={addr.address}>
+                      {addr.address}/{addr.prefixLength} ({addr.interfaceName})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="grid gap-1 md:col-span-2">
+              <UILabel htmlFor="pc-port">NAT 公网端口(已占:{reservedPorts.map((p) => p.port).join(", ") || "无"})</UILabel>
+              <UIInput
+                id="pc-port"
+                type="number"
+                placeholder="例如 8443"
+                value={phaseCForm.natPort}
+                onChange={(e) => setPhaseCForm((p) => ({ ...p, natPort: e.target.value }))}
+              />
+            </div>
+          )}
+          {phaseCForm.kind === "static" && (
+            <div className="grid gap-1 md:col-span-2">
+              <UILabel htmlFor="pc-root">静态根目录</UILabel>
+              <UIInput id="pc-root" value={phaseCForm.root} onChange={(e) => setPhaseCForm((p) => ({ ...p, root: e.target.value }))} />
+            </div>
+          )}
+          {phaseCForm.kind === "rust-binary" && (
+            <div className="grid gap-1 md:col-span-2">
+              <UILabel htmlFor="pc-bin">Rust 可执行文件路径</UILabel>
+              <UIInput id="pc-bin" value={phaseCForm.binaryPath} onChange={(e) => setPhaseCForm((p) => ({ ...p, binaryPath: e.target.value }))} />
+              <span className="text-xs text-muted-foreground">面板将生成 systemd unit:rustpanel-site-{phaseCForm.name || "<name>"}.service,内部监听 127.0.0.1:9100+</span>
+            </div>
+          )}
+          {phaseCForm.kind === "reverse-proxy" && (
+            <div className="grid gap-1 md:col-span-2">
+              <UILabel htmlFor="pc-upstream">反代目标 URL</UILabel>
+              <UIInput
+                id="pc-upstream"
+                placeholder="http://127.0.0.1:3000"
+                value={phaseCForm.proxyTarget}
+                onChange={(e) => setPhaseCForm((p) => ({ ...p, proxyTarget: e.target.value }))}
+              />
+            </div>
+          )}
+          <div className="grid gap-1 md:col-span-2">
+            <UILabel>③ TLS 策略</UILabel>
+            <Select value={phaseCForm.tls} onValueChange={(v) => setPhaseCForm((p) => ({ ...p, tls: v as typeof phaseCForm.tls }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dns01">Let's Encrypt DNS-01(NAT VPS 推荐)</SelectItem>
+                <SelectItem value="imported">已导入证书</SelectItem>
+                <SelectItem value="none">无 TLS</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <UIButton onClick={() => void submitPhaseCSite()}>
+            <Save className="size-4" />
+            创建站点
+          </UIButton>
+        </div>
+        {phaseCResult && (
+          <div className="mt-2 flex flex-col gap-2">
+            <div className="text-xs text-muted-foreground">
+              vhost 写入:<span className="font-mono">{phaseCResult.site.configPath}</span>
+              {phaseCResult.site.systemdUnit && (
+                <> · systemd:<span className="font-mono">{phaseCResult.site.systemdUnit}</span></>
+              )}
+              {phaseCResult.site.internalPort > 0 && (
+                <> · 内部端口:127.0.0.1:{phaseCResult.site.internalPort}</>
+              )}
+            </div>
+            <pre className="report-output text-xs max-h-[240px]">{phaseCResult.config}</pre>
+          </div>
+        )}
+      </div>
+
       <div className="panel">
-        <div className="panel-title"><Globe size={18} /><span>建站向导</span></div>
+        <div className="panel-title"><Globe size={18} /><span>建站向导(经典 builtin / nginx)</span></div>
         <Input label="名称" value={form.name} onChange={(name) => setForm({ ...form, name })} />
         <Input label="域名" value={form.domains} onChange={(domains) => setForm({ ...form, domains })} />
         <Input label="目录" value={form.root} onChange={(root) => setForm({ ...form, root })} />

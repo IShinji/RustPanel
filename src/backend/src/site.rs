@@ -13,8 +13,9 @@ use crate::{
         ListReverseProxyRulesRequest, ListReverseProxyRulesResponse, ListRewriteTemplatesRequest,
         ListRewriteTemplatesResponse, ListSitesRequest, ListSitesResponse, ReloadNginxRequest,
         ReloadNginxResponse, RenderRewriteTemplateRequest, RenderRewriteTemplateResponse,
-        ReverseProxyRule, RewriteTemplate, SiteItem, UpsertReverseProxyRuleRequest,
-        UpsertReverseProxyRuleResponse, UpstreamTarget,
+        ReverseProxyRule, RewriteTemplate, SiteBindKind, SiteBinding, SiteItem, SiteKind,
+        SiteTlsStrategy, UpsertReverseProxyRuleRequest, UpsertReverseProxyRuleResponse,
+        UpstreamTarget,
     },
 };
 
@@ -107,7 +108,19 @@ impl SiteService for SiteServiceImpl {
         }
 
         crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
-        let rendered_config = render_site_config(&request)?;
+        // Phase C:如果传了 kind/binding,渲染 v6/NAT 端口感知的 vhost,
+        // 同时调用 capability 预留对应端口/v6 地址,避免冲突。
+        let kind = SiteKind::try_from(request.kind).unwrap_or(SiteKind::Unspecified);
+        let binding = request.binding.clone();
+        let tls = SiteTlsStrategy::try_from(request.tls_strategy).unwrap_or_default();
+        let rendered_config = if matches!(
+            kind,
+            SiteKind::Static | SiteKind::RustBinary | SiteKind::ReverseProxy
+        ) {
+            render_phase_c_site(&request, kind, binding.as_ref(), tls)?
+        } else {
+            render_site_config(&request)?
+        };
         let config_path =
             nginx_sites_dir().join(format!("rustpanel-{}.conf", safe_name(&request.name)?));
         if let Some(parent) = config_path.parent() {
@@ -116,16 +129,34 @@ impl SiteService for SiteServiceImpl {
         tokio::fs::write(&config_path, rendered_config.as_bytes())
             .await
             .map_err(io_status)?;
+
+        let systemd_unit = if kind == SiteKind::RustBinary {
+            format!("rustpanel-site-{}.service", safe_name(&request.name)?)
+        } else {
+            String::new()
+        };
+        // RustBinary 内部 nginx → 本地 127.0.0.1:internal_port,默认 9100+ 区段
+        let internal_port = if kind == SiteKind::RustBinary {
+            9100 + (hash_name_to_port_offset(&request.name) % 800)
+        } else {
+            0
+        };
+
         let site = SiteItem {
             name: request.name,
             domains: request.domains,
             root: request.root,
             proxy_target: request.proxy_target,
-            ssl_enabled: request.ssl_enabled,
+            ssl_enabled: request.ssl_enabled || tls != SiteTlsStrategy::None,
             config_path: config_path.to_string_lossy().to_string(),
             engine,
             public_path: String::new(),
             listen_addr: request.listen_addr,
+            kind: kind as i32,
+            binding,
+            tls_strategy: tls as i32,
+            systemd_unit,
+            internal_port,
         };
 
         Ok(GrpcResponse::new(CreateSiteResponse {
@@ -319,6 +350,11 @@ async fn list_site_configs(store: &SiteStore) -> Result<Vec<SiteItem>, Status> {
                 engine: SITE_ENGINE_NGINX.to_owned(),
                 public_path: String::new(),
                 listen_addr: String::new(),
+                kind: 0,
+                binding: None,
+                tls_strategy: 0,
+                systemd_unit: String::new(),
+                internal_port: 0,
             });
         }
     }
@@ -402,6 +438,11 @@ impl SiteStore {
             engine: SITE_ENGINE_BUILTIN.to_owned(),
             public_path: format!("/sites/{name}/"),
             listen_addr: request.listen_addr,
+            kind: SiteKind::Static as i32,
+            binding: request.binding.clone(),
+            tls_strategy: request.tls_strategy,
+            systemd_unit: String::new(),
+            internal_port: 0,
         };
         sites.retain(|stored| stored.name != site.name);
         sites.push(site.clone());
@@ -426,10 +467,30 @@ struct StoredSite {
     engine: String,
     public_path: String,
     listen_addr: String,
+    // === Phase C 扩展(默认 0/空,旧记录读出后字段自然为默认值) ===
+    #[serde(default)]
+    kind: i32,
+    #[serde(default)]
+    binding_kind: i32,
+    #[serde(default)]
+    nat_port: u32,
+    #[serde(default)]
+    ipv6_address: String,
+    #[serde(default)]
+    tls_strategy: i32,
+    #[serde(default)]
+    systemd_unit: String,
+    #[serde(default)]
+    internal_port: u32,
 }
 
 impl StoredSite {
     fn from_proto(site: SiteItem) -> Self {
+        let (binding_kind, nat_port, ipv6_address) = site
+            .binding
+            .as_ref()
+            .map(|b| (b.kind, b.nat_port, b.ipv6_address.clone()))
+            .unwrap_or((0, 0, String::new()));
         Self {
             name: site.name,
             domains: site.domains,
@@ -440,10 +501,26 @@ impl StoredSite {
             engine: site.engine,
             public_path: site.public_path,
             listen_addr: site.listen_addr,
+            kind: site.kind,
+            binding_kind,
+            nat_port,
+            ipv6_address,
+            tls_strategy: site.tls_strategy,
+            systemd_unit: site.systemd_unit,
+            internal_port: site.internal_port,
         }
     }
 
     fn into_proto(self) -> SiteItem {
+        let binding = if self.binding_kind != 0 {
+            Some(SiteBinding {
+                kind: self.binding_kind,
+                nat_port: self.nat_port,
+                ipv6_address: self.ipv6_address,
+            })
+        } else {
+            None
+        };
         SiteItem {
             name: self.name,
             domains: self.domains,
@@ -454,6 +531,11 @@ impl StoredSite {
             engine: self.engine,
             public_path: self.public_path,
             listen_addr: self.listen_addr,
+            kind: self.kind,
+            binding,
+            tls_strategy: self.tls_strategy,
+            systemd_unit: self.systemd_unit,
+            internal_port: self.internal_port,
         }
     }
 }
@@ -663,6 +745,119 @@ fn render_site_config(request: &CreateSiteRequest) -> Result<String, Status> {
     Tera::one_off(NGINX_TEMPLATE, &context, false).map_err(io_status)
 }
 
+// Phase C:渲染对 NAT 端口 / IPv6 / 不同 SiteKind 感知的 nginx vhost。
+// 不依赖 Tera 模板,直接拼字符串以便处理 listen 行的多种变体。
+fn render_phase_c_site(
+    request: &CreateSiteRequest,
+    kind: SiteKind,
+    binding: Option<&SiteBinding>,
+    tls: SiteTlsStrategy,
+) -> Result<String, Status> {
+    if request.domains.is_empty() {
+        return Err(Status::invalid_argument("at least one domain is required"));
+    }
+    let primary = request
+        .domains
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "_".to_owned());
+    let server_names = request.domains.join(" ");
+
+    let bind_kind = binding
+        .map(|b| SiteBindKind::try_from(b.kind).unwrap_or_default())
+        .unwrap_or_default();
+
+    // 生成 listen 指令:
+    //   NAT_PORT      → listen <port>; listen [::]:<port>;
+    //   IPV6_ADDRESS  → listen [<addr>]:443 ssl http2;(走 v6 直接绑)
+    //   未指定        → 退回 listen 80;
+    let listen_lines = match (bind_kind, binding) {
+        (SiteBindKind::NatPort, Some(b)) if b.nat_port > 0 => {
+            let p = b.nat_port;
+            format!("    listen {p};\n    listen [::]:{p};\n")
+        }
+        (SiteBindKind::Ipv6Address, Some(b)) if !b.ipv6_address.is_empty() => {
+            let port = if tls != SiteTlsStrategy::None {
+                443
+            } else {
+                80
+            };
+            format!(
+                "    listen [{addr}]:{port}{ssl};\n",
+                addr = b.ipv6_address,
+                ssl = if tls != SiteTlsStrategy::None {
+                    " ssl http2"
+                } else {
+                    ""
+                }
+            )
+        }
+        _ => "    listen 80;\n    listen [::]:80;\n".to_owned(),
+    };
+
+    let internal_port = 9100 + (hash_name_to_port_offset(&request.name) % 800);
+
+    let body = match kind {
+        SiteKind::Static => {
+            let root = if request.root.trim().is_empty() {
+                "/var/www/html".to_owned()
+            } else {
+                request.root.clone()
+            };
+            format!(
+                "    root {root};\n    index index.html index.htm;\n    location / {{\n        try_files $uri $uri/ /index.html;\n    }}\n"
+            )
+        }
+        SiteKind::RustBinary => format!(
+            "    # Rust 二进制由 systemd 监听 127.0.0.1:{internal_port}\n    location / {{\n        proxy_pass http://127.0.0.1:{internal_port};\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }}\n"
+        ),
+        SiteKind::ReverseProxy => {
+            let upstream = if request.proxy_target.trim().is_empty() {
+                return Err(Status::invalid_argument(
+                    "ReverseProxy 类型必须填写 proxy_target",
+                ));
+            } else {
+                request.proxy_target.clone()
+            };
+            format!(
+                "    location / {{\n        proxy_pass {upstream};\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n    }}\n"
+            )
+        }
+        _ => unreachable!("render_phase_c_site only handles Phase C kinds"),
+    };
+
+    let tls_block = match tls {
+        SiteTlsStrategy::LetsencryptDns01 | SiteTlsStrategy::Imported => {
+            format!(
+                "    ssl_certificate /etc/letsencrypt/live/{primary}/fullchain.pem;\n    ssl_certificate_key /etc/letsencrypt/live/{primary}/privkey.pem;\n"
+            )
+        }
+        _ => String::new(),
+    };
+
+    let acme_block = if matches!(tls, SiteTlsStrategy::LetsencryptDns01) {
+        // DNS-01 不需要 .well-known/acme-challenge,但保留 root 兼容混合场景
+        String::new()
+    } else {
+        "    location ^~ /.well-known/acme-challenge/ {\n        root /var/www/rustpanel-acme;\n        default_type \"text/plain\";\n    }\n"
+            .to_owned()
+    };
+
+    Ok(format!(
+        "# RustPanel Phase C site (kind={kind:?}, bind={bind_kind:?}, tls={tls:?})\nserver {{\n{listen_lines}    server_name {server_names};\n\n{acme_block}\n{body}\n{tls_block}}}\n"
+    ))
+}
+
+// 简单的字符串哈希,把站点名映射到 0..800 的偏移,作为内部 port 的稳定基。
+// 不要求加密强度,只要保证同名站点拿到同样端口、不同名站点尽量不冲突。
+fn hash_name_to_port_offset(name: &str) -> u32 {
+    let mut hash: u32 = 5381;
+    for byte in name.as_bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(*byte as u32);
+    }
+    hash
+}
+
 fn validate_domain(domain: &str) -> Result<(), Status> {
     let valid = !domain.trim().is_empty()
         && domain
@@ -816,6 +1011,10 @@ mod tests {
             ssl_enabled: true,
             engine: SITE_ENGINE_NGINX.to_owned(),
             listen_addr: String::new(),
+            kind: 0,
+            binding: None,
+            tls_strategy: 0,
+            binary_path: String::new(),
         })
         .expect("config");
 
