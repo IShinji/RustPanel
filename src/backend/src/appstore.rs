@@ -293,6 +293,64 @@ pub fn app_templates() -> Vec<AppTemplate> {
             0,
             false,
         ),
+        // ====== Phase G:用户可选 Rust 栈(NO SUPPORT VPS 友好) ======
+        // 二进制全部保持上游官方版本,RustPanel 只提供配置模板与模块联动,
+        // 不 fork、不打补丁,后续上游升级直接替换二进制即可。
+        native_template(
+            "rpxy",
+            "rpxy (Rust 反代)",
+            "github.com/junkurihara/rust-rpxy:Rust 写的 HTTPS 反向代理,内置 ACME / 多站点 / h2/h3,常驻 RAM ~15MB。RustPanel 提供配置模板并与 sites / ssl 模块联动,二进制保持上游官方版本。",
+            AppCategory::WebServer,
+            32,
+            15,
+            15,
+            true,
+        )
+        .with_install(InstallMethod::BinaryDownload),
+        native_template(
+            "static-web-server",
+            "static-web-server (SWS)",
+            "github.com/static-web-server/static-web-server:Rust 写的纯静态文件服务器,常驻 RAM ~5MB。可作 rpxy 上游或独立运行,与 static-sites 模块联动。",
+            AppCategory::WebServer,
+            16,
+            8,
+            5,
+            true,
+        )
+        .with_install(InstallMethod::BinaryDownload),
+        native_template(
+            "leaf",
+            "leaf (Rust 多协议代理)",
+            "github.com/eycorsican/leaf:Rust 写的多协议代理,单实例同时暴露 SS / VLESS / Trojan / WireGuard / h2 / ws / tls。常驻 RAM ~25MB。默认 off,在面板软件商店主动启用。",
+            AppCategory::Vpn,
+            64,
+            20,
+            25,
+            false,
+        )
+        .with_install(InstallMethod::BinaryDownload),
+        native_template(
+            "vsmtp",
+            "vSMTP (Rust 邮件中转)",
+            "github.com/viridIT/vSMTP:Rust filter-MTA,做 alias 转发与回复改写;不收件、不存信。出站强制走 SMTP relay (Resend / SES / Postmark),绝不直连 25 端口。常驻 RAM ~35MB。社区维护,默认 off。",
+            AppCategory::Tool,
+            96,
+            30,
+            35,
+            false,
+        )
+        .with_install(InstallMethod::BinaryDownload),
+        native_template(
+            "tuic",
+            "TUIC v5 (实验性)",
+            "github.com/EAimTY/tuic:基于 QUIC 的 UDP 代理,作为 leaf 的抗封锁备用线路。要求宿主对 UDP 友好。社区维护,标实验性,默认 off。",
+            AppCategory::Vpn,
+            64,
+            15,
+            20,
+            false,
+        )
+        .with_install(InstallMethod::BinaryDownload),
         // ====== Docker 路线(只有 can_run_docker 时才显示) ======
         AppTemplate {
             slug: "mysql".to_owned(),
@@ -787,5 +845,34 @@ mod tests {
 
         assert_eq!(php.default_version, "8.3");
         assert!(php.versions.iter().any(|version| version.version == "8.2"));
+    }
+
+    #[test]
+    fn phase_g_rust_stack_templates_present() {
+        // Phase G:5 个 Rust 栈包必须全部出现在 appstore,且都走 BinaryDownload
+        // (上游官方二进制,不 fork、不打补丁)。
+        let templates = app_templates();
+        let expected = [
+            ("rpxy", AppCategory::WebServer),
+            ("static-web-server", AppCategory::WebServer),
+            ("leaf", AppCategory::Vpn),
+            ("vsmtp", AppCategory::Tool),
+            ("tuic", AppCategory::Vpn),
+        ];
+        for (slug, category) in expected {
+            let template = templates
+                .iter()
+                .find(|template| template.slug == slug)
+                .unwrap_or_else(|| panic!("missing phase-g template: {slug}"));
+            assert_eq!(
+                template.install_method,
+                InstallMethod::BinaryDownload as i32,
+                "{slug} must install from upstream binary"
+            );
+            assert_eq!(
+                template.category, category as i32,
+                "{slug} category mismatch"
+            );
+        }
     }
 }
