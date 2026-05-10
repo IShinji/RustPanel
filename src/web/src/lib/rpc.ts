@@ -1,3 +1,4 @@
+import { Code, ConnectError, type Interceptor } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
 import { createGrpcWebTransport } from "@connectrpc/connect-web";
 
@@ -17,8 +18,73 @@ import { SslService } from "../gen/rustpanel/v1/ssl_pb";
 import { SystemService } from "../gen/rustpanel/v1/system_pb";
 import { WorkloadService } from "../gen/rustpanel/v1/workload_pb";
 
+const TOKEN_KEY = "rustpanel.token";
+const AUTH_CHANGED_EVENT = "rustpanel:auth-changed";
+
+// 浏览器关闭标签即清空 token,降低长期暴露风险
+export function getAuthToken(): string | null {
+  return sessionStorage.getItem(TOKEN_KEY);
+}
+
+export function setAuthToken(token: string): void {
+  sessionStorage.setItem(TOKEN_KEY, token);
+  window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT));
+}
+
+export function clearAuthToken(): void {
+  sessionStorage.removeItem(TOKEN_KEY);
+  window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT));
+}
+
+export function onAuthChanged(handler: () => void): () => void {
+  window.addEventListener(AUTH_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(AUTH_CHANGED_EVENT, handler);
+}
+
+// 给 fetch / WebSocket / 下载链接用的辅助:HTTP 走 Authorization 头,
+// WebSocket / SSE 因为浏览器无法设置自定义头,通过 ?token= 查询参数下发
+export function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const token = getAuthToken();
+  const headers = new Headers(init.headers);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return fetch(input, { ...init, headers }).then(async (response) => {
+    if (response.status === 401) {
+      clearAuthToken();
+    }
+    return response;
+  });
+}
+
+export function appendAuthQuery(url: string): string {
+  const token = getAuthToken();
+  if (!token) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}token=${encodeURIComponent(token)}`;
+}
+
+// 给所有 gRPC-Web 请求注入 Authorization,401 时清空 token 触发跳转
+const authInterceptor: Interceptor = (next) => async (req) => {
+  const token = getAuthToken();
+  if (token) {
+    req.header.set("Authorization", `Bearer ${token}`);
+  }
+  try {
+    return await next(req);
+  } catch (error) {
+    if (error instanceof ConnectError && error.code === Code.Unauthenticated) {
+      clearAuthToken();
+    }
+    throw error;
+  }
+};
+
 export function createRpcClients(baseUrl = window.location.origin) {
-  const transport = createGrpcWebTransport({ baseUrl });
+  const transport = createGrpcWebTransport({
+    baseUrl,
+    interceptors: [authInterceptor]
+  });
 
   return {
     appStore: createClient(AppStoreService, transport),

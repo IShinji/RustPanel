@@ -17,6 +17,7 @@ import {
   Folder,
   FolderPlus,
   Globe,
+  LogOut,
   Pause,
   Play,
   Plus,
@@ -70,7 +71,15 @@ import { ReverseProxyRule, RewriteTemplate, SiteItem } from "./gen/rustpanel/v1/
 import { CertificateItem } from "./gen/rustpanel/v1/ssl_pb";
 import { RuntimeModule } from "./gen/rustpanel/v1/system_pb";
 import { WorkloadItem, WorkloadState } from "./gen/rustpanel/v1/workload_pb";
-import { createRpcClients } from "./lib/rpc";
+import {
+  appendAuthQuery,
+  authFetch,
+  clearAuthToken,
+  createRpcClients,
+  getAuthToken,
+  onAuthChanged,
+  setAuthToken
+} from "./lib/rpc";
 import { formatBytes, formatDuration, formatPercent, safeError } from "./lib/format";
 import { useMonitorStore } from "./store/monitor";
 
@@ -318,7 +327,130 @@ const tabs: NavTab[] = [
   { id: "cluster", label: "集群/审计", icon: ShieldAlert, modules: ["cluster"] }
 ];
 
+// 登录页:无 token 时唯一可访问的视图。提交后调用 AuthService.Login,成功则把 JWT 写入 sessionStorage
+// 并触发 rustpanel:auth-changed 事件,App 会重新渲染主面板。
+function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
+  const [error, setError] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      setError("");
+      setSubmitting(true);
+      try {
+        const response = await clients.auth.login({
+          username,
+          password,
+          totpCode
+        });
+        if (response.requiresTwoFactor && !response.accessToken) {
+          setRequiresTwoFactor(true);
+          setError("请输入两步验证码");
+          return;
+        }
+        if (!response.accessToken) {
+          setError(response.status?.message || "登录失败");
+          return;
+        }
+        setAuthToken(response.accessToken);
+        onAuthenticated();
+      } catch (err) {
+        setError(safeError(err));
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [username, password, totpCode, onAuthenticated]
+  );
+
+  return (
+    <div className="login-shell">
+      <form className="login-card" onSubmit={handleSubmit}>
+        <div className="login-brand">
+          <Server size={28} />
+          <div>
+            <h1>RustPanel</h1>
+            <p>请使用管理员账户登录</p>
+          </div>
+        </div>
+        <label>
+          <span>用户名</span>
+          <input
+            autoComplete="username"
+            disabled={submitting}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            type="text"
+            value={username}
+          />
+        </label>
+        <label>
+          <span>密码</span>
+          <input
+            autoComplete="current-password"
+            disabled={submitting}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            type="password"
+            value={password}
+          />
+        </label>
+        {requiresTwoFactor && (
+          <label>
+            <span>两步验证码</span>
+            <input
+              autoComplete="one-time-code"
+              disabled={submitting}
+              inputMode="numeric"
+              maxLength={6}
+              onChange={(e) => setTotpCode(e.target.value)}
+              pattern="[0-9]{6}"
+              required
+              type="text"
+              value={totpCode}
+            />
+          </label>
+        )}
+        {error && <div className="login-error">{error}</div>}
+        <button className="login-submit" disabled={submitting} type="submit">
+          {submitting ? "登录中..." : "登录"}
+        </button>
+        <p className="login-hint">
+          初始密码在安装时打印,也可在 <code>/www/wwwroot/rustpanel/.env</code> 的{" "}
+          <code>RUSTPANEL_ADMIN_PASSWORD</code> 字段查看。
+        </p>
+      </form>
+    </div>
+  );
+}
+
 export default function App() {
+  // 无 token 时显示登录页;rpc.ts 在 401 / Logout 时会清空 token 并广播 rustpanel:auth-changed
+  const [authenticated, setAuthenticated] = useState<boolean>(() => getAuthToken() != null);
+  useEffect(() => {
+    return onAuthChanged(() => {
+      setAuthenticated(getAuthToken() != null);
+    });
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    void clients.auth.logout({}).catch(() => {});
+    clearAuthToken();
+  }, []);
+
+  if (!authenticated) {
+    return <LoginScreen onAuthenticated={() => setAuthenticated(true)} />;
+  }
+
+  return <AppShell onLogout={handleLogout} />;
+}
+
+function AppShell({ onLogout }: { onLogout: () => void }) {
   const [active, setActive] = useState<TabId>("dashboard");
   const [terminalCwd, setTerminalCwd] = useState("/");
   const [modules, setModules] = useState<RuntimeModule[]>([]);
@@ -368,6 +500,10 @@ export default function App() {
             );
           })}
         </nav>
+        <button className="nav-item nav-logout" onClick={onLogout} type="button">
+          <LogOut size={18} />
+          <span>退出登录</span>
+        </button>
       </aside>
 
       <main className="workspace">
@@ -1223,7 +1359,9 @@ function TerminalPanel({ cwd }: { cwd: string }) {
     fit.fit();
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${protocol}//${window.location.host}/api/terminal/ws?cwd=${encodeURIComponent(cwd)}`);
+    // 浏览器无法给 WebSocket 设置自定义 header,只能用 ?token= 把 JWT 一起发出去
+    const wsUrl = appendAuthQuery(`/api/terminal/ws?cwd=${encodeURIComponent(cwd)}`);
+    const socket = new WebSocket(`${protocol}//${window.location.host}${wsUrl}`);
     socket.binaryType = "arraybuffer";
     socketRef.current = socket;
     socket.onmessage = (event) => {
@@ -1309,7 +1447,7 @@ function FileManager({ clients, openTerminal }: { clients: Clients; openTerminal
       } else {
         const form = new FormData();
         form.append("file", file);
-        await fetch(`/api/fs/upload?path=${encodeURIComponent(path)}`, {
+        await authFetch(`/api/fs/upload?path=${encodeURIComponent(path)}`, {
           method: "POST",
           body: form
         });
@@ -1324,7 +1462,7 @@ function FileManager({ clients, openTerminal }: { clients: Clients; openTerminal
     const uploadId = `${Date.now()}-${file.name}`;
     for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
       const chunk = file.slice(chunkIndex * chunkSize, Math.min(file.size, (chunkIndex + 1) * chunkSize));
-      await fetch(`/api/fs/upload/chunk?path=${encodeURIComponent(path)}&upload_id=${encodeURIComponent(uploadId)}&chunk_index=${chunkIndex}&total_chunks=${totalChunks}&file_name=${encodeURIComponent(file.name)}`, {
+      await authFetch(`/api/fs/upload/chunk?path=${encodeURIComponent(path)}&upload_id=${encodeURIComponent(uploadId)}&chunk_index=${chunkIndex}&total_chunks=${totalChunks}&file_name=${encodeURIComponent(file.name)}`, {
         method: "POST",
         body: chunk
       });
@@ -1420,7 +1558,8 @@ function FileManager({ clients, openTerminal }: { clients: Clients; openTerminal
                 label="下载"
                 icon={Download}
                 onClick={() => {
-                  window.location.href = `/api/fs/download?path=${encodeURIComponent(selected.path)}`;
+                  // 浏览器跳转无法带 Authorization header,所以把 token 拼到 query 里
+                  window.location.href = appendAuthQuery(`/api/fs/download?path=${encodeURIComponent(selected.path)}`);
                 }}
               />
             </>

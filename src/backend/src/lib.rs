@@ -8,7 +8,11 @@ use axum::{
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
         Multipart, Path as AxumPath, Query, Request, State,
     },
-    http::{header::CONTENT_TYPE, HeaderValue, Response as HttpResponse, StatusCode},
+    http::{
+        header::{AUTHORIZATION, CONTENT_TYPE},
+        HeaderValue, Response as HttpResponse, StatusCode,
+    },
+    middleware::{from_fn_with_state, Next},
     response::sse::{Event, KeepAlive},
     response::{IntoResponse, Response as AxumResponse},
     routing::{get, post},
@@ -142,14 +146,15 @@ pub fn default_addr() -> SocketAddr {
 }
 
 pub async fn serve(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let auth_service = auth::AuthServiceImpl::from_env(auth::JwtAuthority::from_env()?)?;
+    let authority = auth::JwtAuthority::from_env()?;
+    let auth_service = auth::AuthServiceImpl::from_env(authority.clone())?;
     let listener = TcpListener::bind(addr).await?;
     let local_addr = listener.local_addr()?;
     info!(%local_addr, "rustpanel backend listening");
 
     axum::serve(
         listener,
-        Shared::new(multiplex_service_with_auth(auth_service)),
+        Shared::new(multiplex_service_with_auth(auth_service, authority)),
     )
     .await?;
 
@@ -166,24 +171,37 @@ struct HttpState {
 pub fn http_router() -> Router {
     let monitor_service = monitor::MonitorServiceImpl::new();
     let file_service = files::FileSystemServiceImpl::new();
+    let authority = auth::JwtAuthority::from_env().expect("valid JWT authority");
 
-    http_router_with_state(HttpState {
-        files: file_service.manager(),
-        monitor: monitor_service.collector(),
-        security: security::SecurityConfig::from_env(),
-    })
+    http_router_with_state(
+        HttpState {
+            files: file_service.manager(),
+            monitor: monitor_service.collector(),
+            security: security::SecurityConfig::from_env(),
+        },
+        authority,
+    )
 }
 
-fn http_router_with_state(state: HttpState) -> Router {
-    Router::new()
-        .route("/healthz", get(http_health_check))
+// 拆分公共路由(健康检查、面板静态资源、用户站点)和需要鉴权的 /api/* 路由,
+// 公共路由必须能让前端在登录前加载,/api/* 一律走 token 校验。
+fn http_router_with_state(state: HttpState, authority: auth::JwtAuthority) -> Router {
+    let api_routes = Router::new()
         .route("/api/monitor/status", get(http_monitor_status))
         .route("/api/monitor/watch", get(http_monitor_watch))
         .route("/api/fs/upload", post(http_file_upload))
         .route("/api/fs/upload/chunk", post(http_file_upload_chunk))
         .route("/api/fs/download", get(http_file_download))
         .route("/api/terminal/ws", get(http_terminal_ws))
+        .layer(from_fn_with_state(
+            Arc::new(authority),
+            require_http_auth_middleware,
+        ));
+
+    Router::new()
+        .route("/healthz", get(http_health_check))
         .route("/sites/*path", get(http_builtin_static_site))
+        .merge(api_routes)
         .fallback(static_fallback)
         .with_state(state)
 }
@@ -195,16 +213,16 @@ fn multiplex_service() -> impl tower::Service<
     Error = Infallible,
     Future: Send + 'static,
 > + Clone {
-    let auth_service = auth::AuthServiceImpl::from_env(
-        auth::JwtAuthority::from_env().expect("valid JWT authority"),
-    )
-    .expect("valid auth service");
+    let authority = auth::JwtAuthority::from_env().expect("valid JWT authority");
+    let auth_service =
+        auth::AuthServiceImpl::from_env(authority.clone()).expect("valid auth service");
 
-    multiplex_service_with_auth(auth_service)
+    multiplex_service_with_auth(auth_service, authority)
 }
 
 fn multiplex_service_with_auth(
     auth_service: auth::AuthServiceImpl,
+    authority: auth::JwtAuthority,
 ) -> impl tower::Service<
     Request,
     Response = HttpResponse<Body>,
@@ -213,34 +231,80 @@ fn multiplex_service_with_auth(
 > + Clone {
     let monitor_service = monitor::MonitorServiceImpl::new();
     let file_service = files::FileSystemServiceImpl::new();
-    let http = http_router_with_state(HttpState {
-        files: file_service.manager(),
-        monitor: monitor_service.collector(),
-        security: security::SecurityConfig::from_env(),
-    });
+    let http = http_router_with_state(
+        HttpState {
+            files: file_service.manager(),
+            monitor: monitor_service.collector(),
+            security: security::SecurityConfig::from_env(),
+        },
+        authority.clone(),
+    );
+    // AuthService 自身必须公开,login 是无 token 状态下唯一能调用的 RPC;其余 15 个服务一律拦截。
+    let auth_interceptor = auth::AuthInterceptor::new(authority);
     let grpc = Server::builder()
         .accept_http1(true)
         .layer(tonic_web::GrpcWebLayer::new())
         .add_service(AuthServiceServer::new(auth_service))
-        .add_service(AuditServiceServer::new(audit::AuditServiceImpl))
-        .add_service(ClusterServiceServer::new(cluster::ClusterServiceImpl))
-        .add_service(SystemServiceServer::new(SystemServiceImpl))
-        .add_service(MonitorServiceServer::new(monitor_service))
-        .add_service(SecurityServiceServer::new(
+        .add_service(AuditServiceServer::with_interceptor(
+            audit::AuditServiceImpl,
+            auth_interceptor.clone(),
+        ))
+        .add_service(ClusterServiceServer::with_interceptor(
+            cluster::ClusterServiceImpl,
+            auth_interceptor.clone(),
+        ))
+        .add_service(SystemServiceServer::with_interceptor(
+            SystemServiceImpl,
+            auth_interceptor.clone(),
+        ))
+        .add_service(MonitorServiceServer::with_interceptor(
+            monitor_service,
+            auth_interceptor.clone(),
+        ))
+        .add_service(SecurityServiceServer::with_interceptor(
             security::SecurityServiceImpl::new(),
+            auth_interceptor.clone(),
         ))
-        .add_service(TerminalServiceServer::new(terminal::TerminalServiceImpl))
-        .add_service(FileSystemServiceServer::new(file_service))
-        .add_service(DockerServiceServer::new(docker::DockerServiceImpl))
-        .add_service(AppStoreServiceServer::new(appstore::AppStoreServiceImpl))
-        .add_service(SiteServiceServer::new(site::SiteServiceImpl::new()))
-        .add_service(SslServiceServer::new(ssl::SslServiceImpl::default()))
-        .add_service(DatabaseServiceServer::new(database::DatabaseServiceImpl))
-        .add_service(CronServiceServer::new(cron::CronServiceImpl::new()))
-        .add_service(WorkloadServiceServer::new(
+        .add_service(TerminalServiceServer::with_interceptor(
+            terminal::TerminalServiceImpl,
+            auth_interceptor.clone(),
+        ))
+        .add_service(FileSystemServiceServer::with_interceptor(
+            file_service,
+            auth_interceptor.clone(),
+        ))
+        .add_service(DockerServiceServer::with_interceptor(
+            docker::DockerServiceImpl,
+            auth_interceptor.clone(),
+        ))
+        .add_service(AppStoreServiceServer::with_interceptor(
+            appstore::AppStoreServiceImpl,
+            auth_interceptor.clone(),
+        ))
+        .add_service(SiteServiceServer::with_interceptor(
+            site::SiteServiceImpl::new(),
+            auth_interceptor.clone(),
+        ))
+        .add_service(SslServiceServer::with_interceptor(
+            ssl::SslServiceImpl::default(),
+            auth_interceptor.clone(),
+        ))
+        .add_service(DatabaseServiceServer::with_interceptor(
+            database::DatabaseServiceImpl,
+            auth_interceptor.clone(),
+        ))
+        .add_service(CronServiceServer::with_interceptor(
+            cron::CronServiceImpl::new(),
+            auth_interceptor.clone(),
+        ))
+        .add_service(WorkloadServiceServer::with_interceptor(
             workload::WorkloadServiceImpl::new(),
+            auth_interceptor.clone(),
         ))
-        .add_service(ProxyServiceServer::new(proxy::ProxyServiceImpl::new()))
+        .add_service(ProxyServiceServer::with_interceptor(
+            proxy::ProxyServiceImpl::new(),
+            auth_interceptor,
+        ))
         .into_service();
 
     service_fn(move |request: Request| {
@@ -308,6 +372,77 @@ async fn http_health_check() -> impl IntoResponse {
         service: "rustpanel-backend",
         version: env!("CARGO_PKG_VERSION"),
     })
+}
+
+// 校验 /api/* 请求附带的 token。WebSocket / SSE 浏览器无法设置 Authorization 头,
+// 所以也接受 ?token=<jwt> query 参数,二者命中其一即可。
+async fn require_http_auth_middleware(
+    State(authority): State<Arc<auth::JwtAuthority>>,
+    request: Request,
+    next: Next,
+) -> Result<AxumResponse, StatusCode> {
+    let token = extract_http_token(&request).ok_or(StatusCode::UNAUTHORIZED)?;
+    authority
+        .validate(&token)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    Ok(next.run(request).await)
+}
+
+fn extract_http_token(request: &Request) -> Option<String> {
+    if let Some(value) = request.headers().get(AUTHORIZATION) {
+        if let Ok(text) = value.to_str() {
+            if let Some(token) = text.strip_prefix("Bearer ") {
+                let trimmed = token.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_owned());
+                }
+            }
+        }
+    }
+    let query = request.uri().query()?;
+    for pair in query.split('&') {
+        if let Some(value) = pair.strip_prefix("token=") {
+            let decoded = urlencoding_decode(value);
+            if !decoded.is_empty() {
+                return Some(decoded);
+            }
+        }
+    }
+    None
+}
+
+// 简易 URL 解码,只处理 %XX,不引新依赖。query 里的 token 通常是 base64url JWT,
+// 不会出现需要复杂解码的字符,所以这个最小实现够用。
+fn urlencoding_decode(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut idx = 0;
+    while idx < bytes.len() {
+        let byte = bytes[idx];
+        if byte == b'%' && idx + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (hex_value(bytes[idx + 1]), hex_value(bytes[idx + 2])) {
+                out.push((hi * 16 + lo) as char);
+                idx += 3;
+                continue;
+            }
+        }
+        if byte == b'+' {
+            out.push(' ');
+        } else {
+            out.push(byte as char);
+        }
+        idx += 1;
+    }
+    out
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 async fn http_monitor_status(
@@ -734,7 +869,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn multiplexed_server_accepts_grpc_health_check() {
+    async fn multiplexed_server_accepts_grpc_health_check_with_bearer_token() {
+        // 构造一个有效 token,验证 SystemService.HealthCheck 在挂上 AuthInterceptor 后仍能正常访问
+        let authority = auth::JwtAuthority::from_env().expect("authority");
+        let issued = authority.issue("admin").expect("issue token");
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("local addr");
         let server = tokio::spawn(async move {
@@ -746,8 +884,15 @@ mod tests {
         let mut client = SystemServiceClient::connect(format!("http://{addr}"))
             .await
             .expect("connect");
+        let mut request = GrpcRequest::new(HealthCheckRequest {});
+        request.metadata_mut().insert(
+            "authorization",
+            format!("Bearer {}", issued.token)
+                .parse()
+                .expect("metadata"),
+        );
         let response = client
-            .health_check(HealthCheckRequest {})
+            .health_check(request)
             .await
             .expect("health check")
             .into_inner();
@@ -755,6 +900,106 @@ mod tests {
         assert_eq!(response.health, HealthStatus::Serving as i32);
 
         server.abort();
+    }
+
+    #[tokio::test]
+    async fn multiplexed_server_rejects_grpc_without_token() {
+        // 同一个 SystemService.HealthCheck 不带 token 必须返回 Unauthenticated,确认拦截器生效
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, Shared::new(multiplex_service()))
+                .await
+                .expect("server");
+        });
+
+        let mut client = SystemServiceClient::connect(format!("http://{addr}"))
+            .await
+            .expect("connect");
+        let status = client
+            .health_check(HealthCheckRequest {})
+            .await
+            .expect_err("must require auth");
+
+        assert_eq!(status.code(), tonic::Code::Unauthenticated);
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn http_api_routes_require_bearer_token() {
+        // 通过 multiplex_service 入口测,确认 /api/* 没 token 返回 401,带合法 token 通过中间件
+        let authority = auth::JwtAuthority::from_env().expect("authority");
+        let issued = authority.issue("admin").expect("issue");
+        let service = multiplex_service();
+
+        let unauth_response = service
+            .clone()
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/monitor/status")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(unauth_response.status(), StatusCode::UNAUTHORIZED);
+
+        let auth_response = service
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/monitor/status")
+                    .header("authorization", format!("Bearer {}", issued.token))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        // 路由通过中间件,处理函数返回 200 / OK 即可证明鉴权放行;实际 body 由 monitor 模块决定
+        assert_ne!(auth_response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn http_healthz_remains_public() {
+        // /healthz 必须保持公开,外部探针不需要 token
+        let response = http_router()
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn extract_http_token_supports_header_and_query() {
+        let header_request = HttpRequest::builder()
+            .uri("/api/monitor/status")
+            .header("authorization", "Bearer abc.def.ghi")
+            .body(Body::empty())
+            .expect("request");
+        assert_eq!(
+            extract_http_token(&header_request).as_deref(),
+            Some("abc.def.ghi")
+        );
+
+        let query_request = HttpRequest::builder()
+            .uri("/api/terminal/ws?cwd=/&token=qrs.tuv.wxy")
+            .body(Body::empty())
+            .expect("request");
+        assert_eq!(
+            extract_http_token(&query_request).as_deref(),
+            Some("qrs.tuv.wxy")
+        );
+
+        let none_request = HttpRequest::builder()
+            .uri("/api/monitor/status")
+            .body(Body::empty())
+            .expect("request");
+        assert!(extract_http_token(&none_request).is_none());
     }
 
     #[test]
