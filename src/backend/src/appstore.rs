@@ -492,6 +492,143 @@ async fn execute_apt_upgrade(pkg: &str) -> Result<(), Status> {
     Ok(())
 }
 
+// =====================================================================
+// Phase G 后续 · sites 模块 ↔ rpxy 集成的数据层与执行胶水。
+// 这一层只负责"把一条站点变成 rpxy 配置片段并落盘 / 删除 / reload",
+// 不动 site.rs 现有 create_site 流程 —— 该流程默认仍走 nginx,后续
+// commit 在 site.rs 里加 "backend = rpxy" 的可选分支时再消费这些函数。
+// =====================================================================
+
+use crate::proto::rustpanel::v1::{SiteItem, SiteKind};
+
+const RPXY_FRAGMENT_DIR: &str = "/etc/rpxy/sites.d";
+
+/// 把一条 SiteItem 翻译成 rpxy 的 `[apps.<name>]` 配置片段。
+/// 返回 None 表示这种站点不适合直接走 rpxy(典型是纯静态站,
+/// 需要 sws 作上游配合,见 static_site_to_sws_args)。
+///
+/// 同一 site 多 domain 时,**只取第一个作为 server_name** —— rpxy
+/// 单个 app 块只支持一个 SNI;多域名要在调用方为每个 domain 生成
+/// 独立的 app 块。
+#[allow(dead_code)] // 等 site.rs 在 create_site 里接入 "backend = rpxy" 分支后启用
+pub(crate) fn site_to_rpxy_app_block(site: &SiteItem) -> Option<String> {
+    let kind = SiteKind::try_from(site.kind).unwrap_or(SiteKind::Unspecified);
+    let primary_domain = site.domains.first()?;
+    if primary_domain.trim().is_empty() {
+        return None;
+    }
+    let upstream = match kind {
+        SiteKind::ReverseProxy => {
+            let target = site.proxy_target.trim();
+            if target.is_empty() {
+                return None;
+            }
+            target.to_owned()
+        }
+        SiteKind::RustBinary => {
+            if site.internal_port == 0 {
+                return None;
+            }
+            format!("127.0.0.1:{}", site.internal_port)
+        }
+        // 纯静态站 / Unspecified:rpxy 自己不服务静态文件,需 sws 配合,
+        // 调用方应当走 static_site_to_sws_args 这条路径。
+        _ => return None,
+    };
+    let tls_line = if site.ssl_enabled {
+        "tls = { https_redirection = true, acme = true }\n"
+    } else {
+        ""
+    };
+    Some(format!(
+        "[apps.\"{name}\"]\nserver_name = \"{domain}\"\nreverse_proxy = [{{ location = \"/\", upstream = [{{ location = \"{upstream}\" }}] }}]\n{tls}",
+        name = site.name,
+        domain = primary_domain,
+        upstream = upstream,
+        tls = tls_line,
+    ))
+}
+
+/// 给静态站点生成 systemd template-unit 调用所需的"--root + --port"
+/// 参数对,供未来 sws@<site>.service 的 EnvironmentFile / drop-in 用。
+/// Static 之外的 kind 返回 None。
+#[allow(dead_code)] // 等 static-sites 接 sws template unit 时启用
+pub(crate) fn static_site_to_sws_args(site: &SiteItem) -> Option<(String, u16)> {
+    let kind = SiteKind::try_from(site.kind).unwrap_or(SiteKind::Unspecified);
+    if kind != SiteKind::Static {
+        return None;
+    }
+    let root = site.root.trim();
+    if root.is_empty() {
+        return None;
+    }
+    // internal_port 0 时,后续 commit 在分配真实端口时再补;
+    // 干净的 None 让上层判断"还没就绪"。
+    if site.internal_port == 0 {
+        return None;
+    }
+    let port: u16 = site.internal_port.try_into().ok()?;
+    Some((root.to_owned(), port))
+}
+
+/// rpxy 站点片段目录,RUSTPANEL_RPXY_FRAGMENT_DIR 可覆盖(测试用)。
+fn rpxy_fragment_dir() -> PathBuf {
+    env::var("RUSTPANEL_RPXY_FRAGMENT_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(RPXY_FRAGMENT_DIR))
+}
+
+fn rpxy_fragment_path(site_name: &str) -> PathBuf {
+    rpxy_fragment_dir().join(format!("{site_name}.toml"))
+}
+
+/// 把 site_to_rpxy_app_block 生成的片段原子写入 sites.d 目录。
+/// 调用方应当确保 site_name 已经做过 sanitize_app_name。
+#[allow(dead_code)] // 等 site.rs 接入 "backend = rpxy" 分支时启用
+pub(crate) async fn write_rpxy_site_fragment(
+    site_name: &str,
+    block: &str,
+) -> Result<PathBuf, Status> {
+    let dir = rpxy_fragment_dir();
+    tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
+    let path = rpxy_fragment_path(site_name);
+    let tmp = path.with_extension("toml.rustpanel-tmp");
+    tokio::fs::write(&tmp, block.as_bytes())
+        .await
+        .map_err(io_status)?;
+    tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
+    Ok(path)
+}
+
+#[allow(dead_code)]
+pub(crate) async fn remove_rpxy_site_fragment(site_name: &str) -> Result<(), Status> {
+    let path = rpxy_fragment_path(site_name);
+    if tokio::fs::try_exists(&path).await.unwrap_or(false) {
+        tokio::fs::remove_file(&path).await.map_err(io_status)?;
+    }
+    Ok(())
+}
+
+/// rpxy reload —— 容错 systemctl,unit 不存在时返回 failed_precondition
+/// 提示用户先在软件商店启用 rpxy。
+#[allow(dead_code)]
+pub(crate) async fn reload_rpxy_if_running() -> Result<(), Status> {
+    if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
+        return Ok(());
+    }
+    let is_active = tokio::process::Command::new("systemctl")
+        .args(["is-active", "--quiet", "rpxy.service"])
+        .status()
+        .await
+        .map_err(io_status)?;
+    if !is_active.success() {
+        // 没装 / 没启用,直接返回 OK —— 站点片段已写好,装上 rpxy 后
+        // 它启动时会自动读到。这里报错只会让 site 操作失败。
+        return Ok(());
+    }
+    systemctl(&["reload", "rpxy.service"]).await
+}
+
 pub fn app_templates() -> Vec<AppTemplate> {
     let mut templates = vec![
         // ====== 轻量 systemd-first(NAT VPS / OpenVZ 友好) ======
@@ -1867,6 +2004,88 @@ mod tests {
                 template.homepage
             );
         }
+    }
+
+    fn make_site(kind: SiteKind, name: &str, domain: &str) -> SiteItem {
+        SiteItem {
+            name: name.to_owned(),
+            domains: vec![domain.to_owned()],
+            root: String::new(),
+            proxy_target: String::new(),
+            ssl_enabled: false,
+            config_path: String::new(),
+            engine: String::new(),
+            public_path: String::new(),
+            listen_addr: String::new(),
+            kind: kind as i32,
+            binding: None,
+            tls_strategy: 0,
+            systemd_unit: String::new(),
+            internal_port: 0,
+        }
+    }
+
+    #[test]
+    fn site_to_rpxy_app_block_for_reverse_proxy_includes_upstream() {
+        let mut site = make_site(SiteKind::ReverseProxy, "blog", "blog.example.com");
+        site.proxy_target = "127.0.0.1:8080".to_owned();
+        site.ssl_enabled = true;
+        let block = site_to_rpxy_app_block(&site).expect("reverse-proxy 块应生成");
+        assert!(block.contains("[apps.\"blog\"]"));
+        assert!(block.contains("server_name = \"blog.example.com\""));
+        assert!(block.contains("location = \"127.0.0.1:8080\""));
+        assert!(block.contains("acme = true"));
+    }
+
+    #[test]
+    fn site_to_rpxy_app_block_for_rust_binary_uses_loopback_port() {
+        let mut site = make_site(SiteKind::RustBinary, "api", "api.example.com");
+        site.internal_port = 4321;
+        let block = site_to_rpxy_app_block(&site).expect("rust-binary 块应生成");
+        assert!(block.contains("location = \"127.0.0.1:4321\""));
+        // 默认 ssl_enabled=false 时不出 tls 段
+        assert!(!block.contains("acme = true"));
+    }
+
+    #[test]
+    fn site_to_rpxy_app_block_skips_pure_static() {
+        // 纯静态站需要 sws 上游配合,rpxy 自己不服务文件 → None
+        let mut site = make_site(SiteKind::Static, "docs", "docs.example.com");
+        site.root = "/var/www/docs".to_owned();
+        assert!(site_to_rpxy_app_block(&site).is_none());
+    }
+
+    #[test]
+    fn site_to_rpxy_app_block_skips_missing_upstream() {
+        // ReverseProxy 但 proxy_target 空 → None
+        let site = make_site(SiteKind::ReverseProxy, "bare", "bare.example.com");
+        assert!(site_to_rpxy_app_block(&site).is_none());
+        // RustBinary 但 internal_port=0 → None
+        let site = make_site(SiteKind::RustBinary, "bare", "bare.example.com");
+        assert!(site_to_rpxy_app_block(&site).is_none());
+        // 无 domain → None
+        let mut site = make_site(SiteKind::ReverseProxy, "nodom", "");
+        site.domains.clear();
+        site.proxy_target = "127.0.0.1:1".to_owned();
+        assert!(site_to_rpxy_app_block(&site).is_none());
+    }
+
+    #[test]
+    fn static_site_to_sws_args_only_when_ready() {
+        let mut site = make_site(SiteKind::Static, "docs", "docs.example.com");
+        site.root = "/var/www/docs".to_owned();
+        // internal_port=0:还没分配,返回 None
+        assert!(static_site_to_sws_args(&site).is_none());
+        site.internal_port = 9001;
+        assert_eq!(
+            static_site_to_sws_args(&site),
+            Some(("/var/www/docs".to_owned(), 9001))
+        );
+        // 非 Static 的 kind 永远 None
+        let mut site = make_site(SiteKind::ReverseProxy, "x", "x.example.com");
+        site.root = "/var/www/x".to_owned();
+        site.internal_port = 9001;
+        assert!(static_site_to_sws_args(&site).is_none());
     }
 
     #[test]
