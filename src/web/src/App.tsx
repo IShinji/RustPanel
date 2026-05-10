@@ -132,6 +132,14 @@ import { Input as UIInput } from "./components/ui/input";
 import { Label as UILabel } from "./components/ui/label";
 import { Progress } from "./components/ui/progress";
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle
+} from "./components/ui/sheet";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -3845,440 +3853,1070 @@ function MicroPanel({ clients }: { clients: Clients }) {
   );
 }
 
+type SiteSheetMode = "new" | "edit" | null;
+
+function siteKindLabel(kind: number): string {
+  switch (kind) {
+    case SiteKind.STATIC:
+      return "静态";
+    case SiteKind.RUST_BINARY:
+      return "Rust 二进制";
+    case SiteKind.REVERSE_PROXY:
+      return "反向代理";
+    default:
+      return "默认";
+  }
+}
+
 function SitesSsl({ clients }: { clients: Clients }) {
+  // === 数据 ===
   const [sites, setSites] = useState<SiteItem[]>([]);
   const [certificates, setCertificates] = useState<CertificateItem[]>([]);
   const [rewriteTemplates, setRewriteTemplates] = useState<RewriteTemplate[]>([]);
-  const [rewriteContent, setRewriteContent] = useState("");
   const [proxyRules, setProxyRules] = useState<ReverseProxyRule[]>([]);
-  const [form, setForm] = useState({ name: "demo", domains: "example.com", root: "/var/www/html", proxyTarget: "" });
-  const [sslDomain, setSslDomain] = useState("example.com");
-  const [importForm, setImportForm] = useState({ domain: "example.com", group: "default", certificatePem: "", privateKeyPem: "" });
-  // ====== Phase C: NAT/IPv6 感知的站点向导 ======
-  const [phaseCForm, setPhaseCForm] = useState({
-    name: "blog",
-    domain: "blog.example.com",
-    kind: "static" as "static" | "rust-binary" | "reverse-proxy",
-    bindKind: "ipv6" as "nat-port" | "ipv6",
-    natPort: "",
-    ipv6Address: "",
-    root: "/var/www/blog",
-    proxyTarget: "",
-    binaryPath: "/usr/local/bin/blog-server",
-    tls: "dns01" as "none" | "dns01" | "imported"
-  });
-  const [phaseCResult, setPhaseCResult] = useState<{
-    config: string;
-    site: SiteItem;
-  } | null>(null);
   const [reservedPorts, setReservedPorts] = useState<ReservedPort[]>([]);
   const [ipv6Pool, setIpv6Pool] = useState<Ipv6Address[]>([]);
-  const [proxyForm, setProxyForm] = useState({
-    name: "api",
-    domain: "example.com",
-    pathPrefix: "/api/",
-    targets: "http://127.0.0.1:3000,http://127.0.0.1:3001",
-    method: "least_conn",
-    cacheEnabled: false,
-    rateLimit: 120
-  });
-  const [status, setStatus] = useState("");
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  // === 反馈 ===
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  // === Sheet 抽屉状态 ===
+  const [sheetMode, setSheetMode] = useState<SiteSheetMode>(null);
+  const [selectedSite, setSelectedSite] = useState<SiteItem | null>(null);
 
-  const load = async () => {
-    const [siteResponse, certResponse, templateResponse, proxyResponse, portsResponse, ipv6Response] = await Promise.all([
-      clients.site.listSites({}),
-      clients.ssl.listCertificates({}),
-      clients.site.listRewriteTemplates({}),
-      clients.site.listReverseProxyRules({}),
-      clients.capability.listReservedPorts({}).catch(() => ({ ports: [] as ReservedPort[] })),
-      clients.capability
-        .listIpv6Addresses({})
-        .catch(() => ({ addresses: [] as Ipv6Address[], prefixes: [] as string[] }))
-    ]);
-    setSites(siteResponse.sites);
-    setCertificates(certResponse.certificates);
-    setRewriteTemplates(templateResponse.templates);
-    if (!rewriteContent && templateResponse.templates[0]) {
-      setRewriteContent(templateResponse.templates[0].content);
+  const load = useCallback(async () => {
+    try {
+      const [siteRes, certRes, tplRes, proxyRes, portsRes, v6Res] = await Promise.all([
+        clients.site.listSites({}),
+        clients.ssl.listCertificates({}),
+        clients.site.listRewriteTemplates({}),
+        clients.site.listReverseProxyRules({}),
+        clients.capability
+          .listReservedPorts({})
+          .catch(() => ({ ports: [] as ReservedPort[] })),
+        clients.capability
+          .listIpv6Addresses({})
+          .catch(() => ({ addresses: [] as Ipv6Address[], prefixes: [] as string[] }))
+      ]);
+      setSites(siteRes.sites);
+      setCertificates(certRes.certificates);
+      setRewriteTemplates(tplRes.templates);
+      setProxyRules(proxyRes.rules);
+      setReservedPorts(portsRes.ports);
+      setIpv6Pool(v6Res.addresses);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
     }
-    setProxyRules(proxyResponse.rules);
-    setReservedPorts(portsResponse.ports);
-    setIpv6Pool(ipv6Response.addresses);
+  }, [clients]);
+
+  // 主机能力(capabilities)只在挂载时探一次,影响"绑定方式"字段的展开
+  useEffect(() => {
+    void clients.capability
+      .getCapabilities({})
+      .then((response) => setCapabilities(response.capabilities ?? null))
+      .catch(() => setCapabilities(null));
+  }, [clients]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // 路由:/#sites/<name> 或 /#sites/new 直接打开对应抽屉。
+  // 主路由(a4bd433)只识别一级 TabId,这里负责解析第二段并按 sites 列
+  // 表匹配。`sites` 还没拉到时挂起;拉到后这个 effect 会重跑一次。
+  useEffect(() => {
+    const parse = () => {
+      const raw = window.location.hash.replace(/^#/, "");
+      const parts = raw.split("/");
+      if (parts[0] !== "sites") return;
+      if (parts[1] === "new") {
+        setSheetMode("new");
+        setSelectedSite(null);
+      } else if (parts[1]) {
+        const target = sites.find((site) => site.name === parts[1]);
+        if (target) {
+          setSheetMode("edit");
+          setSelectedSite(target);
+        }
+      } else {
+        setSheetMode(null);
+        setSelectedSite(null);
+      }
+    };
+    parse();
+    window.addEventListener("hashchange", parse);
+    return () => window.removeEventListener("hashchange", parse);
+  }, [sites]);
+
+  const openCreate = () => {
+    setSheetMode("new");
+    setSelectedSite(null);
+    if (window.location.hash !== "#sites/new") {
+      window.history.replaceState(null, "", "#sites/new");
+    }
   };
 
-  const submitPhaseCSite = async () => {
-    const kind =
-      phaseCForm.kind === "static"
+  const openEdit = (site: SiteItem) => {
+    setSheetMode("edit");
+    setSelectedSite(site);
+    const target = `#sites/${site.name}`;
+    if (window.location.hash !== target) {
+      window.history.replaceState(null, "", target);
+    }
+  };
+
+  const closeSheet = () => {
+    setSheetMode(null);
+    setSelectedSite(null);
+    if (window.location.hash !== "#sites") {
+      window.history.replaceState(null, "", "#sites");
+    }
+  };
+
+  const renewCertificate = async (certificate: CertificateItem) => {
+    try {
+      const response = await clients.ssl.renewCertificate({ domain: certificate.domain });
+      setMessage(response.output || `${certificate.domain} 已续签`);
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const deleteReverseProxy = async (rule: ReverseProxyRule) => {
+    try {
+      await clients.site.deleteReverseProxyRule({ id: rule.id });
+      setMessage(`${rule.name} 已删除`);
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight m-0">网站</h1>
+          <p className="text-sm text-muted-foreground m-0">
+            站点 {sites.length} 个 · 证书 {certificates.length} 张 · 反代规则 {proxyRules.length} 条
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <UIButton variant="outline" size="sm" onClick={() => void load()}>
+            <RefreshCw className="size-4" />
+            刷新
+          </UIButton>
+          <UIButton size="sm" onClick={openCreate}>
+            <Plus className="size-4" />
+            新建站点
+          </UIButton>
+        </div>
+      </header>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+          {message}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>站点</CardTitle>
+          <CardDescription>点行打开详情(基础 / SSL / 反代 / 伪静态)</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {sites.length === 0 ? (
+            <div className="empty-state text-sm">尚无站点 — 点右上"+ 新建站点"开始</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>名称</TableHead>
+                  <TableHead>域名</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>SSL</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {sites.map((site) => (
+                  <UITableRow
+                    key={site.configPath || site.name}
+                    className="cursor-pointer hover:bg-accent/50"
+                    onClick={() => openEdit(site)}
+                  >
+                    <TableCell className="font-medium">{site.name}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {site.domains.join(", ") || "—"}
+                    </TableCell>
+                    <TableCell>{siteKindLabel(site.kind)}</TableCell>
+                    <TableCell>
+                      <Badge variant={site.sslEnabled ? "success" : "muted"}>
+                        {site.sslEnabled ? "SSL" : "HTTP"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <UIButton
+                        size="sm"
+                        variant="ghost"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openEdit(site);
+                        }}
+                      >
+                        编辑
+                      </UIButton>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>证书统一视图</CardTitle>
+          <CardDescription>跨站点的所有证书;续签也可在抽屉 SSL Tab 触发。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {certificates.length === 0 ? (
+            <div className="empty-state text-sm">暂无证书</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>域名</TableHead>
+                  <TableHead>分组</TableHead>
+                  <TableHead>剩余</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {certificates.map((cert) => (
+                  <UITableRow key={cert.domain}>
+                    <TableCell className="font-medium">{cert.domain}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {cert.group || "default"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={cert.warningLevel === "ok" ? "success" : "destructive"}>
+                        {cert.daysUntilExpiry} 天
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <UIButton
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void renewCertificate(cert)}
+                      >
+                        <RotateCw className="size-3.5" />
+                        续签
+                      </UIButton>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>反向代理规则</CardTitle>
+          <CardDescription>跨站点的全局规则;单站点反代请在抽屉的"反向代理" Tab 管。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {proxyRules.length === 0 ? (
+            <div className="empty-state text-sm">暂无反代规则</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>名称</TableHead>
+                  <TableHead>路径</TableHead>
+                  <TableHead>目标</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {proxyRules.map((rule) => (
+                  <UITableRow key={rule.id}>
+                    <TableCell className="font-medium">{rule.name}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {rule.domain}
+                      {rule.pathPrefix}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {rule.targets.map((target) => target.url).join(", ")}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={rule.enabled ? "success" : "muted"}>
+                        {rule.enabled ? "启用" : "停用"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <UIButton
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void deleteReverseProxy(rule)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        删除
+                      </UIButton>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <SiteDetailSheet
+        mode={sheetMode}
+        site={selectedSite}
+        capabilities={capabilities}
+        reservedPorts={reservedPorts}
+        ipv6Pool={ipv6Pool}
+        certificates={certificates}
+        proxyRules={proxyRules}
+        rewriteTemplates={rewriteTemplates}
+        clients={clients}
+        onClose={closeSheet}
+        onChanged={() => void load()}
+        onMessage={setMessage}
+        onError={setError}
+      />
+    </section>
+  );
+}
+
+type SiteSheetProps = {
+  mode: SiteSheetMode;
+  site: SiteItem | null;
+  capabilities: Capabilities | null;
+  reservedPorts: ReservedPort[];
+  ipv6Pool: Ipv6Address[];
+  certificates: CertificateItem[];
+  proxyRules: ReverseProxyRule[];
+  rewriteTemplates: RewriteTemplate[];
+  clients: Clients;
+  onClose: () => void;
+  onChanged: () => void;
+  onMessage: (message: string) => void;
+  onError: (error: string) => void;
+};
+
+function SiteDetailSheet(props: SiteSheetProps) {
+  const { mode, site, onClose } = props;
+  return (
+    <Sheet open={mode !== null} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>
+            {mode === "new" ? "新建站点" : site?.name || "站点详情"}
+          </SheetTitle>
+          <SheetDescription>
+            {mode === "new"
+              ? "保存后回到此抽屉继续配置 SSL / 反代 / 伪静态"
+              : site?.domains.join(", ") || ""}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto px-5 pb-3">
+          <Tabs defaultValue="basic">
+            <TabsList>
+              <TabsTrigger value="basic">基础</TabsTrigger>
+              <TabsTrigger value="ssl" disabled={mode === "new"}>
+                SSL
+              </TabsTrigger>
+              <TabsTrigger value="rp" disabled={mode === "new"}>
+                反向代理
+              </TabsTrigger>
+              <TabsTrigger value="rewrite">伪静态</TabsTrigger>
+            </TabsList>
+            <TabsContent value="basic" className="pt-3">
+              <SmartSiteForm {...props} />
+            </TabsContent>
+            <TabsContent value="ssl" className="pt-3">
+              {mode === "edit" && site ? (
+                <SslPanel {...props} site={site} />
+              ) : (
+                <p className="text-sm text-muted-foreground">保存站点后可配置 SSL</p>
+              )}
+            </TabsContent>
+            <TabsContent value="rp" className="pt-3">
+              {mode === "edit" && site ? (
+                <PerSiteReverseProxyPanel {...props} site={site} />
+              ) : (
+                <p className="text-sm text-muted-foreground">保存站点后可配置反向代理</p>
+              )}
+            </TabsContent>
+            <TabsContent value="rewrite" className="pt-3">
+              <RewritePanel templates={props.rewriteTemplates} />
+            </TabsContent>
+          </Tabs>
+        </div>
+        <SheetFooter>
+          <UIButton variant="outline" onClick={onClose}>
+            关闭
+          </UIButton>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function SmartSiteForm({
+  mode,
+  site,
+  capabilities,
+  reservedPorts,
+  ipv6Pool,
+  clients,
+  onChanged,
+  onMessage,
+  onError,
+  onClose
+}: SiteSheetProps) {
+  // 智能表单合并了 Phase C 高级版 + 经典向导 —— 字段始终是同一套,
+  // "绑定方式 / NAT 端口 / IPv6 地址"按 capabilities 揭示。
+  const isEdit = mode === "edit";
+  const [name, setName] = useState(site?.name ?? "");
+  const [domain, setDomain] = useState(site?.domains.join(", ") ?? "");
+  const [kind, setKind] = useState<"static" | "rust-binary" | "reverse-proxy">(() => {
+    if (!site) return "static";
+    if (site.kind === SiteKind.RUST_BINARY) return "rust-binary";
+    if (site.kind === SiteKind.REVERSE_PROXY) return "reverse-proxy";
+    return "static";
+  });
+  const [root, setRoot] = useState(site?.root ?? "/var/www/html");
+  const [proxyTarget, setProxyTarget] = useState(site?.proxyTarget ?? "");
+  const [binaryPath, setBinaryPath] = useState("/usr/local/bin/site-server");
+  const [bindKind, setBindKind] = useState<"nat-port" | "ipv6">(() =>
+    ipv6Pool.length > 0 ? "ipv6" : "nat-port"
+  );
+  const [natPort, setNatPort] = useState(site?.binding?.natPort?.toString() ?? "");
+  const [ipv6Address, setIpv6Address] = useState(site?.binding?.ipv6Address ?? "");
+  const [tls, setTls] = useState<"none" | "dns01" | "imported">(() => {
+    if (!site) return "dns01";
+    if (site.tlsStrategy === SiteTlsStrategy.LETSENCRYPT_DNS01) return "dns01";
+    if (site.tlsStrategy === SiteTlsStrategy.IMPORTED) return "imported";
+    return site.sslEnabled ? "dns01" : "none";
+  });
+
+  // NAT VPS 总是有 NAT 端口预算,所以绑定段一直显示;有 IPv6 池时多
+  // 出"IPv6 直连"那一项。capabilities 字段不直接给端口数,具体可用端口
+  // 由 listReservedPorts 反查。
+  void capabilities;
+  const showBinding = true;
+
+  const submit = async () => {
+    if (isEdit) {
+      onError("当前后端无 UpdateSite RPC,暂不支持编辑已有站点。删了重建可绕过。");
+      return;
+    }
+    const protoKind =
+      kind === "static"
         ? SiteKind.STATIC
-        : phaseCForm.kind === "rust-binary"
+        : kind === "rust-binary"
           ? SiteKind.RUST_BINARY
           : SiteKind.REVERSE_PROXY;
-    const tls =
-      phaseCForm.tls === "dns01"
+    const protoTls =
+      tls === "dns01"
         ? SiteTlsStrategy.LETSENCRYPT_DNS01
-        : phaseCForm.tls === "imported"
+        : tls === "imported"
           ? SiteTlsStrategy.IMPORTED
           : SiteTlsStrategy.NONE;
     const binding = {
       kind:
-        phaseCForm.bindKind === "nat-port"
-          ? SiteBindKind.NAT_PORT
-          : SiteBindKind.IPV6_ADDRESS,
+        bindKind === "nat-port" ? SiteBindKind.NAT_PORT : SiteBindKind.IPV6_ADDRESS,
       natPort:
-        phaseCForm.bindKind === "nat-port"
-          ? Number.parseInt(phaseCForm.natPort, 10) || 0
-          : 0,
-      ipv6Address:
-        phaseCForm.bindKind === "ipv6" ? phaseCForm.ipv6Address : ""
+        bindKind === "nat-port" ? Number.parseInt(natPort, 10) || 0 : 0,
+      ipv6Address: bindKind === "ipv6" ? ipv6Address : ""
     };
     try {
       const response = await clients.site.createSite({
-        name: phaseCForm.name,
-        domains: phaseCForm.domain
+        name,
+        domains: domain
           .split(/[\s,]+/)
-          .map((d) => d.trim())
+          .map((value) => value.trim())
           .filter(Boolean),
-        root: phaseCForm.root,
-        proxyTarget: phaseCForm.proxyTarget,
-        sslEnabled: tls !== SiteTlsStrategy.NONE,
+        root,
+        proxyTarget,
+        sslEnabled: protoTls !== SiteTlsStrategy.NONE,
         engine: "nginx",
         listenAddr: "",
-        kind,
+        kind: protoKind,
         binding,
-        tlsStrategy: tls,
-        binaryPath: phaseCForm.binaryPath
+        tlsStrategy: protoTls,
+        binaryPath
       });
-      if (response.site) {
-        setPhaseCResult({ config: response.renderedConfig, site: response.site });
-        setStatus(`站点 ${response.site.name} 已创建,vhost 写入 ${response.site.configPath}`);
-      }
-      // 自动登记 NAT 端口预算(IPv6 模式不消耗 NAT 端口)
       if (binding.kind === SiteBindKind.NAT_PORT && binding.natPort > 0) {
         await clients.capability
           .reservePort({
             port: binding.natPort,
-            owner: `site:${phaseCForm.name}`,
-            description: phaseCForm.domain,
+            owner: `site:${name}`,
+            description: domain,
             protocol: "tcp"
           })
           .catch(() => undefined);
       }
-      await load();
+      if (response.site) {
+        onMessage(`${response.site.name} 已创建`);
+      }
+      onChanged();
+      onClose();
     } catch (err) {
-      setStatus(safeError(err));
+      onError(safeError(err));
     }
   };
 
-  useEffect(() => {
-    void load();
-  }, []);
-
-  const createSite = async () => {
-    await clients.site.createSite({
-      name: form.name,
-      domains: form.domains.split(",").map((domain) => domain.trim()).filter(Boolean),
-      root: form.root,
-      proxyTarget: form.proxyTarget,
-      sslEnabled: false
-    });
-    await load();
-  };
-
-  const requestSsl = async () => {
-    const response = await clients.ssl.requestCertificate({ domain: sslDomain, email: "admin@example.com" });
-    setStatus(response.certificate ? `${response.certificate.domain} 已签发` : "证书申请已提交");
-    await load();
-  };
-
-  const importCertificate = async () => {
-    const response = await clients.ssl.importCertificate(importForm);
-    setStatus(response.certificate ? `${response.certificate.domain} 已导入` : "证书已导入");
-    await load();
-  };
-
-  const renewCertificate = async (certificate: CertificateItem) => {
-    const response = await clients.ssl.renewCertificate({ domain: certificate.domain });
-    setStatus(response.output || `${certificate.domain} 已续签`);
-    await load();
-  };
-
-  const saveReverseProxy = async () => {
-    const targets = proxyForm.targets
-      .split(",")
-      .map((target) => target.trim())
-      .filter(Boolean)
-      .map((url) => ({ url, weight: 1, healthy: true }));
-    await clients.site.upsertReverseProxyRule({
-      rule: {
-        id: "",
-        name: proxyForm.name,
-        domain: proxyForm.domain,
-        pathPrefix: proxyForm.pathPrefix,
-        targets,
-        loadBalanceMethod: proxyForm.method,
-        cacheEnabled: proxyForm.cacheEnabled,
-        rateLimitPerMinute: proxyForm.rateLimit,
-        enabled: true,
-        configPath: "",
-        createdAtSeconds: 0n,
-        updatedAtSeconds: 0n
-      }
-    });
-    await load();
-  };
-
-  const deleteReverseProxy = async (rule: ReverseProxyRule) => {
-    await clients.site.deleteReverseProxyRule({ id: rule.id });
-    await load();
-  };
-
   return (
-    <section className="page-grid">
-      <header className="section-header full-span">
-        <div>
-          <h1>站点与 SSL</h1>
-          <p>{sites.length} 个 Nginx 配置</p>
+    <div className="flex flex-col gap-3">
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-1">
+          <UILabel htmlFor="site-name">站点名</UILabel>
+          <UIInput
+            id="site-name"
+            value={name}
+            disabled={isEdit}
+            onChange={(event) => setName(event.target.value)}
+          />
         </div>
-      </header>
-
-      <div className="panel full-span flex flex-col gap-3">
-        <div className="panel-title"><Globe size={18} /><span>新建站点(Phase C · NAT/IPv6 感知)</span></div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="grid gap-1">
-            <UILabel htmlFor="pc-name">站点名</UILabel>
-            <UIInput id="pc-name" value={phaseCForm.name} onChange={(e) => setPhaseCForm((p) => ({ ...p, name: e.target.value }))} />
+        <div className="grid gap-1">
+          <UILabel htmlFor="site-domain">域名(空格或逗号分隔)</UILabel>
+          <UIInput
+            id="site-domain"
+            value={domain}
+            disabled={isEdit}
+            onChange={(event) => setDomain(event.target.value)}
+          />
+        </div>
+        <div className="grid gap-1 md:col-span-2">
+          <UILabel>类型</UILabel>
+          <Select
+            value={kind}
+            onValueChange={(value) => setKind(value as typeof kind)}
+            disabled={isEdit}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="static">静态站(nginx serve root)</SelectItem>
+              <SelectItem value="rust-binary">
+                Rust 二进制(systemd + nginx 反代)
+              </SelectItem>
+              <SelectItem value="reverse-proxy">反向代理(转发 upstream)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {kind === "static" && (
+          <div className="grid gap-1 md:col-span-2">
+            <UILabel htmlFor="site-root">静态根目录</UILabel>
+            <UIInput
+              id="site-root"
+              value={root}
+              disabled={isEdit}
+              onChange={(event) => setRoot(event.target.value)}
+            />
           </div>
-          <div className="grid gap-1">
-            <UILabel htmlFor="pc-domain">域名(空格或逗号分隔)</UILabel>
-            <UIInput id="pc-domain" value={phaseCForm.domain} onChange={(e) => setPhaseCForm((p) => ({ ...p, domain: e.target.value }))} />
+        )}
+        {kind === "rust-binary" && (
+          <div className="grid gap-1 md:col-span-2">
+            <UILabel htmlFor="site-bin">Rust 可执行文件路径</UILabel>
+            <UIInput
+              id="site-bin"
+              value={binaryPath}
+              disabled={isEdit}
+              onChange={(event) => setBinaryPath(event.target.value)}
+            />
+            <span className="text-xs text-muted-foreground">
+              面板将生成 systemd unit:rustpanel-site-{name || "<name>"}.service,
+              内部监听 127.0.0.1:9100+
+            </span>
           </div>
-          <div className="grid gap-1">
-            <UILabel>① 类型</UILabel>
-            <Select value={phaseCForm.kind} onValueChange={(v) => setPhaseCForm((p) => ({ ...p, kind: v as typeof phaseCForm.kind }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="static">静态站点 (nginx serve root)</SelectItem>
-                <SelectItem value="rust-binary">Rust 二进制 (systemd + nginx 反代)</SelectItem>
-                <SelectItem value="reverse-proxy">反向代理 (转发 upstream)</SelectItem>
-              </SelectContent>
-            </Select>
+        )}
+        {kind === "reverse-proxy" && (
+          <div className="grid gap-1 md:col-span-2">
+            <UILabel htmlFor="site-upstream">反代目标 URL</UILabel>
+            <UIInput
+              id="site-upstream"
+              placeholder="http://127.0.0.1:3000"
+              value={proxyTarget}
+              disabled={isEdit}
+              onChange={(event) => setProxyTarget(event.target.value)}
+            />
           </div>
-          <div className="grid gap-1">
-            <UILabel>② 绑定</UILabel>
-            <Select value={phaseCForm.bindKind} onValueChange={(v) => setPhaseCForm((p) => ({ ...p, bindKind: v as typeof phaseCForm.bindKind }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ipv6">IPv6 直连(不占 NAT 端口,推荐)</SelectItem>
-                <SelectItem value="nat-port">NAT 端口(占用 1/20 公网端口)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {phaseCForm.bindKind === "ipv6" ? (
+        )}
+        {showBinding && (
+          <>
             <div className="grid gap-1 md:col-span-2">
-              <UILabel htmlFor="pc-v6">公网 IPv6 地址(从 /80 池)</UILabel>
+              <UILabel>绑定方式</UILabel>
               <Select
-                value={phaseCForm.ipv6Address}
-                onValueChange={(v) => setPhaseCForm((p) => ({ ...p, ipv6Address: v }))}
+                value={bindKind}
+                onValueChange={(value) => setBindKind(value as typeof bindKind)}
+                disabled={isEdit}
               >
-                <SelectTrigger id="pc-v6"><SelectValue placeholder="选择一个 v6 地址" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  {ipv6Pool.length === 0 && <SelectItem value="__none__" disabled>未检测到公网 IPv6</SelectItem>}
-                  {ipv6Pool.map((addr) => (
-                    <SelectItem key={addr.address} value={addr.address}>
-                      {addr.address}/{addr.prefixLength} ({addr.interfaceName})
-                    </SelectItem>
-                  ))}
+                  {ipv6Pool.length > 0 && (
+                    <SelectItem value="ipv6">IPv6 直连(不占 NAT 端口,推荐)</SelectItem>
+                  )}
+                  <SelectItem value="nat-port">
+                    NAT 端口(占 1/20 公网端口)
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          ) : (
-            <div className="grid gap-1 md:col-span-2">
-              <UILabel htmlFor="pc-port">NAT 公网端口(已占:{reservedPorts.map((p) => p.port).join(", ") || "无"})</UILabel>
-              <UIInput
-                id="pc-port"
-                type="number"
-                placeholder="例如 8443"
-                value={phaseCForm.natPort}
-                onChange={(e) => setPhaseCForm((p) => ({ ...p, natPort: e.target.value }))}
-              />
-            </div>
-          )}
-          {phaseCForm.kind === "static" && (
-            <div className="grid gap-1 md:col-span-2">
-              <UILabel htmlFor="pc-root">静态根目录</UILabel>
-              <UIInput id="pc-root" value={phaseCForm.root} onChange={(e) => setPhaseCForm((p) => ({ ...p, root: e.target.value }))} />
-            </div>
-          )}
-          {phaseCForm.kind === "rust-binary" && (
-            <div className="grid gap-1 md:col-span-2">
-              <UILabel htmlFor="pc-bin">Rust 可执行文件路径</UILabel>
-              <UIInput id="pc-bin" value={phaseCForm.binaryPath} onChange={(e) => setPhaseCForm((p) => ({ ...p, binaryPath: e.target.value }))} />
-              <span className="text-xs text-muted-foreground">面板将生成 systemd unit:rustpanel-site-{phaseCForm.name || "<name>"}.service,内部监听 127.0.0.1:9100+</span>
-            </div>
-          )}
-          {phaseCForm.kind === "reverse-proxy" && (
-            <div className="grid gap-1 md:col-span-2">
-              <UILabel htmlFor="pc-upstream">反代目标 URL</UILabel>
-              <UIInput
-                id="pc-upstream"
-                placeholder="http://127.0.0.1:3000"
-                value={phaseCForm.proxyTarget}
-                onChange={(e) => setPhaseCForm((p) => ({ ...p, proxyTarget: e.target.value }))}
-              />
-            </div>
-          )}
-          <div className="grid gap-1 md:col-span-2">
-            <UILabel>③ TLS 策略</UILabel>
-            <Select value={phaseCForm.tls} onValueChange={(v) => setPhaseCForm((p) => ({ ...p, tls: v as typeof phaseCForm.tls }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="dns01">Let's Encrypt DNS-01(NAT VPS 推荐)</SelectItem>
-                <SelectItem value="imported">已导入证书</SelectItem>
-                <SelectItem value="none">无 TLS</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            {bindKind === "ipv6" ? (
+              <div className="grid gap-1 md:col-span-2">
+                <UILabel htmlFor="site-v6">公网 IPv6 地址</UILabel>
+                <Select
+                  value={ipv6Address}
+                  onValueChange={setIpv6Address}
+                  disabled={isEdit}
+                >
+                  <SelectTrigger id="site-v6">
+                    <SelectValue placeholder="选择一个 v6 地址" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ipv6Pool.length === 0 && (
+                      <SelectItem value="__none__" disabled>
+                        未检测到公网 IPv6
+                      </SelectItem>
+                    )}
+                    {ipv6Pool.map((addr) => (
+                      <SelectItem key={addr.address} value={addr.address}>
+                        {addr.address}/{addr.prefixLength} ({addr.interfaceName})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="grid gap-1 md:col-span-2">
+                <UILabel htmlFor="site-natport">
+                  NAT 公网端口(已占:
+                  {reservedPorts.map((p) => p.port).join(", ") || "无"})
+                </UILabel>
+                <UIInput
+                  id="site-natport"
+                  type="number"
+                  placeholder="例如 8443"
+                  value={natPort}
+                  disabled={isEdit}
+                  onChange={(event) => setNatPort(event.target.value)}
+                />
+              </div>
+            )}
+          </>
+        )}
+        <div className="grid gap-1 md:col-span-2">
+          <UILabel>TLS 策略</UILabel>
+          <Select
+            value={tls}
+            onValueChange={(value) => setTls(value as typeof tls)}
+            disabled={isEdit}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="dns01">Let's Encrypt DNS-01(NAT VPS 推荐)</SelectItem>
+              <SelectItem value="imported">已导入证书</SelectItem>
+              <SelectItem value="none">无 TLS</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <div className="flex justify-end">
-          <UIButton onClick={() => void submitPhaseCSite()}>
-            <Save className="size-4" />
-            创建站点
+      </div>
+      <div className="flex justify-end gap-2">
+        <UIButton onClick={() => void submit()} disabled={isEdit}>
+          <Save className="size-4" />
+          {isEdit ? "暂不支持编辑(UpdateSite RPC 待落地)" : "创建站点"}
+        </UIButton>
+      </div>
+      {isEdit && site && (
+        <div className="rounded border border-border bg-muted/40 p-3 text-xs space-y-1">
+          <div>
+            <span className="text-muted-foreground">配置路径:</span>{" "}
+            <span className="font-mono">{site.configPath}</span>
+          </div>
+          {site.systemdUnit && (
+            <div>
+              <span className="text-muted-foreground">systemd unit:</span>{" "}
+              <span className="font-mono">{site.systemdUnit}</span>
+            </div>
+          )}
+          {site.internalPort > 0 && (
+            <div>
+              <span className="text-muted-foreground">内部端口:</span>{" "}
+              127.0.0.1:{site.internalPort}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SslPanel({
+  site,
+  certificates,
+  clients,
+  onChanged,
+  onMessage,
+  onError
+}: SiteSheetProps & { site: SiteItem }) {
+  const primaryDomain = site.domains[0] || "";
+  const [importForm, setImportForm] = useState({
+    domain: primaryDomain,
+    group: "default",
+    certificatePem: "",
+    privateKeyPem: ""
+  });
+  const cert = certificates.find((c) => c.domain === primaryDomain);
+
+  const requestSsl = async () => {
+    try {
+      const response = await clients.ssl.requestCertificate({
+        domain: primaryDomain,
+        email: "admin@example.com"
+      });
+      onMessage(
+        response.certificate
+          ? `${response.certificate.domain} 已签发`
+          : response.status?.message ?? "请按提示添加 TXT 记录后再点一次申请"
+      );
+      onChanged();
+    } catch (err) {
+      onError(safeError(err));
+    }
+  };
+  const importCertificate = async () => {
+    try {
+      await clients.ssl.importCertificate(importForm);
+      onMessage(`${importForm.domain} 已导入`);
+      onChanged();
+    } catch (err) {
+      onError(safeError(err));
+    }
+  };
+  const renewCert = async () => {
+    if (!cert) return;
+    try {
+      const response = await clients.ssl.renewCertificate({ domain: cert.domain });
+      onMessage(response.output || `${cert.domain} 已续签`);
+      onChanged();
+    } catch (err) {
+      onError(safeError(err));
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {cert ? (
+        <div className="rounded border border-success/30 bg-success/5 p-3 text-sm flex items-center justify-between gap-3">
+          <div>
+            <div className="font-medium">{cert.domain}</div>
+            <div className="text-xs text-muted-foreground">
+              剩余 {cert.daysUntilExpiry} 天 · 分组 {cert.group || "default"}
+            </div>
+          </div>
+          <UIButton size="sm" variant="outline" onClick={() => void renewCert()}>
+            <RotateCw className="size-3.5" />
+            续签
           </UIButton>
         </div>
-        {phaseCResult && (
-          <div className="mt-2 flex flex-col gap-2">
-            <div className="text-xs text-muted-foreground">
-              vhost 写入:<span className="font-mono">{phaseCResult.site.configPath}</span>
-              {phaseCResult.site.systemdUnit && (
-                <> · systemd:<span className="font-mono">{phaseCResult.site.systemdUnit}</span></>
-              )}
-              {phaseCResult.site.internalPort > 0 && (
-                <> · 内部端口:127.0.0.1:{phaseCResult.site.internalPort}</>
-              )}
-            </div>
-            <pre className="report-output text-xs max-h-[240px]">{phaseCResult.config}</pre>
+      ) : (
+        <div className="rounded border border-warning/30 bg-warning/5 p-3 text-sm text-muted-foreground">
+          {primaryDomain || "(无域名)"} 当前无证书,可走自动签发或手动导入。
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <div className="text-sm font-medium">自动签发(Let's Encrypt DNS-01)</div>
+        <div className="text-xs text-muted-foreground">
+          首次点击返回需添加的 TXT 记录;添加后再点一次完成签发。
+        </div>
+        <UIButton size="sm" onClick={() => void requestSsl()}>
+          <ShieldCheck className="size-3.5" />
+          申请 {primaryDomain || "证书"}
+        </UIButton>
+      </div>
+
+      <div className="space-y-2">
+        <div className="text-sm font-medium">手动导入证书</div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-1">
+            <UILabel htmlFor="ssl-domain">域名</UILabel>
+            <UIInput
+              id="ssl-domain"
+              value={importForm.domain}
+              onChange={(event) =>
+                setImportForm({ ...importForm, domain: event.target.value })
+              }
+            />
           </div>
-        )}
-      </div>
-
-      <div className="panel">
-        <div className="panel-title"><Globe size={18} /><span>建站向导(经典 builtin / nginx)</span></div>
-        <Input label="名称" value={form.name} onChange={(name) => setForm({ ...form, name })} />
-        <Input label="域名" value={form.domains} onChange={(domains) => setForm({ ...form, domains })} />
-        <Input label="目录" value={form.root} onChange={(root) => setForm({ ...form, root })} />
-        <Input label="反代" value={form.proxyTarget} onChange={(proxyTarget) => setForm({ ...form, proxyTarget })} />
-        <button onClick={() => void createSite()} type="button"><Save size={15} />创建</button>
-      </div>
-
-      <div className="panel">
-        <div className="panel-title"><ShieldCheck size={18} /><span>SSL 自动化</span></div>
-        <Input label="域名" value={sslDomain} onChange={setSslDomain} />
-        <button onClick={() => void requestSsl()} type="button"><ShieldCheck size={15} />申请</button>
-        <small>{status}</small>
-      </div>
-
-      <div className="panel">
-        <div className="panel-title"><FileUp size={18} /><span>手动导入</span></div>
-        <Input label="域名" value={importForm.domain} onChange={(domain) => setImportForm({ ...importForm, domain })} />
-        <Input label="分组" value={importForm.group} onChange={(group) => setImportForm({ ...importForm, group })} />
+          <div className="grid gap-1">
+            <UILabel htmlFor="ssl-group">分组</UILabel>
+            <UIInput
+              id="ssl-group"
+              value={importForm.group}
+              onChange={(event) =>
+                setImportForm({ ...importForm, group: event.target.value })
+              }
+            />
+          </div>
+        </div>
         <textarea
-          className="pem-input"
-          onChange={(event) => setImportForm({ ...importForm, certificatePem: event.target.value })}
+          className="pem-input w-full"
+          rows={6}
+          onChange={(event) =>
+            setImportForm({ ...importForm, certificatePem: event.target.value })
+          }
           placeholder="-----BEGIN CERTIFICATE-----"
           value={importForm.certificatePem}
         />
         <textarea
-          className="pem-input"
-          onChange={(event) => setImportForm({ ...importForm, privateKeyPem: event.target.value })}
+          className="pem-input w-full"
+          rows={6}
+          onChange={(event) =>
+            setImportForm({ ...importForm, privateKeyPem: event.target.value })
+          }
           placeholder="-----BEGIN PRIVATE KEY-----"
           value={importForm.privateKeyPem}
         />
-        <button onClick={() => void importCertificate()} type="button"><FileUp size={15} />导入</button>
+        <UIButton size="sm" variant="outline" onClick={() => void importCertificate()}>
+          <FileUp className="size-3.5" />
+          导入
+        </UIButton>
       </div>
+    </div>
+  );
+}
 
-      <div className="panel">
-        <div className="panel-title"><FileText size={18} /><span>伪静态模板</span></div>
-        <SelectRow
-          label="模板"
-          value={0}
-          onChange={(index) => setRewriteContent(rewriteTemplates[Number(index)]?.content ?? "")}
-          options={rewriteTemplates.map((template, index) => [index, template.name])}
-        />
-        <textarea
-          className="pem-input code-input"
-          onChange={(event) => setRewriteContent(event.target.value)}
-          value={rewriteContent}
-        />
-      </div>
+function PerSiteReverseProxyPanel({
+  site,
+  proxyRules,
+  clients,
+  onChanged,
+  onMessage,
+  onError
+}: SiteSheetProps & { site: SiteItem }) {
+  const primaryDomain = site.domains[0] || "";
+  const [form, setForm] = useState({
+    name: site.name,
+    pathPrefix: "/api/",
+    targets: "http://127.0.0.1:3000",
+    method: "least_conn" as "round_robin" | "least_conn" | "ip_hash",
+    cacheEnabled: false,
+    rateLimit: 120
+  });
+  const ownRules = proxyRules.filter((rule) => rule.domain === primaryDomain);
 
-      <div className="panel">
-        <div className="panel-title"><Globe size={18} /><span>反向代理</span></div>
-        <Input label="名称" value={proxyForm.name} onChange={(name) => setProxyForm({ ...proxyForm, name })} />
-        <Input label="域名" value={proxyForm.domain} onChange={(domain) => setProxyForm({ ...proxyForm, domain })} />
-        <Input label="路径" value={proxyForm.pathPrefix} onChange={(pathPrefix) => setProxyForm({ ...proxyForm, pathPrefix })} />
-        <Input label="目标" value={proxyForm.targets} onChange={(targets) => setProxyForm({ ...proxyForm, targets })} />
-        <SelectRow
-          label="均衡"
-          value={["round_robin", "least_conn", "ip_hash"].indexOf(proxyForm.method)}
-          onChange={(index) => setProxyForm({ ...proxyForm, method: ["round_robin", "least_conn", "ip_hash"][Number(index)] })}
-          options={[
-            [0, "轮询"],
-            [1, "最少连接"],
-            [2, "IP Hash"]
-          ]}
-        />
-        <ToggleRow label="缓存" checked={proxyForm.cacheEnabled} onChange={(cacheEnabled) => setProxyForm({ ...proxyForm, cacheEnabled })} />
-        <NumberInput label="限速/分钟" value={proxyForm.rateLimit} onChange={(rateLimit) => setProxyForm({ ...proxyForm, rateLimit })} />
-        <button onClick={() => void saveReverseProxy()} type="button"><Save size={15} />保存反代</button>
-      </div>
+  const submit = async () => {
+    const targets = form.targets
+      .split(",")
+      .map((target) => target.trim())
+      .filter(Boolean)
+      .map((url) => ({ url, weight: 1, healthy: true }));
+    try {
+      await clients.site.upsertReverseProxyRule({
+        rule: {
+          id: "",
+          name: form.name,
+          domain: primaryDomain,
+          pathPrefix: form.pathPrefix,
+          targets,
+          loadBalanceMethod: form.method,
+          cacheEnabled: form.cacheEnabled,
+          rateLimitPerMinute: form.rateLimit,
+          enabled: true,
+          configPath: "",
+          createdAtSeconds: 0n,
+          updatedAtSeconds: 0n
+        }
+      });
+      onMessage(`${form.name} 已保存`);
+      onChanged();
+    } catch (err) {
+      onError(safeError(err));
+    }
+  };
+  const remove = async (rule: ReverseProxyRule) => {
+    try {
+      await clients.site.deleteReverseProxyRule({ id: rule.id });
+      onMessage(`${rule.name} 已删除`);
+      onChanged();
+    } catch (err) {
+      onError(safeError(err));
+    }
+  };
 
-      <div className="panel wide-panel">
-        <div className="panel-title"><Server size={18} /><span>站点列表</span></div>
-        {sites.map((site) => (
-          <div className="table-row" key={site.configPath || site.name}>
-            <div>
-              <strong>{site.name}</strong>
-              <small>{site.domains.join(", ") || site.configPath}</small>
-            </div>
-            <StatusPill label={site.sslEnabled ? "SSL" : "HTTP"} tone={site.sslEnabled ? "good" : "muted"} />
-          </div>
-        ))}
-      </div>
-
-      <div className="panel full-span">
-        <div className="panel-title"><ShieldCheck size={18} /><span>证书统一视图</span></div>
-        <div className="table-list">
-          {certificates.map((certificate) => (
-            <div className="table-row" key={certificate.domain}>
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="text-sm font-medium">当前规则({ownRules.length})</div>
+      {ownRules.length === 0 ? (
+        <div className="empty-state text-xs">{primaryDomain} 暂无反代规则</div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {ownRules.map((rule) => (
+            <div
+              key={rule.id}
+              className="rounded border border-border p-2 text-xs flex items-center justify-between gap-2"
+            >
               <div>
-                <strong>{certificate.domain}</strong>
-                <small>{certificate.group || "default"} · {certificate.certificatePath}</small>
+                <div className="font-medium">
+                  {rule.name} · {rule.domain}
+                  {rule.pathPrefix}
+                </div>
+                <div className="text-muted-foreground font-mono">
+                  {rule.loadBalanceMethod || "round_robin"} ·{" "}
+                  {rule.targets.map((target) => target.url).join(", ")}
+                </div>
               </div>
-              <StatusPill label={`${certificate.daysUntilExpiry} 天`} tone={certificate.warningLevel === "ok" ? "good" : "danger"} />
-              <IconButton label="续签" icon={RotateCw} onClick={() => void renewCertificate(certificate)} />
+              <UIButton size="sm" variant="outline" onClick={() => void remove(rule)}>
+                <Trash2 className="size-3.5" />
+                删除
+              </UIButton>
             </div>
           ))}
-          {!certificates.length && <div className="empty-state">暂无证书</div>}
         </div>
-      </div>
+      )}
 
-      <div className="panel full-span">
-        <div className="panel-title"><Globe size={18} /><span>反代规则</span></div>
-        <div className="table-list">
-          {proxyRules.map((rule) => (
-            <div className="table-row" key={rule.id}>
-              <div>
-                <strong>{rule.name} · {rule.domain}{rule.pathPrefix}</strong>
-                <small>{rule.loadBalanceMethod || "round_robin"} · {rule.targets.map((target) => target.url).join(", ")}</small>
-              </div>
-              <StatusPill label={rule.enabled ? "启用" : "停用"} tone={rule.enabled ? "good" : "muted"} />
-              <IconButton label="删除" icon={Trash2} onClick={() => void deleteReverseProxy(rule)} />
-            </div>
-          ))}
-          {!proxyRules.length && <div className="empty-state">暂无反代规则</div>}
+      <div className="text-sm font-medium pt-2">新增规则</div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-1">
+          <UILabel htmlFor="rp-name">名称</UILabel>
+          <UIInput
+            id="rp-name"
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+          />
+        </div>
+        <div className="grid gap-1">
+          <UILabel htmlFor="rp-path">路径前缀</UILabel>
+          <UIInput
+            id="rp-path"
+            value={form.pathPrefix}
+            onChange={(event) => setForm({ ...form, pathPrefix: event.target.value })}
+          />
+        </div>
+        <div className="grid gap-1 sm:col-span-2">
+          <UILabel htmlFor="rp-targets">目标(逗号分隔)</UILabel>
+          <UIInput
+            id="rp-targets"
+            value={form.targets}
+            onChange={(event) => setForm({ ...form, targets: event.target.value })}
+          />
+        </div>
+        <div className="grid gap-1">
+          <UILabel>负载均衡</UILabel>
+          <Select
+            value={form.method}
+            onValueChange={(value) =>
+              setForm({ ...form, method: value as typeof form.method })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="round_robin">轮询</SelectItem>
+              <SelectItem value="least_conn">最少连接</SelectItem>
+              <SelectItem value="ip_hash">IP Hash</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-1">
+          <UILabel htmlFor="rp-rate">限速 / 分钟</UILabel>
+          <UIInput
+            id="rp-rate"
+            type="number"
+            value={form.rateLimit}
+            onChange={(event) =>
+              setForm({ ...form, rateLimit: Number.parseInt(event.target.value, 10) || 0 })
+            }
+          />
+        </div>
+        <div className="flex items-center gap-2 sm:col-span-2">
+          <Switch
+            checked={form.cacheEnabled}
+            onCheckedChange={(checked) => setForm({ ...form, cacheEnabled: checked })}
+          />
+          <UILabel>启用缓存</UILabel>
         </div>
       </div>
-    </section>
+      <div className="flex justify-end">
+        <UIButton size="sm" onClick={() => void submit()}>
+          <Plus className="size-3.5" />
+          新增规则
+        </UIButton>
+      </div>
+    </div>
+  );
+}
+
+function RewritePanel({ templates }: { templates: RewriteTemplate[] }) {
+  const [selectedId, setSelectedId] = useState(templates[0]?.id ?? "");
+  const [content, setContent] = useState(templates[0]?.content ?? "");
+
+  useEffect(() => {
+    if (!selectedId && templates[0]) {
+      setSelectedId(templates[0].id);
+      setContent(templates[0].content);
+    }
+  }, [templates, selectedId]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid gap-1">
+        <UILabel>模板</UILabel>
+        <Select
+          value={selectedId}
+          onValueChange={(id) => {
+            setSelectedId(id);
+            const template = templates.find((tpl) => tpl.id === id);
+            if (template) setContent(template.content);
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="选择模板" />
+          </SelectTrigger>
+          <SelectContent>
+            {templates.map((template) => (
+              <SelectItem key={template.id} value={template.id}>
+                {template.name}
+                {template.stack ? ` · ${template.stack}` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <textarea
+        className="pem-input code-input w-full"
+        rows={12}
+        value={content}
+        onChange={(event) => setContent(event.target.value)}
+      />
+      <p className="text-xs text-muted-foreground">
+        伪静态目前只在前端预览;站点 vhost 写入由 site.rs render_site_config 决定,后续在 UpdateSite RPC 落地时把这段配置打通持久化。
+      </p>
+    </div>
   );
 }
 
