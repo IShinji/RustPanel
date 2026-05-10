@@ -97,7 +97,23 @@ impl TerminalSession {
             })
             .map_err(|error| Status::internal(error.to_string()))?;
         let shell = default_shell();
-        let mut command = CommandBuilder::new(shell);
+        let mut command = CommandBuilder::new(&shell);
+        // 给 PTY 设置必要的终端能力环境;不设的话 top/vim/htop 等全屏程序
+        // 在 xterm.js 里渲染会出错,bash 也会因为 TERM 缺失而退化到 dumb 模式
+        command.env("TERM", "xterm-256color");
+        if std::env::var("LANG").is_err() {
+            command.env("LANG", "en_US.UTF-8");
+        }
+        // 透传一些 systemd unit 通常会清空但 shell 启动需要的变量
+        for key in ["HOME", "USER", "LOGNAME", "PATH", "LANG", "LC_ALL", "SHELL"] {
+            if let Ok(value) = std::env::var(key) {
+                command.env(key, value);
+            }
+        }
+        // bash 用 -l 走登录 shell,会读 /etc/profile + ~/.bash_profile,补全 / PATH 都齐
+        if shell.ends_with("bash") {
+            command.arg("-l");
+        }
         if let Some(cwd) = cwd {
             command.cwd(cwd);
         }
@@ -233,13 +249,22 @@ pub fn spawn_web_terminal_with_cwd(
 }
 
 fn default_shell() -> String {
-    std::env::var("SHELL").unwrap_or_else(|_| {
-        if cfg!(target_os = "windows") {
-            "powershell.exe".to_owned()
-        } else {
-            "/bin/sh".to_owned()
+    // 优先使用 SHELL 环境变量;systemd 服务下 SHELL 通常未设置,
+    // 退而求其次按可用性挑选 bash > zsh > sh,避免落到没有 tab 补全的 dash
+    if let Ok(shell) = std::env::var("SHELL") {
+        if !shell.trim().is_empty() {
+            return shell;
         }
-    })
+    }
+    if cfg!(target_os = "windows") {
+        return "powershell.exe".to_owned();
+    }
+    for candidate in ["/bin/bash", "/usr/bin/bash", "/bin/zsh", "/usr/bin/zsh"] {
+        if std::path::Path::new(candidate).exists() {
+            return candidate.to_owned();
+        }
+    }
+    "/bin/sh".to_owned()
 }
 
 fn normalize_size(value: u32, default_value: u16) -> u16 {

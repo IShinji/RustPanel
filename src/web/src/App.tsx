@@ -71,6 +71,11 @@ import { ReverseProxyRule, RewriteTemplate, SiteItem } from "./gen/rustpanel/v1/
 import { CertificateItem } from "./gen/rustpanel/v1/ssl_pb";
 import { RuntimeModule } from "./gen/rustpanel/v1/system_pb";
 import { WorkloadItem, WorkloadState } from "./gen/rustpanel/v1/workload_pb";
+import { Button as UIButton } from "./components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
+import { Input as UIInput } from "./components/ui/input";
+import { Label as UILabel } from "./components/ui/label";
+import { cn } from "./lib/utils";
 import {
   appendAuthQuery,
   authFetch,
@@ -369,62 +374,76 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
   );
 
   return (
-    <div className="login-shell">
-      <form className="login-card" onSubmit={handleSubmit}>
-        <div className="login-brand">
-          <Server size={28} />
-          <div>
-            <h1>RustPanel</h1>
-            <p>请使用管理员账户登录</p>
+    <div className="min-h-screen flex items-center justify-center bg-background p-6 bg-[radial-gradient(circle_at_top,oklch(0.25_0.04_260)_0%,oklch(0.16_0.01_250)_45%)]">
+      <Card className="w-full max-w-sm border-border/60 shadow-2xl backdrop-blur supports-[backdrop-filter]:bg-card/80">
+        <CardHeader className="gap-1.5">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/15 text-primary ring-1 ring-primary/20">
+              <Server className="size-5" />
+            </div>
+            <div className="flex flex-col">
+              <CardTitle className="text-lg tracking-tight">RustPanel</CardTitle>
+              <CardDescription>请使用管理员账户登录</CardDescription>
+            </div>
           </div>
-        </div>
-        <label>
-          <span>用户名</span>
-          <input
-            autoComplete="username"
-            disabled={submitting}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-            type="text"
-            value={username}
-          />
-        </label>
-        <label>
-          <span>密码</span>
-          <input
-            autoComplete="current-password"
-            disabled={submitting}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            type="password"
-            value={password}
-          />
-        </label>
-        {requiresTwoFactor && (
-          <label>
-            <span>两步验证码</span>
-            <input
-              autoComplete="one-time-code"
-              disabled={submitting}
-              inputMode="numeric"
-              maxLength={6}
-              onChange={(e) => setTotpCode(e.target.value)}
-              pattern="[0-9]{6}"
-              required
-              type="text"
-              value={totpCode}
-            />
-          </label>
-        )}
-        {error && <div className="login-error">{error}</div>}
-        <button className="login-submit" disabled={submitting} type="submit">
-          {submitting ? "登录中..." : "登录"}
-        </button>
-        <p className="login-hint">
-          初始密码在安装时打印,也可在 <code>/www/wwwroot/rustpanel/.env</code> 的{" "}
-          <code>RUSTPANEL_ADMIN_PASSWORD</code> 字段查看。
-        </p>
-      </form>
+        </CardHeader>
+        <CardContent>
+          <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+            <div className="flex flex-col gap-2">
+              <UILabel htmlFor="login-username">用户名</UILabel>
+              <UIInput
+                id="login-username"
+                autoComplete="username"
+                disabled={submitting}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                type="text"
+                value={username}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <UILabel htmlFor="login-password">密码</UILabel>
+              <UIInput
+                id="login-password"
+                autoComplete="current-password"
+                disabled={submitting}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                type="password"
+                value={password}
+              />
+            </div>
+            {requiresTwoFactor && (
+              <div className="flex flex-col gap-2">
+                <UILabel htmlFor="login-totp">两步验证码</UILabel>
+                <UIInput
+                  id="login-totp"
+                  autoComplete="one-time-code"
+                  disabled={submitting}
+                  inputMode="numeric"
+                  maxLength={6}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                  pattern="[0-9]{6}"
+                  required
+                  type="text"
+                  value={totpCode}
+                />
+              </div>
+            )}
+            {error && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+            <UIButton className="w-full" disabled={submitting} type="submit">
+              {submitting ? "登录中..." : "登录"}
+            </UIButton>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              初始密码在安装时打印,也可在 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">/www/wwwroot/rustpanel/.env</code> 里查 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">RUSTPANEL_ADMIN_PASSWORD</code>。
+            </p>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -478,35 +497,50 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
   }, [active, visibleTabs]);
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar" aria-label="RustPanel navigation">
-        <div className="brand">
-          <Server size={22} />
-          <span>RustPanel</span>
+    <div className="min-h-screen grid grid-cols-[232px_minmax(0,1fr)] bg-background text-foreground">
+      <aside className="flex flex-col gap-1 border-r border-border bg-card/40 p-4" aria-label="RustPanel navigation">
+        <div className="flex items-center gap-2.5 px-3 py-2 mb-2">
+          <div className="flex size-8 items-center justify-center rounded-md bg-primary/15 text-primary ring-1 ring-primary/20">
+            <Server className="size-4" />
+          </div>
+          <div className="flex flex-col leading-tight">
+            <span className="text-sm font-semibold tracking-tight">RustPanel</span>
+            <span className="text-[11px] text-muted-foreground">控制面板</span>
+          </div>
         </div>
-        <nav className="nav-list">
+        <nav className="flex flex-col gap-0.5">
           {visibleTabs.map((tab) => {
             const Icon = tab.icon;
+            const isActive = active === tab.id;
             return (
               <button
-                className={active === tab.id ? "nav-item active" : "nav-item"}
                 key={tab.id}
                 onClick={() => setActive(tab.id)}
                 type="button"
+                className={cn(
+                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                  isActive
+                    ? "bg-accent text-accent-foreground font-medium"
+                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                )}
               >
-                <Icon size={18} />
+                <Icon className="size-[18px] shrink-0" />
                 <span>{tab.label}</span>
               </button>
             );
           })}
         </nav>
-        <button className="nav-item nav-logout" onClick={onLogout} type="button">
-          <LogOut size={18} />
+        <button
+          className="mt-auto flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          onClick={onLogout}
+          type="button"
+        >
+          <LogOut className="size-[18px] shrink-0" />
           <span>退出登录</span>
         </button>
       </aside>
 
-      <main className="workspace">
+      <main className="min-w-0 p-6 overflow-auto">
         {active === "dashboard" && <Dashboard clients={clients} />}
         {active === "micro" && <MicroPanel clients={clients} />}
         {active === "security" && <SecurityPanel clients={clients} />}
@@ -659,10 +693,12 @@ function Dashboard({ clients }: { clients: Clients }) {
 
   return (
     <section className="page-grid">
-      <header className="section-header full-span">
-        <div>
-          <h1>资源监控</h1>
-          <p>{system.hostname} · {system.os} · {system.kernel} · {system.arch}</p>
+      <header className="full-span flex items-start justify-between gap-4 flex-wrap pb-2 border-b border-border/60 mb-2">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight m-0">资源监控</h1>
+          <p className="text-sm text-muted-foreground m-0">
+            {system.hostname} · {system.os} · 内核 {system.kernel} · {system.arch}
+          </p>
         </div>
         <StatusPill label={error ? "离线" : "运行中"} tone={error ? "danger" : "good"} />
       </header>
@@ -1359,9 +1395,14 @@ function TerminalPanel({ cwd }: { cwd: string }) {
       cursorBlink: true,
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
       fontSize: 13,
+      // 没显式设置 allowProposedApi 时 fit 用默认窗口大小;让 xterm 跑成 256 色 + 终端响应
+      allowProposedApi: true,
+      convertEol: false,
+      scrollback: 5000,
       theme: {
         background: "#101418",
-        foreground: "#eef2f3"
+        foreground: "#eef2f3",
+        cursor: "#eef2f3"
       }
     });
     const fit = new FitAddon();
@@ -1375,6 +1416,18 @@ function TerminalPanel({ cwd }: { cwd: string }) {
     const socket = new WebSocket(`${protocol}//${window.location.host}${wsUrl}`);
     socket.binaryType = "arraybuffer";
     socketRef.current = socket;
+
+    // PTY 初始尺寸是 120x30,fit 算完真实尺寸后必须显式同步给后端,
+    // 否则 top/htop 这种全屏 TUI 会按 PTY 默认尺寸渲染,不匹配可视区
+    const sendResize = (cols: number, rows: number) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "resize", cols, rows }));
+      }
+    };
+    socket.onopen = () => {
+      sendResize(terminal.cols, terminal.rows);
+      terminal.focus();
+    };
     socket.onmessage = (event) => {
       const text =
         typeof event.data === "string"
@@ -1383,11 +1436,7 @@ function TerminalPanel({ cwd }: { cwd: string }) {
       terminal.write(text);
     };
     terminal.onData((data) => socket.readyState === WebSocket.OPEN && socket.send(data));
-    terminal.onResize((size) => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: "resize", cols: size.cols, rows: size.rows }));
-      }
-    });
+    terminal.onResize((size) => sendResize(size.cols, size.rows));
     const resize = () => fit.fit();
     window.addEventListener("resize", resize);
 
@@ -2747,10 +2796,10 @@ function ClusterAudit({ clients }: { clients: Clients }) {
 
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <div className="metric-card">
-      <small>{label}</small>
-      <strong>{value}</strong>
-      <span>{detail}</span>
+    <div className="rounded-xl border border-border/60 bg-card p-5 flex flex-col gap-1.5 shadow-sm transition-colors hover:border-border">
+      <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{label}</span>
+      <span className="text-2xl font-semibold tracking-tight tabular-nums">{value}</span>
+      <span className="text-xs text-muted-foreground">{detail}</span>
     </div>
   );
 }
