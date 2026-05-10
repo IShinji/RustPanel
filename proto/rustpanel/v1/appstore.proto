@@ -73,6 +73,9 @@ message AppTemplate {
   uint32 expected_runtime_ram_mb = 15;
   // 是否官方推荐(在该分类里优先展示)
   bool recommended = 16;
+  // 上游官网 / 项目主页 URL。前端展示在模板卡片右上角作为可点击链接。
+  // 空串表示该模板没有专门的 homepage(系统包 / 通用工具 / 不希望暴露)。
+  string homepage = 17;
 }
 
 // InstalledApp 描述已安装应用。

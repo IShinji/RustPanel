@@ -177,7 +177,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             8,
             5,
             true,
-        ),
+        )
+        .with_homepage("https://nginx.org/"),
         native_template(
             "caddy",
             "Caddy",
@@ -188,7 +189,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             30,
             true,
         )
-        .with_install(InstallMethod::BinaryDownload),
+        .with_install(InstallMethod::BinaryDownload)
+        .with_homepage("https://caddyserver.com/"),
         native_template(
             "sqlite",
             "SQLite",
@@ -198,7 +200,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             5,
             0,
             true,
-        ),
+        )
+        .with_homepage("https://www.sqlite.org/"),
         native_template(
             "redis-tuned",
             "Redis (调优)",
@@ -208,7 +211,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             10,
             10,
             true,
-        ),
+        )
+        .with_homepage("https://redis.io/"),
         native_template(
             "postgres-tiny",
             "PostgreSQL (低配版)",
@@ -218,7 +222,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             120,
             60,
             false,
-        ),
+        )
+        .with_homepage("https://www.postgresql.org/"),
         native_template(
             "hugo",
             "Hugo",
@@ -229,7 +234,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             0,
             true,
         )
-        .with_install(InstallMethod::BinaryDownload),
+        .with_install(InstallMethod::BinaryDownload)
+        .with_homepage("https://gohugo.io/"),
         native_template(
             "zola",
             "Zola",
@@ -240,7 +246,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             0,
             true,
         )
-        .with_install(InstallMethod::BinaryDownload),
+        .with_install(InstallMethod::BinaryDownload)
+        .with_homepage("https://www.getzola.org/"),
         native_template(
             "restic",
             "Restic 备份",
@@ -251,7 +258,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             0,
             true,
         )
-        .with_install(InstallMethod::BinaryDownload),
+        .with_install(InstallMethod::BinaryDownload)
+        .with_homepage("https://restic.net/"),
         native_template(
             "rclone",
             "rclone 云存储同步",
@@ -262,7 +270,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             0,
             true,
         )
-        .with_install(InstallMethod::BinaryDownload),
+        .with_install(InstallMethod::BinaryDownload)
+        .with_homepage("https://rclone.org/"),
         native_template(
             "fail2ban",
             "Fail2ban",
@@ -272,7 +281,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             10,
             8,
             true,
-        ),
+        )
+        .with_homepage("https://www.fail2ban.org/"),
         native_template(
             "wireguard",
             "WireGuard",
@@ -282,7 +292,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             8,
             5,
             false,
-        ),
+        )
+        .with_homepage("https://www.wireguard.com/"),
         native_template(
             "certbot",
             "Certbot (Let's Encrypt)",
@@ -292,7 +303,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             30,
             0,
             false,
-        ),
+        )
+        .with_homepage("https://certbot.eff.org/"),
         // ====== Phase G:用户可选 Rust 栈(NO SUPPORT VPS 友好) ======
         // 二进制全部保持上游官方版本,RustPanel 只提供配置模板与模块联动,
         // 不 fork、不打补丁,后续上游升级直接替换二进制即可。
@@ -307,11 +319,12 @@ pub fn app_templates() -> Vec<AppTemplate> {
             true,
         )
         .with_install(InstallMethod::BinaryDownload)
-        .with_versions(native_versions(&[("latest", true)]), "latest"),
+        .with_versions(native_versions(&[("latest", true)]), "latest")
+        .with_homepage("https://github.com/junkurihara/rust-rpxy"),
         native_template(
             "static-web-server",
             "static-web-server (SWS)",
-            "Rust 写的纯静态文件服务器,常驻 RAM ~5MB。可作 rpxy 上游或独立运行,与 static-sites 模块联动。\n\n官网: https://github.com/static-web-server/static-web-server",
+            "Rust 写的纯静态文件服务器,常驻 RAM ~5MB。可作 rpxy 上游或独立运行,与 static-sites 模块联动。\n\n官网: https://static-web-server.net/",
             AppCategory::WebServer,
             16,
             8,
@@ -319,7 +332,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             true,
         )
         .with_install(InstallMethod::BinaryDownload)
-        .with_versions(native_versions(&[("latest", true)]), "latest"),
+        .with_versions(native_versions(&[("latest", true)]), "latest")
+        .with_homepage("https://static-web-server.net/"),
         native_template(
             "leaf",
             "leaf (Rust 多协议代理)",
@@ -331,11 +345,12 @@ pub fn app_templates() -> Vec<AppTemplate> {
             false,
         )
         .with_install(InstallMethod::BinaryDownload)
-        .with_versions(native_versions(&[("latest", true)]), "latest"),
+        .with_versions(native_versions(&[("latest", true)]), "latest")
+        .with_homepage("https://github.com/eycorsican/leaf"),
         native_template(
             "vsmtp",
             "vSMTP (Rust 邮件中转)",
-            "Rust filter-MTA,做 alias 转发与回复改写;不收件、不存信。出站强制走 SMTP relay (Resend / SES / Postmark),绝不直连 25 端口。常驻 RAM ~35MB。社区维护,默认 off。\n\n官网: https://github.com/viridIT/vSMTP",
+            "Rust filter-MTA,做 alias 转发与回复改写;不收件、不存信。出站强制走 SMTP relay (Resend / SES / Postmark),绝不直连 25 端口。常驻 RAM ~35MB。社区维护,默认 off。\n\n官网: https://www.vsmtp.rs/",
             AppCategory::Tool,
             96,
             30,
@@ -343,7 +358,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             false,
         )
         .with_install(InstallMethod::BinaryDownload)
-        .with_versions(native_versions(&[("latest", true)]), "latest"),
+        .with_versions(native_versions(&[("latest", true)]), "latest")
+        .with_homepage("https://www.vsmtp.rs/"),
         native_template(
             "tuic",
             "TUIC v5 (实验性)",
@@ -355,7 +371,8 @@ pub fn app_templates() -> Vec<AppTemplate> {
             false,
         )
         .with_install(InstallMethod::BinaryDownload)
-        .with_versions(native_versions(&[("latest", true)]), "latest"),
+        .with_versions(native_versions(&[("latest", true)]), "latest")
+        .with_homepage("https://github.com/EAimTY/tuic"),
         // ====== Docker 路线(只有 can_run_docker 时才显示) ======
         AppTemplate {
             slug: "mysql".to_owned(),
@@ -374,6 +391,7 @@ pub fn app_templates() -> Vec<AppTemplate> {
             compatibility_reason: String::new(),
             expected_runtime_ram_mb: 600,
             recommended: false,
+            homepage: "https://www.mysql.com/".to_owned(),
         },
         AppTemplate {
             slug: "redis".to_owned(),
@@ -395,6 +413,7 @@ pub fn app_templates() -> Vec<AppTemplate> {
             compatibility_reason: String::new(),
             expected_runtime_ram_mb: 30,
             recommended: false,
+            homepage: "https://redis.io/".to_owned(),
         },
         AppTemplate {
             slug: "postgres".to_owned(),
@@ -416,6 +435,7 @@ pub fn app_templates() -> Vec<AppTemplate> {
             compatibility_reason: String::new(),
             expected_runtime_ram_mb: 80,
             recommended: false,
+            homepage: "https://www.postgresql.org/".to_owned(),
         },
         AppTemplate {
             slug: "nginx".to_owned(),
@@ -437,6 +457,7 @@ pub fn app_templates() -> Vec<AppTemplate> {
             compatibility_reason: String::new(),
             expected_runtime_ram_mb: 25,
             recommended: false,
+            homepage: "https://nginx.org/".to_owned(),
         },
         AppTemplate {
             slug: "php".to_owned(),
@@ -458,6 +479,7 @@ pub fn app_templates() -> Vec<AppTemplate> {
             compatibility_reason: String::new(),
             expected_runtime_ram_mb: 40,
             recommended: false,
+            homepage: "https://www.php.net/".to_owned(),
         },
     ];
     // 按分类 + recommended 排序
@@ -499,12 +521,14 @@ fn native_template(
         compatibility_reason: String::new(),
         expected_runtime_ram_mb,
         recommended,
+        homepage: String::new(),
     }
 }
 
 trait AppTemplateExt {
     fn with_install(self, method: InstallMethod) -> Self;
     fn with_versions(self, versions: Vec<AppVersion>, default: &str) -> Self;
+    fn with_homepage(self, url: &str) -> Self;
 }
 
 impl AppTemplateExt for AppTemplate {
@@ -516,6 +540,11 @@ impl AppTemplateExt for AppTemplate {
     fn with_versions(mut self, versions: Vec<AppVersion>, default: &str) -> Self {
         self.versions = versions;
         self.default_version = default.to_owned();
+        self
+    }
+
+    fn with_homepage(mut self, url: &str) -> Self {
+        self.homepage = url.to_owned();
         self
     }
 }
@@ -1125,24 +1154,28 @@ mod tests {
     #[test]
     fn phase_g_rust_stack_templates_present() {
         // Phase G:5 个 Rust 栈包必须全部出现在 appstore,都走 BinaryDownload,
-        // 都至少给出 latest 这一项可选版本,description 末尾带官网链接。
+        // 都至少给出 latest 这一项可选版本,且 homepage 字段精确匹配。
         let templates = app_templates();
         let expected = [
             (
                 "rpxy",
                 AppCategory::WebServer,
-                "github.com/junkurihara/rust-rpxy",
+                "https://github.com/junkurihara/rust-rpxy",
             ),
             (
                 "static-web-server",
                 AppCategory::WebServer,
-                "github.com/static-web-server/static-web-server",
+                "https://static-web-server.net/",
             ),
-            ("leaf", AppCategory::Vpn, "github.com/eycorsican/leaf"),
-            ("vsmtp", AppCategory::Tool, "github.com/viridIT/vSMTP"),
-            ("tuic", AppCategory::Vpn, "github.com/EAimTY/tuic"),
+            (
+                "leaf",
+                AppCategory::Vpn,
+                "https://github.com/eycorsican/leaf",
+            ),
+            ("vsmtp", AppCategory::Tool, "https://www.vsmtp.rs/"),
+            ("tuic", AppCategory::Vpn, "https://github.com/EAimTY/tuic"),
         ];
-        for (slug, category, homepage_substr) in expected {
+        for (slug, category, homepage) in expected {
             let template = templates
                 .iter()
                 .find(|template| template.slug == slug)
@@ -1167,9 +1200,28 @@ mod tests {
                     .any(|version| version.version == "latest" && version.recommended),
                 "{slug} should expose recommended latest version"
             );
+            assert_eq!(
+                template.homepage, homepage,
+                "{slug} homepage field mismatch"
+            );
+        }
+    }
+
+    #[test]
+    fn every_template_has_homepage() {
+        // 软件商店所有模板都必须填 homepage,前端卡片才能渲染上游官网入口。
+        for template in app_templates() {
             assert!(
-                template.description.contains(homepage_substr),
-                "{slug} description should contain upstream URL: {homepage_substr}"
+                !template.homepage.is_empty(),
+                "template `{}` is missing homepage",
+                template.slug
+            );
+            assert!(
+                template.homepage.starts_with("http://")
+                    || template.homepage.starts_with("https://"),
+                "template `{}` homepage should be a URL, got: {}",
+                template.slug,
+                template.homepage
             );
         }
     }
