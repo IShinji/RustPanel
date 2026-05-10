@@ -57,45 +57,16 @@ impl AppStoreService for AppStoreServiceImpl {
             .into_iter()
             .find(|template| template.slug == request.slug)
             .ok_or_else(|| Status::not_found("app template not found"))?;
-        let version = resolve_template_version(&template, &request.version)?;
-        let default_app_name;
-        let app_name = sanitize_app_name(if request.app_name.trim().is_empty() {
-            default_app_name = format!("{}-{}", template.slug, version.version);
-            &default_app_name
-        } else {
-            &request.app_name
-        })?;
-        let compose_yaml = generate_compose_yaml(&template, &version, &app_name)?;
-        let compose_path = appstore_root().join(&app_name).join("docker-compose.yml");
-        if let Some(parent) = compose_path.parent() {
-            tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
-        }
-        tokio::fs::write(&compose_path, compose_yaml.as_bytes())
-            .await
-            .map_err(io_status)?;
-        let now = current_timestamp();
-        let app = InstalledApp {
-            app_name: app_name.clone(),
-            slug: template.slug,
-            version: version.version,
-            image: version.image,
-            compose_path: compose_path.to_string_lossy().to_string(),
-            state: "installed".to_owned(),
-            installed_at_seconds: now,
-            updated_at_seconds: now,
+        let response = match InstallMethod::try_from(template.install_method).unwrap_or_default() {
+            InstallMethod::DockerCompose => deploy_via_compose(template, request).await?,
+            InstallMethod::BinaryDownload => deploy_via_binary(template, request).await?,
+            other => {
+                return Err(Status::unimplemented(format!(
+                    "install method {other:?} 暂未实现执行路径"
+                )))
+            }
         };
-        save_installed_app(&app).await?;
-
-        if env::var("RUSTPANEL_APPSTORE_SKIP_COMPOSE").is_err() {
-            run_compose(&app_name, &compose_path, &["up", "-d"]).await?;
-        }
-
-        Ok(GrpcResponse::new(DeployAppResponse {
-            status: Some(ok_response("app deployed")),
-            compose_path: compose_path.to_string_lossy().to_string(),
-            compose_yaml,
-            app: Some(app),
-        }))
+        Ok(GrpcResponse::new(response))
     }
 
     async fn list_installed_apps(
@@ -115,19 +86,21 @@ impl AppStoreService for AppStoreServiceImpl {
     ) -> Result<GrpcResponse<UninstallAppResponse>, Status> {
         crate::runtime::ensure_module_enabled(crate::runtime::MODULE_APPSTORE)?;
         let app_name = sanitize_app_name(&request.into_inner().app_name)?;
-        let app_dir = appstore_root().join(&app_name);
-        let compose_path = app_dir.join("docker-compose.yml");
-        ensure_compose_exists(&compose_path).await?;
-        if env::var("RUSTPANEL_APPSTORE_SKIP_COMPOSE").is_err() {
-            run_compose(&app_name, &compose_path, &["down"]).await?;
-        }
-        tokio::fs::remove_dir_all(app_dir)
-            .await
-            .map_err(io_status)?;
-
-        Ok(GrpcResponse::new(UninstallAppResponse {
-            status: Some(ok_response("app uninstalled")),
-        }))
+        let app = load_installed_app(&app_name).await?;
+        let template = app_templates()
+            .into_iter()
+            .find(|template| template.slug == app.slug)
+            .ok_or_else(|| Status::not_found("source template not found"))?;
+        let response = match InstallMethod::try_from(template.install_method).unwrap_or_default() {
+            InstallMethod::DockerCompose => uninstall_via_compose(&app_name).await?,
+            InstallMethod::BinaryDownload => uninstall_via_binary(template, &app).await?,
+            other => {
+                return Err(Status::unimplemented(format!(
+                    "install method {other:?} 暂未实现卸载路径"
+                )))
+            }
+        };
+        Ok(GrpcResponse::new(response))
     }
 
     async fn update_app(
@@ -137,32 +110,232 @@ impl AppStoreService for AppStoreServiceImpl {
         crate::runtime::ensure_module_enabled(crate::runtime::MODULE_APPSTORE)?;
         let request = request.into_inner();
         let app_name = sanitize_app_name(&request.app_name)?;
-        let mut app = load_installed_app(&app_name).await?;
+        let app = load_installed_app(&app_name).await?;
         let template = app_templates()
             .into_iter()
             .find(|template| template.slug == app.slug)
-            .ok_or_else(|| Status::not_found("app template not found"))?;
-        let version = resolve_template_version(&template, &request.version)?;
-        let compose_yaml = generate_compose_yaml(&template, &version, &app_name)?;
-        let compose_path = appstore_root().join(&app_name).join("docker-compose.yml");
-        tokio::fs::write(&compose_path, compose_yaml.as_bytes())
+            .ok_or_else(|| Status::not_found("source template not found"))?;
+        let response = match InstallMethod::try_from(template.install_method).unwrap_or_default() {
+            InstallMethod::DockerCompose => {
+                update_via_compose(template, app, &app_name, &request.version).await?
+            }
+            InstallMethod::BinaryDownload => {
+                update_via_binary(template, app, &request.version).await?
+            }
+            other => {
+                return Err(Status::unimplemented(format!(
+                    "install method {other:?} 暂未实现更新路径"
+                )))
+            }
+        };
+        Ok(GrpcResponse::new(response))
+    }
+}
+
+// ===================================================================
+// Phase G executor:DockerCompose 走原来 docker compose,
+// BinaryDownload 走 curl + tar + systemctl。
+// 两条路径都有 RUSTPANEL_APPSTORE_SKIP_* 干跑开关,测试不动真实主机。
+// ===================================================================
+
+async fn deploy_via_compose(
+    template: AppTemplate,
+    request: DeployAppRequest,
+) -> Result<DeployAppResponse, Status> {
+    let version = resolve_template_version(&template, &request.version)?;
+    let default_app_name;
+    let app_name = sanitize_app_name(if request.app_name.trim().is_empty() {
+        default_app_name = format!("{}-{}", template.slug, version.version);
+        &default_app_name
+    } else {
+        &request.app_name
+    })?;
+    let compose_yaml = generate_compose_yaml(&template, &version, &app_name)?;
+    let compose_path = appstore_root().join(&app_name).join("docker-compose.yml");
+    if let Some(parent) = compose_path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+    tokio::fs::write(&compose_path, compose_yaml.as_bytes())
+        .await
+        .map_err(io_status)?;
+    let now = current_timestamp();
+    let app = InstalledApp {
+        app_name: app_name.clone(),
+        slug: template.slug.clone(),
+        version: version.version,
+        image: version.image,
+        compose_path: compose_path.to_string_lossy().to_string(),
+        state: "installed".to_owned(),
+        installed_at_seconds: now,
+        updated_at_seconds: now,
+    };
+    save_installed_app(&app).await?;
+
+    if env::var("RUSTPANEL_APPSTORE_SKIP_COMPOSE").is_err() {
+        run_compose(&app_name, &compose_path, &["up", "-d"]).await?;
+    }
+
+    Ok(DeployAppResponse {
+        status: Some(ok_response("app deployed")),
+        compose_path: compose_path.to_string_lossy().to_string(),
+        compose_yaml,
+        app: Some(app),
+    })
+}
+
+async fn uninstall_via_compose(app_name: &str) -> Result<UninstallAppResponse, Status> {
+    let app_dir = appstore_root().join(app_name);
+    let compose_path = app_dir.join("docker-compose.yml");
+    ensure_compose_exists(&compose_path).await?;
+    if env::var("RUSTPANEL_APPSTORE_SKIP_COMPOSE").is_err() {
+        run_compose(app_name, &compose_path, &["down"]).await?;
+    }
+    tokio::fs::remove_dir_all(app_dir)
+        .await
+        .map_err(io_status)?;
+    Ok(UninstallAppResponse {
+        status: Some(ok_response("app uninstalled")),
+    })
+}
+
+async fn update_via_compose(
+    template: AppTemplate,
+    mut app: InstalledApp,
+    app_name: &str,
+    requested_version: &str,
+) -> Result<UpdateAppResponse, Status> {
+    let version = resolve_template_version(&template, requested_version)?;
+    let compose_yaml = generate_compose_yaml(&template, &version, app_name)?;
+    let compose_path = appstore_root().join(app_name).join("docker-compose.yml");
+    tokio::fs::write(&compose_path, compose_yaml.as_bytes())
+        .await
+        .map_err(io_status)?;
+    app.version = version.version;
+    app.image = version.image;
+    app.state = "updated".to_owned();
+    app.updated_at_seconds = current_timestamp();
+    save_installed_app(&app).await?;
+    if env::var("RUSTPANEL_APPSTORE_SKIP_COMPOSE").is_err() {
+        run_compose(app_name, &compose_path, &["up", "-d"]).await?;
+    }
+    Ok(UpdateAppResponse {
+        status: Some(ok_response("app updated")),
+        app: Some(app),
+        compose_yaml,
+    })
+}
+
+async fn deploy_via_binary(
+    template: AppTemplate,
+    request: DeployAppRequest,
+) -> Result<DeployAppResponse, Status> {
+    let plan = phase_g_install_plan(&template.slug).ok_or_else(|| {
+        Status::failed_precondition(format!(
+            "BinaryDownload 模板 {} 暂无安装计划(只在 Phase G 5 个包里实现)",
+            template.slug
+        ))
+    })?;
+    // app_name 默认就是 slug —— 二进制安装是单例(系统里只能有一个
+    // /usr/local/bin/<slug> 和 一个 .service),让 app_name 与 slug
+    // 对齐,uninstall/update 才能稳定定位。
+    let app_name = sanitize_app_name(if request.app_name.trim().is_empty() {
+        &template.slug
+    } else {
+        &request.app_name
+    })?;
+    let version = resolve_binary_version(&plan, &request.version).await?;
+    let asset_name = expand_asset_pattern(plan.asset_pattern, &version);
+    let summary = render_install_plan_summary(&plan, &version, &asset_name);
+    let unit_path = systemd_unit_dir().join(format!("{}.service", template.slug));
+
+    let state = if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
+        "planned".to_owned()
+    } else {
+        execute_binary_install(&template.slug, &plan, &version, &asset_name).await?;
+        "installed".to_owned()
+    };
+
+    let now = current_timestamp();
+    let app = InstalledApp {
+        app_name: app_name.clone(),
+        slug: template.slug.clone(),
+        version,
+        image: String::new(),
+        // 复用 compose_path 字段保存这次安装的 systemd unit 路径,
+        // 后续 uninstall / update 能从元数据里直接拿到。
+        compose_path: unit_path.to_string_lossy().to_string(),
+        state,
+        installed_at_seconds: now,
+        updated_at_seconds: now,
+    };
+    save_installed_app(&app).await?;
+
+    Ok(DeployAppResponse {
+        status: Some(ok_response("binary app deployed")),
+        compose_path: unit_path.to_string_lossy().to_string(),
+        // 复用 compose_yaml 字段返回人话版安装计划摘要,前端直接显示
+        compose_yaml: summary,
+        app: Some(app),
+    })
+}
+
+async fn uninstall_via_binary(
+    template: AppTemplate,
+    app: &InstalledApp,
+) -> Result<UninstallAppResponse, Status> {
+    let plan = phase_g_install_plan(&template.slug).ok_or_else(|| {
+        Status::failed_precondition(format!(
+            "BinaryDownload 模板 {} 暂无安装计划",
+            template.slug
+        ))
+    })?;
+    if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
+        execute_binary_uninstall(&template.slug, &plan).await?;
+    }
+    // 移除 RustPanel 自身的元数据;config 与数据目录保留,
+    // 用户重装时能继续使用之前的配置。
+    let app_dir = appstore_root().join(&app.app_name);
+    if tokio::fs::try_exists(&app_dir).await.unwrap_or(false) {
+        tokio::fs::remove_dir_all(app_dir)
             .await
             .map_err(io_status)?;
-        app.version = version.version;
-        app.image = version.image;
-        app.state = "updated".to_owned();
-        app.updated_at_seconds = current_timestamp();
-        save_installed_app(&app).await?;
-        if env::var("RUSTPANEL_APPSTORE_SKIP_COMPOSE").is_err() {
-            run_compose(&app_name, &compose_path, &["up", "-d"]).await?;
-        }
-
-        Ok(GrpcResponse::new(UpdateAppResponse {
-            status: Some(ok_response("app updated")),
-            app: Some(app),
-            compose_yaml,
-        }))
     }
+    Ok(UninstallAppResponse {
+        status: Some(ok_response("binary app uninstalled")),
+    })
+}
+
+async fn update_via_binary(
+    template: AppTemplate,
+    mut app: InstalledApp,
+    requested_version: &str,
+) -> Result<UpdateAppResponse, Status> {
+    let plan = phase_g_install_plan(&template.slug).ok_or_else(|| {
+        Status::failed_precondition(format!(
+            "BinaryDownload 模板 {} 暂无安装计划",
+            template.slug
+        ))
+    })?;
+    let new_version = resolve_binary_version(&plan, requested_version).await?;
+    let asset_name = expand_asset_pattern(plan.asset_pattern, &new_version);
+    let summary = render_install_plan_summary(&plan, &new_version, &asset_name);
+
+    if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
+        execute_binary_install(&template.slug, &plan, &new_version, &asset_name).await?;
+        // install_atomic 已经走 rename,服务在 restart 时拿到新二进制
+        systemctl(&["restart", &format!("{}.service", template.slug)]).await?;
+    }
+
+    app.version = new_version;
+    app.state = "updated".to_owned();
+    app.updated_at_seconds = current_timestamp();
+    save_installed_app(&app).await?;
+
+    Ok(UpdateAppResponse {
+        status: Some(ok_response("binary app updated")),
+        app: Some(app),
+        compose_yaml: summary,
+    })
 }
 
 pub fn app_templates() -> Vec<AppTemplate> {
@@ -855,6 +1028,322 @@ fn io_status(error: impl std::fmt::Display) -> Status {
     Status::internal(error.to_string())
 }
 
+// =====================================================================
+// BinaryDownload executor 的底层工具:
+// - 网络:shell out 到 curl(避免引入 reqwest 这个重依赖)
+// - 解压:flate2 + tar(项目已用)
+// - systemd:Command::new("systemctl")
+// 所有外部副作用调用都被 RUSTPANEL_APPSTORE_SKIP_EXECUTE 包住,
+// 测试在 skip 模式下走纯数据路径。
+// =====================================================================
+
+/// /etc/systemd/system 的写入目录,RUSTPANEL_SYSTEMD_DIR env 可覆盖
+/// (测试 / 容器内沙箱用)。
+fn systemd_unit_dir() -> PathBuf {
+    env::var("RUSTPANEL_SYSTEMD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/etc/systemd/system"))
+}
+
+/// 把 BinaryInstallPlan.asset_pattern 里的 {version} 占位符替换为
+/// 解析出来的 bare 版本。pattern 自己显式写 `v{version}` 时,
+/// 上层不再二次加 'v',避免出现 vv0.10.0 这种重复。
+fn expand_asset_pattern(pattern: &str, version: &str) -> String {
+    pattern.replace("{version}", version)
+}
+
+/// 构造 release 下载 URL。GitHub 的 release tag 通常以 v 开头
+/// (`v0.10.0`),所以这里我们用 tag 而不是 bare version。
+fn asset_download_url(repo: &str, tag: &str, asset: &str) -> String {
+    format!("https://github.com/{repo}/releases/download/{tag}/{asset}")
+}
+
+/// 给前端 / 用户的"装这个包会做什么"摘要 —— 用纯文本而不是 JSON,
+/// 复用 DeployAppResponse.compose_yaml 字段返回,前端直接显示。
+fn render_install_plan_summary(plan: &BinaryInstallPlan, version: &str, asset: &str) -> String {
+    format!(
+        "上游: {repo}\n版本: {version}\nasset: {asset}\n二进制安装到: {install_to}\nsystemd unit: {unit}\n配置: {config}\n下一步: {hint}",
+        repo = plan.upstream_repo,
+        version = version,
+        asset = asset,
+        install_to = plan.install_to,
+        unit = systemd_unit_dir()
+            .join(format!(
+                "{slug}.service",
+                slug = plan
+                    .install_to
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("app")
+            ))
+            .to_string_lossy(),
+        config = plan.config_path,
+        hint = plan.post_install_hint,
+    )
+}
+
+/// 解析二进制版本:
+/// - 用户传 "" 或 "latest" → 调 GitHub API 取最新 release.tag_name
+/// - 用户传具体版本(如 "0.10.0" 或 "v0.10.0")→ 直接用
+///
+/// 返回 bare 版本(去掉前导 v),供 expand_asset_pattern 用。
+async fn resolve_binary_version(
+    plan: &BinaryInstallPlan,
+    requested: &str,
+) -> Result<String, Status> {
+    let trimmed = requested.trim();
+    if !trimmed.is_empty() && trimmed != "latest" {
+        return Ok(trimmed.trim_start_matches('v').to_owned());
+    }
+    if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
+        // 干跑模式无网络,固定回填一个占位 tag,让 plan summary 仍可渲染
+        return Ok("latest".to_owned());
+    }
+    let api_url = format!(
+        "https://api.github.com/repos/{}/releases/latest",
+        plan.upstream_repo
+    );
+    let output = tokio::process::Command::new("curl")
+        .args([
+            "-fsSL",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-H",
+            "User-Agent: rustpanel-appstore",
+            "--retry",
+            "3",
+            &api_url,
+        ])
+        .output()
+        .await
+        .map_err(io_status)?;
+    if !output.status.success() {
+        return Err(Status::unavailable(format!(
+            "GitHub Releases API 拉取失败: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(io_status)?;
+    let tag = parsed
+        .get("tag_name")
+        .and_then(|tag| tag.as_str())
+        .ok_or_else(|| Status::internal("GitHub Releases API 响应缺 tag_name"))?;
+    Ok(tag.trim_start_matches('v').to_owned())
+}
+
+/// 走 curl 下载 asset 到 dest;父目录会自动建好。
+async fn download_asset(url: &str, dest: &Path) -> Result<(), Status> {
+    if let Some(parent) = dest.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+    let output = tokio::process::Command::new("curl")
+        .args([
+            "-fSL",
+            "--retry",
+            "3",
+            "--retry-delay",
+            "2",
+            "-H",
+            "User-Agent: rustpanel-appstore",
+            "-o",
+        ])
+        .arg(dest)
+        .arg(url)
+        .output()
+        .await
+        .map_err(io_status)?;
+    if !output.status.success() {
+        return Err(Status::unavailable(format!(
+            "下载失败 ({url}): {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    Ok(())
+}
+
+/// 解压 / 单文件 gunzip / 原样 copy,统一返回"可执行二进制源路径"。
+/// 调用方再根据 plan.binary_path_in_archive 决定走哪个子文件。
+async fn extract_archive(archive: &Path, work_dir: &Path) -> Result<PathBuf, Status> {
+    tokio::fs::create_dir_all(work_dir)
+        .await
+        .map_err(io_status)?;
+    let name = archive
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
+        let archive = archive.to_path_buf();
+        let dest = work_dir.to_path_buf();
+        let dest_for_task = dest.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), std::io::Error> {
+            let file = std::fs::File::open(&archive)?;
+            let gz = flate2::read::GzDecoder::new(file);
+            let mut tar = tar::Archive::new(gz);
+            tar.unpack(&dest_for_task)?;
+            Ok(())
+        })
+        .await
+        .map_err(|join| Status::internal(format!("解压 task panicked: {join}")))?
+        .map_err(io_status)?;
+        Ok(dest)
+    } else if name.ends_with(".gz") {
+        // 单文件 gzip;落到 work_dir/<去掉 .gz 的同名>
+        let stem = name.strip_suffix(".gz").unwrap_or(&name).to_owned();
+        let out_path = work_dir.join(&stem);
+        let archive = archive.to_path_buf();
+        let out_clone = out_path.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), std::io::Error> {
+            let in_file = std::fs::File::open(&archive)?;
+            let mut gz = flate2::read::GzDecoder::new(in_file);
+            let mut out_file = std::fs::File::create(&out_clone)?;
+            std::io::copy(&mut gz, &mut out_file)?;
+            Ok(())
+        })
+        .await
+        .map_err(|join| Status::internal(format!("解压 task panicked: {join}")))?
+        .map_err(io_status)?;
+        Ok(out_path)
+    } else {
+        // 裸二进制(TUIC 那种),不解压,直接当作"已就位"
+        Ok(archive.to_path_buf())
+    }
+}
+
+/// 把 src 二进制安装到 dest:chmod +x,先写 .tmp 再 rename 保证原子。
+/// dest 已存在时被覆盖(rename 在同一文件系统下是原子的)。
+async fn install_binary_atomic(src: &Path, dest: &Path) -> Result<(), Status> {
+    if let Some(parent) = dest.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+    let tmp = dest.with_extension("rustpanel-tmp");
+    tokio::fs::copy(src, &tmp).await.map_err(io_status)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = tokio::fs::metadata(&tmp)
+            .await
+            .map_err(io_status)?
+            .permissions();
+        perms.set_mode(0o755);
+        tokio::fs::set_permissions(&tmp, perms)
+            .await
+            .map_err(io_status)?;
+    }
+    tokio::fs::rename(&tmp, dest).await.map_err(io_status)?;
+    Ok(())
+}
+
+/// 写 systemd unit 到 RUSTPANEL_SYSTEMD_DIR(默认 /etc/systemd/system),
+/// 同样 tmp + rename 保证原子。
+async fn write_systemd_unit(slug: &str, content: &str) -> Result<PathBuf, Status> {
+    let dir = systemd_unit_dir();
+    tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
+    let path = dir.join(format!("{slug}.service"));
+    let tmp = path.with_extension("service.rustpanel-tmp");
+    tokio::fs::write(&tmp, content.as_bytes())
+        .await
+        .map_err(io_status)?;
+    tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
+    Ok(path)
+}
+
+/// 写配置文件 —— **只在不存在时写**,绝不覆盖用户已经手改过的内容。
+async fn write_config_if_missing(path: &Path, content: &str) -> Result<(), Status> {
+    if tokio::fs::try_exists(path).await.unwrap_or(false) {
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+    tokio::fs::write(path, content.as_bytes())
+        .await
+        .map_err(io_status)?;
+    Ok(())
+}
+
+/// 包一层 systemctl —— 失败时把 stderr 直接当作 Status::unavailable 抛出。
+async fn systemctl(args: &[&str]) -> Result<(), Status> {
+    let output = tokio::process::Command::new("systemctl")
+        .args(args)
+        .output()
+        .await
+        .map_err(io_status)?;
+    if !output.status.success() {
+        return Err(Status::unavailable(format!(
+            "systemctl {} 失败: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    Ok(())
+}
+
+/// 全流程:下载 → 解压 → 安装二进制 → 写 unit → 写配置 → enable+start。
+/// 调用前确保 RUSTPANEL_APPSTORE_SKIP_EXECUTE 未设置。
+async fn execute_binary_install(
+    slug: &str,
+    plan: &BinaryInstallPlan,
+    version: &str,
+    asset_name: &str,
+) -> Result<(), Status> {
+    let work_root = appstore_root().join(slug);
+    let cache_dir = work_root.join("cache");
+    let work_dir = work_root.join("work");
+    tokio::fs::create_dir_all(&cache_dir)
+        .await
+        .map_err(io_status)?;
+    tokio::fs::create_dir_all(&work_dir)
+        .await
+        .map_err(io_status)?;
+
+    let archive_path = cache_dir.join(asset_name);
+    let tag = format!("v{version}");
+    let download_url = asset_download_url(plan.upstream_repo, &tag, asset_name);
+    download_asset(&download_url, &archive_path).await?;
+
+    let extract_root = extract_archive(&archive_path, &work_dir).await?;
+    let binary_src = if plan.binary_path_in_archive.is_empty() {
+        extract_root
+    } else {
+        let rel = expand_asset_pattern(plan.binary_path_in_archive, version);
+        // 不论 extract_root 是目录(tar.gz 解出来的根)还是文件(.gz / 裸二进制),
+        // 都按相对路径在 work_dir 里找。
+        if extract_root.is_dir() {
+            extract_root.join(rel)
+        } else {
+            work_dir.join(rel)
+        }
+    };
+
+    install_binary_atomic(&binary_src, Path::new(plan.install_to)).await?;
+    write_systemd_unit(slug, plan.systemd_unit).await?;
+    write_config_if_missing(Path::new(plan.config_path), plan.config_template).await?;
+    systemctl(&["daemon-reload"]).await?;
+    systemctl(&["enable", "--now", &format!("{slug}.service")]).await?;
+    Ok(())
+}
+
+/// 卸载:停服务、disable、删 unit、删二进制;config / 数据保留。
+async fn execute_binary_uninstall(slug: &str, plan: &BinaryInstallPlan) -> Result<(), Status> {
+    let service = format!("{slug}.service");
+    // 停 + disable 即使 unit 已经不存在也不该 fatal —— 容错处理。
+    let _ = systemctl(&["disable", "--now", &service]).await;
+    let unit_path = systemd_unit_dir().join(&service);
+    if tokio::fs::try_exists(&unit_path).await.unwrap_or(false) {
+        tokio::fs::remove_file(&unit_path)
+            .await
+            .map_err(io_status)?;
+    }
+    let binary_path = Path::new(plan.install_to);
+    if tokio::fs::try_exists(binary_path).await.unwrap_or(false) {
+        tokio::fs::remove_file(binary_path)
+            .await
+            .map_err(io_status)?;
+    }
+    let _ = systemctl(&["daemon-reload"]).await;
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 struct ComposeFile {
     services: BTreeMap<String, ComposeService>,
@@ -1224,6 +1713,51 @@ mod tests {
                 template.homepage
             );
         }
+    }
+
+    #[test]
+    fn expand_asset_pattern_substitutes_version_and_handles_v_prefix() {
+        // bare {version} 替换
+        assert_eq!(
+            expand_asset_pattern("rpxy-{version}-x86_64-linux.tar.gz", "0.10.0"),
+            "rpxy-0.10.0-x86_64-linux.tar.gz"
+        );
+        // pattern 自己写了 v 前缀:不再重复加,版本数字直接进去
+        assert_eq!(
+            expand_asset_pattern("sws-v{version}-musl.tar.gz", "2.32.0"),
+            "sws-v2.32.0-musl.tar.gz"
+        );
+        // binary_path_in_archive 也能复用同一替换器
+        assert_eq!(
+            expand_asset_pattern("sws-v{version}-musl/sws", "2.32.0"),
+            "sws-v2.32.0-musl/sws"
+        );
+        // 没占位时原样返回
+        assert_eq!(expand_asset_pattern("tuic-server", "0.0.1"), "tuic-server");
+    }
+
+    #[test]
+    fn asset_download_url_matches_github_release_layout() {
+        assert_eq!(
+            asset_download_url(
+                "junkurihara/rust-rpxy",
+                "v0.10.0",
+                "rpxy-0.10.0-x86_64-unknown-linux-musl.tar.gz",
+            ),
+            "https://github.com/junkurihara/rust-rpxy/releases/download/v0.10.0/rpxy-0.10.0-x86_64-unknown-linux-musl.tar.gz",
+        );
+    }
+
+    #[test]
+    fn render_install_plan_summary_lists_key_fields() {
+        let plan = phase_g_install_plan("rpxy").expect("rpxy plan");
+        let summary =
+            render_install_plan_summary(&plan, "0.10.0", "rpxy-0.10.0-x86_64-linux.tar.gz");
+        assert!(summary.contains("junkurihara/rust-rpxy"));
+        assert!(summary.contains("0.10.0"));
+        assert!(summary.contains("rpxy-0.10.0-x86_64-linux.tar.gz"));
+        assert!(summary.contains("/usr/local/bin/rpxy"));
+        assert!(summary.contains("/etc/rpxy/config.toml"));
     }
 
     #[test]
