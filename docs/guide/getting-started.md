@@ -12,15 +12,18 @@
 url=https://raw.githubusercontent.com/IShinji/RustPanel/main/deploy/install.sh;if command -v curl >/dev/null 2>&1;then curl -fsSL "$url" -o rustpanel-install.sh;else wget -O rustpanel-install.sh "$url";fi;sudo bash rustpanel-install.sh
 ```
 
-常见参数：
+默认运行即进入**交互式安装**，会先做磁盘/内存硬门禁，再依次询问 NAT 端口范围、面板访问端口（必须落在 NAT 段内）、公网 IP/域名、Profile、管理员凭据、是否启用极限低内存模板。空回车接受推荐默认，最后预览面板 URL 并要求二次确认。
+
+非交互场景（CI、SSH 自动化）传 `--assume-recommended` 跳过所有提问，可与 CLI 参数任意组合：
 
 ```bash
-sudo bash rustpanel-install.sh --port 18888 --origin https://panel.example.com
-sudo bash rustpanel-install.sh --bind 127.0.0.1 --skip-docker-install
-sudo bash rustpanel-install.sh --profile micro --assume-recommended
+sudo bash rustpanel-install.sh --assume-recommended --port 18888 --origin https://panel.example.com
+sudo bash rustpanel-install.sh --assume-recommended --bind 127.0.0.1 --skip-docker-install
+sudo bash rustpanel-install.sh --assume-recommended --profile micro \
+  --nat-port-range 1200-1219 --port 1200 --public-host 1.2.3.4
 ```
 
-默认安装目录是 `/www/wwwroot/rustpanel`，配置文件是 `/www/wwwroot/rustpanel/.env`，后续升级可执行：
+默认安装目录是 `/www/wwwroot/rustpanel`，配置文件是 `/www/wwwroot/rustpanel/.env`（新增字段 `RUSTPANEL_NAT_PORT_RANGE`、`RUSTPANEL_PUBLIC_HOST`、`RUSTPANEL_ULTRA_LOW`），后续升级可执行：
 
 ```bash
 sudo bash /www/wwwroot/rustpanel/deploy/update.sh
@@ -32,7 +35,7 @@ sudo bash /www/wwwroot/rustpanel/deploy/update.sh
 sudo bash rustpanel-install.sh --dry-run
 ```
 
-如果安装器推荐 `micro`，会走二进制裸跑模式并启用内置静态托管、轻量进程托管和用户态代理；Docker 应用商店、Nginx 站点、SSL 自动化等重模块会默认禁用。
+如果安装器推荐 `micro`，会走二进制裸跑模式并启用内置静态托管、轻量进程托管和用户态代理；Docker 应用商店、Nginx 站点、SSL 自动化等重模块会默认禁用。128MB 内存吃紧时,可在交互末尾启用极限低内存模板（或加 `--ultra-low`）再禁掉 proxy 和 workloads。
 
 以下依赖仅用于本地开发：
 

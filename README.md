@@ -28,19 +28,28 @@ Linux 服务器可使用类似宝塔的下载安装脚本方式部署：
 url=https://raw.githubusercontent.com/IShinji/RustPanel/main/deploy/install.sh;if command -v curl >/dev/null 2>&1;then curl -fsSL "$url" -o rustpanel-install.sh;else wget -O rustpanel-install.sh "$url";fi;sudo bash rustpanel-install.sh
 ```
 
-默认安装到 `/www/wwwroot/rustpanel`，通过 `http://服务器IP:18080` 访问。脚本会自动生成生产环境管理员密码和 JWT 密钥，并写入 `/www/wwwroot/rustpanel/.env`。
+默认安装到 `/www/wwwroot/rustpanel`。脚本默认进入**交互式安装**，会依次询问：
 
-常用自定义参数：
+- NAT 放通端口段（例：`1200-1219`，无 NAT 限制直接回车跳过）
+- 面板访问端口（浏览器实际访问的端口，必须落在 NAT 段内）
+- 公网 IP 或域名（NAT 机自动探测会拿到内网 IP，需手动覆盖）
+- 绑定地址、Profile、HTTPS Origin、管理员凭据
+- 是否启用极限低内存模板（micro 档可再禁 proxy/workloads）
+
+完成后管理员密码、JWT 密钥、最终面板 URL 都会打印并写入 `/www/wwwroot/rustpanel/.env`。
+
+非交互场景（CI、自动化）传 `--assume-recommended` 跳过所有提问：
 
 ```bash
-sudo bash rustpanel-install.sh --port 18888 --origin https://panel.example.com
-sudo bash rustpanel-install.sh --bind 127.0.0.1 --port 18080
-sudo bash rustpanel-install.sh --profile micro --assume-recommended
+sudo bash rustpanel-install.sh --assume-recommended --port 18888 --origin https://panel.example.com
+sudo bash rustpanel-install.sh --assume-recommended --bind 127.0.0.1 --port 18080
+sudo bash rustpanel-install.sh --assume-recommended --profile micro \
+  --nat-port-range 1200-1219 --port 1200 --public-host 1.2.3.4
 ```
 
 ### Micro 极限模式
 
-`micro` 档位面向 128MB RAM、2GB 磁盘、NAT IPv4、OpenVZ 这类极限小鸡。安装器会先探测内存、磁盘、虚拟化和 Docker 能力，并在低配或 OpenVZ 环境下推荐二进制裸跑模式，默认启用内置静态托管、轻量任务托管和用户态代理，禁用 Docker、应用商店、Nginx 站点和 SSL 自动化。
+`micro` 档位面向 128MB RAM、2GB 磁盘、NAT IPv4、OpenVZ 这类极限小鸡。安装器会先做磁盘/内存硬门禁（<500MB / <80MB 直接 fail），再探测虚拟化和 Docker 能力，在低配或 OpenVZ 环境下推荐二进制裸跑模式，默认启用内置静态托管、轻量任务托管和用户态代理，禁用 Docker、应用商店、Nginx 站点和 SSL 自动化。128MB 实在紧时可在交互流程末尾启用、或直接加 `--ultra-low` 再禁掉 proxy 和 workloads。
 
 安装前可先查看建议：
 
