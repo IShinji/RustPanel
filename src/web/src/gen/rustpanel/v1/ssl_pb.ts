@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/ssl.proto.
  */
 export const file_rustpanel_v1_ssl: GenFile = /*@__PURE__*/
-  fileDesc("ChZydXN0cGFuZWwvdjEvc3NsLnByb3RvEgxydXN0cGFuZWwudjEi/QEKD0NlcnRpZmljYXRlSXRlbRIOCgZkb21haW4YASABKAkSGAoQY2VydGlmaWNhdGVfcGF0aBgCIAEoCRIYChBwcml2YXRlX2tleV9wYXRoGAMgASgJEhoKEmV4cGlyZXNfYXRfc2Vjb25kcxgEIAEoBBItCgVzdGF0ZRgFIAEoDjIeLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZVN0YXRlEg0KBWdyb3VwGAYgASgJEhkKEWRheXNfdW50aWxfZXhwaXJ5GAcgASgDEhoKEmF1dG9fcmVuZXdfZW5hYmxlZBgIIAEoCBIVCg13YXJuaW5nX2xldmVsGAkgASgJIjoKGVJlcXVlc3RDZXJ0aWZpY2F0ZVJlcXVlc3QSDgoGZG9tYWluGAEgASgJEg0KBWVtYWlsGAIgASgJIngKGlJlcXVlc3RDZXJ0aWZpY2F0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIyCgtjZXJ0aWZpY2F0ZRgCIAEoCzIdLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZUl0ZW0iKgoYUmV2b2tlQ2VydGlmaWNhdGVSZXF1ZXN0Eg4KBmRvbWFpbhgBIAEoCSJDChlSZXZva2VDZXJ0aWZpY2F0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSIZChdMaXN0Q2VydGlmaWNhdGVzUmVxdWVzdCJ3ChhMaXN0Q2VydGlmaWNhdGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjMKDGNlcnRpZmljYXRlcxgCIAMoCzIdLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZUl0ZW0iawoYSW1wb3J0Q2VydGlmaWNhdGVSZXF1ZXN0Eg4KBmRvbWFpbhgBIAEoCRINCgVncm91cBgCIAEoCRIXCg9jZXJ0aWZpY2F0ZV9wZW0YAyABKAkSFwoPcHJpdmF0ZV9rZXlfcGVtGAQgASgJIncKGUltcG9ydENlcnRpZmljYXRlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjIKC2NlcnRpZmljYXRlGAIgASgLMh0ucnVzdHBhbmVsLnYxLkNlcnRpZmljYXRlSXRlbSIpChdSZW5ld0NlcnRpZmljYXRlUmVxdWVzdBIOCgZkb21haW4YASABKAkihgEKGFJlbmV3Q2VydGlmaWNhdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USMgoLY2VydGlmaWNhdGUYAiABKAsyHS5ydXN0cGFuZWwudjEuQ2VydGlmaWNhdGVJdGVtEg4KBm91dHB1dBgDIAEoCSIxCh9XYXRjaENlcnRpZmljYXRlUHJvZ3Jlc3NSZXF1ZXN0Eg4KBmRvbWFpbhgBIAEoCSKPAQogV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjIKC2NlcnRpZmljYXRlGAIgASgLMh0ucnVzdHBhbmVsLnYxLkNlcnRpZmljYXRlSXRlbRIPCgdtZXNzYWdlGAMgASgJKq8BChBDZXJ0aWZpY2F0ZVN0YXRlEiEKHUNFUlRJRklDQVRFX1NUQVRFX1VOU1BFQ0lGSUVEEAASHQoZQ0VSVElGSUNBVEVfU1RBVEVfUEVORElORxABEhwKGENFUlRJRklDQVRFX1NUQVRFX0lTU1VFRBACEh0KGUNFUlRJRklDQVRFX1NUQVRFX1JFVk9LRUQQAxIcChhDRVJUSUZJQ0FURV9TVEFURV9GQUlMRUQQBDKEBQoKU3NsU2VydmljZRJnChJSZXF1ZXN0Q2VydGlmaWNhdGUSJy5ydXN0cGFuZWwudjEuUmVxdWVzdENlcnRpZmljYXRlUmVxdWVzdBooLnJ1c3RwYW5lbC52MS5SZXF1ZXN0Q2VydGlmaWNhdGVSZXNwb25zZRJkChFSZXZva2VDZXJ0aWZpY2F0ZRImLnJ1c3RwYW5lbC52MS5SZXZva2VDZXJ0aWZpY2F0ZVJlcXVlc3QaJy5ydXN0cGFuZWwudjEuUmV2b2tlQ2VydGlmaWNhdGVSZXNwb25zZRJhChBMaXN0Q2VydGlmaWNhdGVzEiUucnVzdHBhbmVsLnYxLkxpc3RDZXJ0aWZpY2F0ZXNSZXF1ZXN0GiYucnVzdHBhbmVsLnYxLkxpc3RDZXJ0aWZpY2F0ZXNSZXNwb25zZRJkChFJbXBvcnRDZXJ0aWZpY2F0ZRImLnJ1c3RwYW5lbC52MS5JbXBvcnRDZXJ0aWZpY2F0ZVJlcXVlc3QaJy5ydXN0cGFuZWwudjEuSW1wb3J0Q2VydGlmaWNhdGVSZXNwb25zZRJhChBSZW5ld0NlcnRpZmljYXRlEiUucnVzdHBhbmVsLnYxLlJlbmV3Q2VydGlmaWNhdGVSZXF1ZXN0GiYucnVzdHBhbmVsLnYxLlJlbmV3Q2VydGlmaWNhdGVSZXNwb25zZRJ7ChhXYXRjaENlcnRpZmljYXRlUHJvZ3Jlc3MSLS5ydXN0cGFuZWwudjEuV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVxdWVzdBouLnJ1c3RwYW5lbC52MS5XYXRjaENlcnRpZmljYXRlUHJvZ3Jlc3NSZXNwb25zZTABYgZwcm90bzM", [file_rustpanel_v1_common]);
+  fileDesc("ChZydXN0cGFuZWwvdjEvc3NsLnByb3RvEgxydXN0cGFuZWwudjEi/QEKD0NlcnRpZmljYXRlSXRlbRIOCgZkb21haW4YASABKAkSGAoQY2VydGlmaWNhdGVfcGF0aBgCIAEoCRIYChBwcml2YXRlX2tleV9wYXRoGAMgASgJEhoKEmV4cGlyZXNfYXRfc2Vjb25kcxgEIAEoBBItCgVzdGF0ZRgFIAEoDjIeLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZVN0YXRlEg0KBWdyb3VwGAYgASgJEhkKEWRheXNfdW50aWxfZXhwaXJ5GAcgASgDEhoKEmF1dG9fcmVuZXdfZW5hYmxlZBgIIAEoCBIVCg13YXJuaW5nX2xldmVsGAkgASgJIqIBChlSZXF1ZXN0Q2VydGlmaWNhdGVSZXF1ZXN0Eg4KBmRvbWFpbhgBIAEoCRINCgVlbWFpbBgCIAEoCRI3Cg5jaGFsbGVuZ2VfdHlwZRgDIAEoDjIfLnJ1c3RwYW5lbC52MS5BY21lQ2hhbGxlbmdlVHlwZRIUCgxkbnNfcHJvdmlkZXIYBCABKAkSFwoPZG5zX2NyZWRlbnRpYWxzGAUgASgJIqsBChpSZXF1ZXN0Q2VydGlmaWNhdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USMgoLY2VydGlmaWNhdGUYAiABKAsyHS5ydXN0cGFuZWwudjEuQ2VydGlmaWNhdGVJdGVtEhcKD2Ruc19yZWNvcmRfbmFtZRgDIAEoCRIYChBkbnNfcmVjb3JkX3ZhbHVlGAQgASgJIioKGFJldm9rZUNlcnRpZmljYXRlUmVxdWVzdBIOCgZkb21haW4YASABKAkiQwoZUmV2b2tlQ2VydGlmaWNhdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiGQoXTGlzdENlcnRpZmljYXRlc1JlcXVlc3QidwoYTGlzdENlcnRpZmljYXRlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIzCgxjZXJ0aWZpY2F0ZXMYAiADKAsyHS5ydXN0cGFuZWwudjEuQ2VydGlmaWNhdGVJdGVtImsKGEltcG9ydENlcnRpZmljYXRlUmVxdWVzdBIOCgZkb21haW4YASABKAkSDQoFZ3JvdXAYAiABKAkSFwoPY2VydGlmaWNhdGVfcGVtGAMgASgJEhcKD3ByaXZhdGVfa2V5X3BlbRgEIAEoCSJ3ChlJbXBvcnRDZXJ0aWZpY2F0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIyCgtjZXJ0aWZpY2F0ZRgCIAEoCzIdLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZUl0ZW0iKQoXUmVuZXdDZXJ0aWZpY2F0ZVJlcXVlc3QSDgoGZG9tYWluGAEgASgJIoYBChhSZW5ld0NlcnRpZmljYXRlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjIKC2NlcnRpZmljYXRlGAIgASgLMh0ucnVzdHBhbmVsLnYxLkNlcnRpZmljYXRlSXRlbRIOCgZvdXRwdXQYAyABKAkiMQofV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVxdWVzdBIOCgZkb21haW4YASABKAkijwEKIFdhdGNoQ2VydGlmaWNhdGVQcm9ncmVzc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIyCgtjZXJ0aWZpY2F0ZRgCIAEoCzIdLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZUl0ZW0SDwoHbWVzc2FnZRgDIAEoCSqvAQoQQ2VydGlmaWNhdGVTdGF0ZRIhCh1DRVJUSUZJQ0FURV9TVEFURV9VTlNQRUNJRklFRBAAEh0KGUNFUlRJRklDQVRFX1NUQVRFX1BFTkRJTkcQARIcChhDRVJUSUZJQ0FURV9TVEFURV9JU1NVRUQQAhIdChlDRVJUSUZJQ0FURV9TVEFURV9SRVZPS0VEEAMSHAoYQ0VSVElGSUNBVEVfU1RBVEVfRkFJTEVEEAQqeQoRQWNtZUNoYWxsZW5nZVR5cGUSIwofQUNNRV9DSEFMTEVOR0VfVFlQRV9VTlNQRUNJRklFRBAAEh8KG0FDTUVfQ0hBTExFTkdFX1RZUEVfSFRUUF8wMRABEh4KGkFDTUVfQ0hBTExFTkdFX1RZUEVfRE5TXzAxEAIyhAUKClNzbFNlcnZpY2USZwoSUmVxdWVzdENlcnRpZmljYXRlEicucnVzdHBhbmVsLnYxLlJlcXVlc3RDZXJ0aWZpY2F0ZVJlcXVlc3QaKC5ydXN0cGFuZWwudjEuUmVxdWVzdENlcnRpZmljYXRlUmVzcG9uc2USZAoRUmV2b2tlQ2VydGlmaWNhdGUSJi5ydXN0cGFuZWwudjEuUmV2b2tlQ2VydGlmaWNhdGVSZXF1ZXN0GicucnVzdHBhbmVsLnYxLlJldm9rZUNlcnRpZmljYXRlUmVzcG9uc2USYQoQTGlzdENlcnRpZmljYXRlcxIlLnJ1c3RwYW5lbC52MS5MaXN0Q2VydGlmaWNhdGVzUmVxdWVzdBomLnJ1c3RwYW5lbC52MS5MaXN0Q2VydGlmaWNhdGVzUmVzcG9uc2USZAoRSW1wb3J0Q2VydGlmaWNhdGUSJi5ydXN0cGFuZWwudjEuSW1wb3J0Q2VydGlmaWNhdGVSZXF1ZXN0GicucnVzdHBhbmVsLnYxLkltcG9ydENlcnRpZmljYXRlUmVzcG9uc2USYQoQUmVuZXdDZXJ0aWZpY2F0ZRIlLnJ1c3RwYW5lbC52MS5SZW5ld0NlcnRpZmljYXRlUmVxdWVzdBomLnJ1c3RwYW5lbC52MS5SZW5ld0NlcnRpZmljYXRlUmVzcG9uc2USewoYV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzEi0ucnVzdHBhbmVsLnYxLldhdGNoQ2VydGlmaWNhdGVQcm9ncmVzc1JlcXVlc3QaLi5ydXN0cGFuZWwudjEuV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVzcG9uc2UwAWIGcHJvdG8z", [file_rustpanel_v1_common]);
 
 /**
  * CertificateItem 描述一个站点证书。
@@ -88,6 +88,28 @@ export type RequestCertificateRequest = Message<"rustpanel.v1.RequestCertificate
    * @generated from field: string email = 2;
    */
   email: string;
+
+  /**
+   * === Phase E 新增 ===
+   *
+   * @generated from field: rustpanel.v1.AcmeChallengeType challenge_type = 3;
+   */
+  challengeType: AcmeChallengeType;
+
+  /**
+   * 仅 DNS-01 用:DNS provider 标识(manual / cloudflare / route53),
+   * manual 模式下 panel 只返回 TXT 记录,不直接修改 DNS。
+   *
+   * @generated from field: string dns_provider = 4;
+   */
+  dnsProvider: string;
+
+  /**
+   * 仅 DNS-01 用:provider API token / 凭证(manual 模式留空)。
+   *
+   * @generated from field: string dns_credentials = 5;
+   */
+  dnsCredentials: string;
 };
 
 /**
@@ -112,6 +134,20 @@ export type RequestCertificateResponse = Message<"rustpanel.v1.RequestCertificat
    * @generated from field: rustpanel.v1.CertificateItem certificate = 2;
    */
   certificate?: CertificateItem | undefined;
+
+  /**
+   * DNS-01 manual 模式:需要用户手动添加的 TXT 记录信息。
+   * record_name 为完整 FQDN(如 _acme-challenge.example.com),record_value 为 TXT 内容。
+   * 用户加完 DNS 后再调一次 RequestCertificate 即可继续验证。
+   *
+   * @generated from field: string dns_record_name = 3;
+   */
+  dnsRecordName: string;
+
+  /**
+   * @generated from field: string dns_record_value = 4;
+   */
+  dnsRecordValue: string;
 };
 
 /**
@@ -389,6 +425,38 @@ export enum CertificateState {
  */
 export const CertificateStateSchema: GenEnum<CertificateState> = /*@__PURE__*/
   enumDesc(file_rustpanel_v1_ssl, 0);
+
+/**
+ * AcmeChallengeType ACME 挑战方式。
+ *
+ * @generated from enum rustpanel.v1.AcmeChallengeType
+ */
+export enum AcmeChallengeType {
+  /**
+   * @generated from enum value: ACME_CHALLENGE_TYPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * HTTP-01:需要外部能从 80 端口访问。NAT VPS 通常用不了。
+   *
+   * @generated from enum value: ACME_CHALLENGE_TYPE_HTTP_01 = 1;
+   */
+  HTTP_01 = 1,
+
+  /**
+   * DNS-01:面板返回需要写入的 TXT 记录,用户手动加到 DNS,然后回调验证。
+   *
+   * @generated from enum value: ACME_CHALLENGE_TYPE_DNS_01 = 2;
+   */
+  DNS_01 = 2,
+}
+
+/**
+ * Describes the enum rustpanel.v1.AcmeChallengeType.
+ */
+export const AcmeChallengeTypeSchema: GenEnum<AcmeChallengeType> = /*@__PURE__*/
+  enumDesc(file_rustpanel_v1_ssl, 1);
 
 /**
  * SslService 提供 SSL 自动化能力。

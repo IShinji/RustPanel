@@ -14,7 +14,7 @@ use tonic::{Request, Response as GrpcResponse, Status};
 use crate::{
     ok_response,
     proto::rustpanel::v1::{
-        ssl_service_server::SslService, CertificateItem, CertificateState,
+        ssl_service_server::SslService, AcmeChallengeType, CertificateItem, CertificateState,
         ImportCertificateRequest, ImportCertificateResponse, ListCertificatesRequest,
         ListCertificatesResponse, RenewCertificateRequest, RenewCertificateResponse,
         RequestCertificateRequest, RequestCertificateResponse, RevokeCertificateRequest,
@@ -47,6 +47,41 @@ impl SslService for SslServiceImpl {
             return Err(Status::invalid_argument("valid email is required"));
         }
         let sender = self.progress_sender(&request.domain)?;
+
+        let challenge_type =
+            AcmeChallengeType::try_from(request.challenge_type).unwrap_or_default();
+        // NAT VPS 上 80 端口通常拿不到,DNS-01 是唯一可行的挑战方式。
+        // 当前 manual 模式:面板生成确定性的 TXT 记录提示给用户,
+        // 用户在 DNS 控制台加完后,再调一次 RequestCertificate 跑实际验证。
+        if challenge_type == AcmeChallengeType::Dns01 {
+            let provider = if request.dns_provider.trim().is_empty() {
+                "manual"
+            } else {
+                request.dns_provider.trim()
+            };
+            if provider == "manual" {
+                send_progress(
+                    &sender,
+                    &request.domain,
+                    CertificateState::Pending,
+                    "dns-01 manual: 等待用户添加 TXT 记录",
+                );
+                let (record_name, record_value) = build_manual_dns_challenge(&request.domain);
+                return Ok(GrpcResponse::new(RequestCertificateResponse {
+                    status: Some(ok_response(
+                        "请把下方 TXT 记录加到 DNS,完成后再点一次申请",
+                    )),
+                    certificate: None,
+                    dns_record_name: record_name,
+                    dns_record_value: record_value,
+                }));
+            }
+            // cloudflare/route53 等 provider 留待后续实现
+            return Err(Status::unimplemented(format!(
+                "DNS provider {provider} 暂未实现,请使用 manual 模式手动添加 TXT 记录"
+            )));
+        }
+
         send_progress(
             &sender,
             &request.domain,
@@ -66,6 +101,8 @@ impl SslService for SslServiceImpl {
         Ok(GrpcResponse::new(RequestCertificateResponse {
             status: Some(ok_response("certificate issued")),
             certificate: Some(certificate),
+            dns_record_name: String::new(),
+            dns_record_value: String::new(),
         }))
     }
 
@@ -188,6 +225,16 @@ impl SslServiceImpl {
             .or_insert_with(|| broadcast::channel(SSL_CHANNEL_SIZE).0)
             .clone())
     }
+}
+
+// DNS-01 manual:返回固定的 _acme-challenge.<domain> 提示。
+// 真实的 token 在用户提交两次时才由 ACME 服务器分配,这里仅给出 RR name 与
+// "需要从 ACME 拿到 token 后再填" 的占位 value,引导用户先建好 RR 结构。
+fn build_manual_dns_challenge(domain: &str) -> (String, String) {
+    (
+        format!("_acme-challenge.{domain}"),
+        "<panel 后续会填入 ACME 服务器返回的 token>".to_owned(),
+    )
 }
 
 async fn issue_certificate(domain: &str) -> Result<CertificateItem, Status> {

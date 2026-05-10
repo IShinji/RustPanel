@@ -94,7 +94,7 @@ import {
   WafRuleKind
 } from "./gen/rustpanel/v1/security_pb";
 import { ReverseProxyRule, RewriteTemplate, SiteItem } from "./gen/rustpanel/v1/site_pb";
-import { CertificateItem } from "./gen/rustpanel/v1/ssl_pb";
+import { AcmeChallengeType, CertificateItem } from "./gen/rustpanel/v1/ssl_pb";
 import { RuntimeModule } from "./gen/rustpanel/v1/system_pb";
 import { WorkloadItem, WorkloadState } from "./gen/rustpanel/v1/workload_pb";
 import { Badge } from "./components/ui/badge";
@@ -4108,9 +4108,50 @@ function RedisStat({
   );
 }
 
+// Phase E:常见 Cron 任务预设,适合微型 VPS 上的日常维护。
+const CRON_PRESETS: Array<{ id: string; label: string; cron: string; command: string }> = [
+  {
+    id: "sqlite-daily-backup",
+    label: "每日 SQLite 备份",
+    cron: "0 0 3 * * *",
+    command: "tar czf /var/backups/sqlite-$(date +%F).tgz /var/lib/rustpanel/sqlite/"
+  },
+  {
+    id: "restic-weekly",
+    label: "每周 restic 增量备份",
+    cron: "0 0 4 * * 0",
+    command: "restic -r $RESTIC_REPO backup /var/lib /etc --tag weekly"
+  },
+  {
+    id: "logrotate-monthly",
+    label: "每月清理日志",
+    cron: "0 0 5 1 * *",
+    command: "find /var/log -name '*.log' -mtime +30 -delete"
+  },
+  {
+    id: "disk-alert",
+    label: "磁盘 80% 告警",
+    cron: "0 */15 * * * *",
+    command: "df / | awk 'NR==2 && $5+0>80 {print \"disk \"$5}' | logger -t rustpanel"
+  },
+  {
+    id: "ssl-renew-check",
+    label: "SSL 续期检查(每天 02:00)",
+    cron: "0 0 2 * * *",
+    command: "rustpanel-backend ssl renew-due"
+  },
+  {
+    id: "fail2ban-status",
+    label: "fail2ban 状态汇报",
+    cron: "0 0 */6 * * *",
+    command: "fail2ban-client status | logger -t rustpanel"
+  }
+];
+
 function CronPanel({ clients }: { clients: Clients }) {
   const [tasks, setTasks] = useState<CronTask[]>([]);
   const [form, setForm] = useState({ name: "daily-backup", cron: "0 0 2 * * *", command: "echo ok" });
+  const [presetId, setPresetId] = useState("custom");
   const [log, setLog] = useState("");
 
   const load = async () => {
@@ -4155,6 +4196,31 @@ function CronPanel({ clients }: { clients: Clients }) {
 
       <div className="panel">
         <div className="panel-title"><Clock size={18} /><span>创建任务</span></div>
+        <div className="input-row">
+          <span>常用模板</span>
+          <Select
+            value={presetId}
+            onValueChange={(value) => {
+              setPresetId(value);
+              const preset = CRON_PRESETS.find((p) => p.id === value);
+              if (preset) {
+                setForm({ name: preset.id, cron: preset.cron, command: preset.command });
+              }
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="自定义" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="custom">自定义</SelectItem>
+              {CRON_PRESETS.map((preset) => (
+                <SelectItem key={preset.id} value={preset.id}>
+                  {preset.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <Input label="名称" value={form.name} onChange={(name) => setForm({ ...form, name })} />
         <Input label="Cron" value={form.cron} onChange={(cron) => setForm({ ...form, cron })} />
         <Input label="脚本" value={form.command} onChange={(command) => setForm({ ...form, command })} />
@@ -4382,6 +4448,15 @@ function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout: () =>
     certificatePem: "",
     privateKeyPem: ""
   });
+  const [acmeForm, setAcmeForm] = useState({
+    domain: "",
+    email: "",
+    challenge: "dns01" as "http01" | "dns01"
+  });
+  const [acmeChallengeHint, setAcmeChallengeHint] = useState<{
+    name: string;
+    value: string;
+  } | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -4441,6 +4516,39 @@ function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout: () =>
       setMessage("证书已导入");
       setImportForm({ domain: "", group: "default", certificatePem: "", privateKeyPem: "" });
       void refresh();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const requestAcmeCert = async () => {
+    if (!acmeForm.domain.trim() || !acmeForm.email.trim()) {
+      setError("域名和邮箱必填");
+      return;
+    }
+    try {
+      const response = await clients.ssl.requestCertificate({
+        domain: acmeForm.domain.trim(),
+        email: acmeForm.email.trim(),
+        challengeType:
+          acmeForm.challenge === "dns01"
+            ? AcmeChallengeType.DNS_01
+            : AcmeChallengeType.HTTP_01,
+        dnsProvider: acmeForm.challenge === "dns01" ? "manual" : "",
+        dnsCredentials: ""
+      });
+      if (response.dnsRecordName) {
+        setAcmeChallengeHint({
+          name: response.dnsRecordName,
+          value: response.dnsRecordValue
+        });
+        setMessage(response.status?.message || "请添加下方 TXT 记录后再点一次申请");
+      } else {
+        setAcmeChallengeHint(null);
+        setMessage("证书已签发");
+        void refresh();
+      }
+      setError("");
     } catch (err) {
       setError(safeError(err));
     }
@@ -4576,11 +4684,89 @@ function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout: () =>
           </Card>
         </TabsContent>
 
-        <TabsContent value="ssl" className="mt-4">
+        <TabsContent value="ssl" className="mt-4 flex flex-col gap-4">
           <Card>
             <CardHeader>
-              <CardTitle>SSL 证书</CardTitle>
-              <CardDescription>导入手工签发或商用 SSL 证书</CardDescription>
+              <CardTitle>申请 Let's Encrypt 证书</CardTitle>
+              <CardDescription>
+                NAT VPS 拿不到公网 80,默认 DNS-01 挑战:面板返回 TXT 记录,你加到 DNS 后再点一次申请。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-2">
+                  <UILabel htmlFor="acme-domain">域名</UILabel>
+                  <UIInput
+                    id="acme-domain"
+                    placeholder="example.com"
+                    value={acmeForm.domain}
+                    onChange={(event) =>
+                      setAcmeForm((prev) => ({ ...prev, domain: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <UILabel htmlFor="acme-email">联系邮箱</UILabel>
+                  <UIInput
+                    id="acme-email"
+                    type="email"
+                    placeholder="admin@example.com"
+                    value={acmeForm.email}
+                    onChange={(event) =>
+                      setAcmeForm((prev) => ({ ...prev, email: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <UILabel htmlFor="acme-challenge">挑战方式</UILabel>
+                  <Select
+                    value={acmeForm.challenge}
+                    onValueChange={(value) =>
+                      setAcmeForm((prev) => ({
+                        ...prev,
+                        challenge: value as "http01" | "dns01"
+                      }))
+                    }
+                  >
+                    <SelectTrigger id="acme-challenge">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="dns01">DNS-01(NAT VPS 推荐)</SelectItem>
+                      <SelectItem value="http01">HTTP-01(需开放 80 端口)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {acmeChallengeHint && (
+                <div className="rounded-md border border-info/40 bg-info/10 px-3 py-3 text-sm flex flex-col gap-2">
+                  <div className="font-medium text-info">需要添加 DNS TXT 记录</div>
+                  <div className="grid grid-cols-[80px_1fr] gap-x-3 gap-y-1 text-xs font-mono">
+                    <span className="text-muted-foreground">RR Name</span>
+                    <span>{acmeChallengeHint.name}</span>
+                    <span className="text-muted-foreground">Type</span>
+                    <span>TXT</span>
+                    <span className="text-muted-foreground">Value</span>
+                    <span className="break-all">{acmeChallengeHint.value}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    DNS 生效后(可用 <code>dig +short TXT {acmeChallengeHint.name}</code> 验证),再点击下方"申请证书"完成签发。
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <UIButton onClick={() => void requestAcmeCert()}>
+                  <ShieldCheck className="size-4" />
+                  申请证书
+                </UIButton>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>导入已有证书</CardTitle>
+              <CardDescription>手工签发或商用 SSL 证书直接粘贴 PEM</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="grid gap-3 md:grid-cols-2">

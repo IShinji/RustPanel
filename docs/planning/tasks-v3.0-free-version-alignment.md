@@ -223,6 +223,43 @@
 - [ ] **P7-03-3** FTP 用户管理：**@status: BLOCKED** —— 后端 FtpService 尚未实现（无 proto/无 backend 模块）。前端已落地占位页（src/web/src/App.tsx 中的 `FtpPage`）引导用户改用文件管理器或 Web 终端 sftp。需在后续版本规划：`proto/rustpanel/v1/ftp.proto`、`src/backend/src/ftp.rs`、容器化 vsftpd/proftpd 守护进程对接。
 
 ---
+
+## P8 第八步：受限 VPS 自适应（128MB / 2GB / OpenVZ NAT 友好）
+
+目标：把 RustPanel 的目标用户群从"宝塔克隆"明确切到"NAT VPS / OpenVZ / IPv6 多 IP 这类受限环境的自助管理"。装得下、跑得动比"功能多"更重要。
+
+### P8-01 主机能力探针 + 资源预算（Phase A）
+- [x] **P8-01-1** CapabilityService 探针：OpenVZ / overlay2 / FUSE / iptables / nf_nat / swap / BBR / cgroups v2 / user_namespaces / Docker socket，1 小时缓存。
+- [x] **P8-01-2** ResourceBudget：实时 RAM / 多挂载点磁盘(simfs 去重) / 1+5+15 负载;NAT 端口预算(默认 20,RUSTPANEL_NAT_PORT_TOTAL 覆盖)。
+- [x] **P8-01-3** NAT 端口预留持久化：JSON 文件落到 RUSTPANEL_CAPABILITY_ROOT/ports.json,前端通过专用网络页登记 owner+description+协议。
+- [x] **P8-01-4** 公网 IPv6 列举：优先 `ip -6 -o addr show scope global`,回退 `/proc/net/if_inet6`;过滤 link-local/loopback;按 prefix_length 截断推导 /80 公网前缀。
+- [x] **P8-01-5** 前端 Dashboard 三预算条 + Network 页(NAT 端口表 + IPv6 池 + 12 项能力探针 Badge)。
+
+### P8-02 软件商店轻量化 + 兼容性筛选（Phase B）
+- [x] **P8-02-1** AppTemplate 元数据扩展：CompatibilityStatus / InstallMethod / AppCategory / min_ram_mb / min_disk_mb / expected_runtime_ram_mb / recommended。
+- [x] **P8-02-2** 内置 12 个轻量 catalog：nginx-light / caddy / sqlite / redis-tuned / postgres-tiny / hugo / zola / restic / rclone / fail2ban / wireguard / certbot;原 5 个 Docker 模板按宿主能力降级到"需要 Docker"组。
+- [x] **P8-02-3** evaluate_compatibility 后端实时判定 + 前端 4 组分类渲染(可用 / 资源不足 / 内核不支持 / 需要 Docker)。
+
+### P8-03 数据库轻量优先（Phase D）
+- [x] **P8-03-1** SQLite 文件管理：`list_sqlite_files` 通过 magic bytes 识别,`create_sqlite_file` + WAL,`vacuum_sqlite` 返回压缩前后大小。
+- [x] **P8-03-2** Redis INFO 监控：`get_redis_info` 解 12 项关键指标,前端 8 卡片视图含命中率/maxmemory 占比/淘汰策略。
+- [x] **P8-03-3** DatabasePanel 重构为 SQLite(默认) / Redis / 通用 DSN 三 Tab,通用 DSN 内嵌原 3 子 Tab 并加"低配优先用 SQLite"提示。
+
+### P8-04 Let's Encrypt + Cron 模板（Phase E)
+- [x] **P8-04-1** ACME 挑战类型扩展：`AcmeChallengeType` enum,`RequestCertificateRequest` 增 challenge_type / dns_provider / dns_credentials,Response 增 dns_record_name / dns_record_value。
+- [x] **P8-04-2** DNS-01 manual 模式：面板返回 `_acme-challenge.<domain>` TXT 记录提示,用户加 DNS 后再触发验证(NAT VPS 拿不到 80 端口的唯一可行方式)。
+- [x] **P8-04-3** Settings → SSL Tab 增"申请新证书"卡(域名/邮箱/挑战类型),展示需要添加的 TXT 记录 + dig 验证提示。
+- [x] **P8-04-4** Cron 预设模板下拉:每日 SQLite 备份 / 每周 restic 增量 / 每月 logrotate / 磁盘 80% 告警 / SSL 续期检查 / fail2ban 状态汇报 6 个常用任务一键填表。
+- [ ] **P8-04-5** 真实 ACME 客户端集成 + 自动续期定时器：**@status: BLOCKED** —— instant-acme crate 已在 dependencies,但 ACME 完整 order/challenge/finalize 流程未接,目前 manual 模式只生成提示 TXT。需引入异步状态机:第一次请求建 order + 暂存 ACME nonce → 第二次请求拉 token → 写 cert。Cloudflare/Route53 provider API 调用同样未做。
+
+### P8-05 站点模型扩展(Static / Rust / 反代;NAT/IPv6/TLS) — **@status: BLOCKED**
+- [ ] **P8-05-1** site.rs 扩展 `SiteKind { Static, RustBinary, ReverseProxy }` + `BindAddress { NatPort, Ipv6Address }` + `TlsStrategy`。需要重做现有 SiteService 的内部结构,涉及 nginx vhost 模板生成、systemd unit 生成、与 Phase A 端口/v6 池联动。
+- [ ] **P8-05-2** 前端站点向导 (类型→绑定→SSL 三步)。需要等 P8-05-1 落地后才能做。
+
+### P8-06 30 秒自动回滚护栏（NO SUPPORT VPS) — **@status: BLOCKED**
+- [ ] **P8-06-1** rollback.rs 模块:任何 SSH/iptables/面板端口修改先备份原配置 + 启动 systemd timer 30s 后回滚,前端弹倒计时对话框。挂载点:Settings 改面板端口、Security 改 SSH 端口、防火墙规则应用。需要后续单独一个 PR。
+
+---
  
 ## 验证计划
  
