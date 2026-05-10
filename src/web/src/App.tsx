@@ -592,7 +592,18 @@ function Dashboard({ clients }: { clients: Clients }) {
     loadMetricHistory().catch((err: unknown) => setError(safeError(err)));
   }, [loadMetricHistory]);
 
-  const chartSource = metricSamples.length > 0 ? metricSamples : history;
+  // 把 SSE 流过来的实时点拼到历史采样末尾,保证图表每秒都有新数据点
+  // (否则 metricSamples 一旦载入,chart 就停在那一刻不再刷新)
+  const chartSource = useMemo(() => {
+    if (metricSamples.length === 0) {
+      return history;
+    }
+    const lastSampleAt = Number(metricSamples[metricSamples.length - 1].timestampSeconds);
+    const trailingLive = history.filter(
+      (sample) => Number(sample.timestampSeconds) > lastSampleAt
+    );
+    return trailingLive.length === 0 ? metricSamples : [...metricSamples, ...trailingLive];
+  }, [metricSamples, history]);
   const chartData = useMemo(
     () =>
       chartSource.map((sample) => {
