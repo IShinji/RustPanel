@@ -2,8 +2,8 @@
 // @generated from file rustpanel/v1/appstore.proto (package rustpanel.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Response } from "./common_pb";
 import { file_rustpanel_v1_common } from "./common_pb";
 import type { Message } from "@bufbuild/protobuf";
@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/appstore.proto.
  */
 export const file_rustpanel_v1_appstore: GenFile = /*@__PURE__*/
-  fileDesc("ChtydXN0cGFuZWwvdjEvYXBwc3RvcmUucHJvdG8SDHJ1c3RwYW5lbC52MSJBCgpBcHBWZXJzaW9uEg8KB3ZlcnNpb24YASABKAkSDQoFaW1hZ2UYAiABKAkSEwoLcmVjb21tZW5kZWQYAyABKAgivwEKC0FwcFRlbXBsYXRlEgwKBHNsdWcYASABKAkSDAoEbmFtZRgCIAEoCRITCgtkZXNjcmlwdGlvbhgDIAEoCRINCgVpbWFnZRgEIAEoCRIVCg1kZWZhdWx0X3BvcnRzGAUgAygJEioKCHZlcnNpb25zGAYgAygLMhgucnVzdHBhbmVsLnYxLkFwcFZlcnNpb24SFwoPZGVmYXVsdF92ZXJzaW9uGAcgASgJEhQKDHJ1bnRpbWVfa2luZBgIIAEoCSKtAQoMSW5zdGFsbGVkQXBwEhAKCGFwcF9uYW1lGAEgASgJEgwKBHNsdWcYAiABKAkSDwoHdmVyc2lvbhgDIAEoCRINCgVpbWFnZRgEIAEoCRIUCgxjb21wb3NlX3BhdGgYBSABKAkSDQoFc3RhdGUYBiABKAkSHAoUaW5zdGFsbGVkX2F0X3NlY29uZHMYByABKAMSGgoSdXBkYXRlZF9hdF9zZWNvbmRzGAggASgDIhkKF0xpc3RBcHBUZW1wbGF0ZXNSZXF1ZXN0InAKGExpc3RBcHBUZW1wbGF0ZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLAoJdGVtcGxhdGVzGAIgAygLMhkucnVzdHBhbmVsLnYxLkFwcFRlbXBsYXRlIkMKEERlcGxveUFwcFJlcXVlc3QSDAoEc2x1ZxgBIAEoCRIQCghhcHBfbmFtZRgCIAEoCRIPCgd2ZXJzaW9uGAMgASgJIpABChFEZXBsb3lBcHBSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USFAoMY29tcG9zZV9wYXRoGAIgASgJEhQKDGNvbXBvc2VfeWFtbBgDIAEoCRInCgNhcHAYBCABKAsyGi5ydXN0cGFuZWwudjEuSW5zdGFsbGVkQXBwIhoKGExpc3RJbnN0YWxsZWRBcHBzUmVxdWVzdCJtChlMaXN0SW5zdGFsbGVkQXBwc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIoCgRhcHBzGAIgAygLMhoucnVzdHBhbmVsLnYxLkluc3RhbGxlZEFwcCInChNVbmluc3RhbGxBcHBSZXF1ZXN0EhAKCGFwcF9uYW1lGAEgASgJIj4KFFVuaW5zdGFsbEFwcFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSI1ChBVcGRhdGVBcHBSZXF1ZXN0EhAKCGFwcF9uYW1lGAEgASgJEg8KB3ZlcnNpb24YAiABKAkiegoRVXBkYXRlQXBwUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEicKA2FwcBgCIAEoCzIaLnJ1c3RwYW5lbC52MS5JbnN0YWxsZWRBcHASFAoMY29tcG9zZV95YW1sGAMgASgJMs0DCg9BcHBTdG9yZVNlcnZpY2USYQoQTGlzdEFwcFRlbXBsYXRlcxIlLnJ1c3RwYW5lbC52MS5MaXN0QXBwVGVtcGxhdGVzUmVxdWVzdBomLnJ1c3RwYW5lbC52MS5MaXN0QXBwVGVtcGxhdGVzUmVzcG9uc2USTAoJRGVwbG95QXBwEh4ucnVzdHBhbmVsLnYxLkRlcGxveUFwcFJlcXVlc3QaHy5ydXN0cGFuZWwudjEuRGVwbG95QXBwUmVzcG9uc2USZAoRTGlzdEluc3RhbGxlZEFwcHMSJi5ydXN0cGFuZWwudjEuTGlzdEluc3RhbGxlZEFwcHNSZXF1ZXN0GicucnVzdHBhbmVsLnYxLkxpc3RJbnN0YWxsZWRBcHBzUmVzcG9uc2USVQoMVW5pbnN0YWxsQXBwEiEucnVzdHBhbmVsLnYxLlVuaW5zdGFsbEFwcFJlcXVlc3QaIi5ydXN0cGFuZWwudjEuVW5pbnN0YWxsQXBwUmVzcG9uc2USTAoJVXBkYXRlQXBwEh4ucnVzdHBhbmVsLnYxLlVwZGF0ZUFwcFJlcXVlc3QaHy5ydXN0cGFuZWwudjEuVXBkYXRlQXBwUmVzcG9uc2ViBnByb3RvMw", [file_rustpanel_v1_common]);
+  fileDesc("ChtydXN0cGFuZWwvdjEvYXBwc3RvcmUucHJvdG8SDHJ1c3RwYW5lbC52MSJBCgpBcHBWZXJzaW9uEg8KB3ZlcnNpb24YASABKAkSDQoFaW1hZ2UYAiABKAkSEwoLcmVjb21tZW5kZWQYAyABKAgi2AMKC0FwcFRlbXBsYXRlEgwKBHNsdWcYASABKAkSDAoEbmFtZRgCIAEoCRITCgtkZXNjcmlwdGlvbhgDIAEoCRINCgVpbWFnZRgEIAEoCRIVCg1kZWZhdWx0X3BvcnRzGAUgAygJEioKCHZlcnNpb25zGAYgAygLMhgucnVzdHBhbmVsLnYxLkFwcFZlcnNpb24SFwoPZGVmYXVsdF92ZXJzaW9uGAcgASgJEhQKDHJ1bnRpbWVfa2luZBgIIAEoCRIrCghjYXRlZ29yeRgJIAEoDjIZLnJ1c3RwYW5lbC52MS5BcHBDYXRlZ29yeRIzCg5pbnN0YWxsX21ldGhvZBgKIAEoDjIbLnJ1c3RwYW5lbC52MS5JbnN0YWxsTWV0aG9kEhIKCm1pbl9yYW1fbWIYCyABKA0SEwoLbWluX2Rpc2tfbWIYDCABKA0SOAoNY29tcGF0aWJpbGl0eRgNIAEoDjIhLnJ1c3RwYW5lbC52MS5Db21wYXRpYmlsaXR5U3RhdHVzEhwKFGNvbXBhdGliaWxpdHlfcmVhc29uGA4gASgJEh8KF2V4cGVjdGVkX3J1bnRpbWVfcmFtX21iGA8gASgNEhMKC3JlY29tbWVuZGVkGBAgASgIIq0BCgxJbnN0YWxsZWRBcHASEAoIYXBwX25hbWUYASABKAkSDAoEc2x1ZxgCIAEoCRIPCgd2ZXJzaW9uGAMgASgJEg0KBWltYWdlGAQgASgJEhQKDGNvbXBvc2VfcGF0aBgFIAEoCRINCgVzdGF0ZRgGIAEoCRIcChRpbnN0YWxsZWRfYXRfc2Vjb25kcxgHIAEoAxIaChJ1cGRhdGVkX2F0X3NlY29uZHMYCCABKAMiGQoXTGlzdEFwcFRlbXBsYXRlc1JlcXVlc3QicAoYTGlzdEFwcFRlbXBsYXRlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIsCgl0ZW1wbGF0ZXMYAiADKAsyGS5ydXN0cGFuZWwudjEuQXBwVGVtcGxhdGUiQwoQRGVwbG95QXBwUmVxdWVzdBIMCgRzbHVnGAEgASgJEhAKCGFwcF9uYW1lGAIgASgJEg8KB3ZlcnNpb24YAyABKAkikAEKEURlcGxveUFwcFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIUCgxjb21wb3NlX3BhdGgYAiABKAkSFAoMY29tcG9zZV95YW1sGAMgASgJEicKA2FwcBgEIAEoCzIaLnJ1c3RwYW5lbC52MS5JbnN0YWxsZWRBcHAiGgoYTGlzdEluc3RhbGxlZEFwcHNSZXF1ZXN0Im0KGUxpc3RJbnN0YWxsZWRBcHBzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEigKBGFwcHMYAiADKAsyGi5ydXN0cGFuZWwudjEuSW5zdGFsbGVkQXBwIicKE1VuaW5zdGFsbEFwcFJlcXVlc3QSEAoIYXBwX25hbWUYASABKAkiPgoUVW5pbnN0YWxsQXBwUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlIjUKEFVwZGF0ZUFwcFJlcXVlc3QSEAoIYXBwX25hbWUYASABKAkSDwoHdmVyc2lvbhgCIAEoCSJ6ChFVcGRhdGVBcHBSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USJwoDYXBwGAIgASgLMhoucnVzdHBhbmVsLnYxLkluc3RhbGxlZEFwcBIUCgxjb21wb3NlX3lhbWwYAyABKAkq3QEKE0NvbXBhdGliaWxpdHlTdGF0dXMSJAogQ09NUEFUSUJJTElUWV9TVEFUVVNfVU5TUEVDSUZJRUQQABIjCh9DT01QQVRJQklMSVRZX1NUQVRVU19DT01QQVRJQkxFEAESJwojQ09NUEFUSUJJTElUWV9TVEFUVVNfUkVTT1VSQ0VfU0hPUlQQAhIrCidDT01QQVRJQklMSVRZX1NUQVRVU19LRVJORUxfVU5TVVBQT1JURUQQAxIlCiFDT01QQVRJQklMSVRZX1NUQVRVU19ORUVEU19ET0NLRVIQBCq7AQoNSW5zdGFsbE1ldGhvZBIeChpJTlNUQUxMX01FVEhPRF9VTlNQRUNJRklFRBAAEiEKHUlOU1RBTExfTUVUSE9EX05BVElWRV9QQUNLQUdFEAESIgoeSU5TVEFMTF9NRVRIT0RfQklOQVJZX0RPV05MT0FEEAISIAocSU5TVEFMTF9NRVRIT0RfQ0FSR09fSU5TVEFMTBADEiEKHUlOU1RBTExfTUVUSE9EX0RPQ0tFUl9DT01QT1NFEAQqxAEKC0FwcENhdGVnb3J5EhwKGEFQUF9DQVRFR09SWV9VTlNQRUNJRklFRBAAEhsKF0FQUF9DQVRFR09SWV9XRUJfU0VSVkVSEAESGQoVQVBQX0NBVEVHT1JZX0RBVEFCQVNFEAISGAoUQVBQX0NBVEVHT1JZX1JVTlRJTUUQAxIVChFBUFBfQ0FURUdPUllfVE9PTBAEEhQKEEFQUF9DQVRFR09SWV9WUE4QBRIYChRBUFBfQ0FURUdPUllfTU9OSVRPUhAGMs0DCg9BcHBTdG9yZVNlcnZpY2USYQoQTGlzdEFwcFRlbXBsYXRlcxIlLnJ1c3RwYW5lbC52MS5MaXN0QXBwVGVtcGxhdGVzUmVxdWVzdBomLnJ1c3RwYW5lbC52MS5MaXN0QXBwVGVtcGxhdGVzUmVzcG9uc2USTAoJRGVwbG95QXBwEh4ucnVzdHBhbmVsLnYxLkRlcGxveUFwcFJlcXVlc3QaHy5ydXN0cGFuZWwudjEuRGVwbG95QXBwUmVzcG9uc2USZAoRTGlzdEluc3RhbGxlZEFwcHMSJi5ydXN0cGFuZWwudjEuTGlzdEluc3RhbGxlZEFwcHNSZXF1ZXN0GicucnVzdHBhbmVsLnYxLkxpc3RJbnN0YWxsZWRBcHBzUmVzcG9uc2USVQoMVW5pbnN0YWxsQXBwEiEucnVzdHBhbmVsLnYxLlVuaW5zdGFsbEFwcFJlcXVlc3QaIi5ydXN0cGFuZWwudjEuVW5pbnN0YWxsQXBwUmVzcG9uc2USTAoJVXBkYXRlQXBwEh4ucnVzdHBhbmVsLnYxLlVwZGF0ZUFwcFJlcXVlc3QaHy5ydXN0cGFuZWwudjEuVXBkYXRlQXBwUmVzcG9uc2ViBnByb3RvMw", [file_rustpanel_v1_common]);
 
 /**
  * AppVersion 描述模板支持的一个运行环境版本。
@@ -88,6 +88,60 @@ export type AppTemplate = Message<"rustpanel.v1.AppTemplate"> & {
    * @generated from field: string runtime_kind = 8;
    */
   runtimeKind: string;
+
+  /**
+   * === Phase B 新增:轻量化与兼容性筛选元数据 ===
+   *
+   * @generated from field: rustpanel.v1.AppCategory category = 9;
+   */
+  category: AppCategory;
+
+  /**
+   * @generated from field: rustpanel.v1.InstallMethod install_method = 10;
+   */
+  installMethod: InstallMethod;
+
+  /**
+   * 推荐最小 RAM(MB),低于此值标记为"资源不足"
+   *
+   * @generated from field: uint32 min_ram_mb = 11;
+   */
+  minRamMb: number;
+
+  /**
+   * 推荐最小可用磁盘(MB)
+   *
+   * @generated from field: uint32 min_disk_mb = 12;
+   */
+  minDiskMb: number;
+
+  /**
+   * 当前主机的可部署性,由后端结合 capability + budget 实时判定
+   *
+   * @generated from field: rustpanel.v1.CompatibilityStatus compatibility = 13;
+   */
+  compatibility: CompatibilityStatus;
+
+  /**
+   * 不兼容时的人话理由
+   *
+   * @generated from field: string compatibility_reason = 14;
+   */
+  compatibilityReason: string;
+
+  /**
+   * 安装后预计常驻 RAM(MB),用于 UI 显示"装完后剩余"
+   *
+   * @generated from field: uint32 expected_runtime_ram_mb = 15;
+   */
+  expectedRuntimeRamMb: number;
+
+  /**
+   * 是否官方推荐(在该分类里优先展示)
+   *
+   * @generated from field: bool recommended = 16;
+   */
+  recommended: boolean;
 };
 
 /**
@@ -382,6 +436,146 @@ export type UpdateAppResponse = Message<"rustpanel.v1.UpdateAppResponse"> & {
  */
 export const UpdateAppResponseSchema: GenMessage<UpdateAppResponse> = /*@__PURE__*/
   messageDesc(file_rustpanel_v1_appstore, 12);
+
+/**
+ * CompatibilityStatus 描述模板在当前主机的可部署性。
+ *
+ * @generated from enum rustpanel.v1.CompatibilityStatus
+ */
+export enum CompatibilityStatus {
+  /**
+   * @generated from enum value: COMPATIBILITY_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * 完全兼容,可装
+   *
+   * @generated from enum value: COMPATIBILITY_STATUS_COMPATIBLE = 1;
+   */
+  COMPATIBLE = 1,
+
+  /**
+   * 内存或磁盘不够
+   *
+   * @generated from enum value: COMPATIBILITY_STATUS_RESOURCE_SHORT = 2;
+   */
+  RESOURCE_SHORT = 2,
+
+  /**
+   * 内核能力不支持(如 OpenVZ 无 overlay2)
+   *
+   * @generated from enum value: COMPATIBILITY_STATUS_KERNEL_UNSUPPORTED = 3;
+   */
+  KERNEL_UNSUPPORTED = 3,
+
+  /**
+   * 需要 Docker 但 Docker 在本机不可用
+   *
+   * @generated from enum value: COMPATIBILITY_STATUS_NEEDS_DOCKER = 4;
+   */
+  NEEDS_DOCKER = 4,
+}
+
+/**
+ * Describes the enum rustpanel.v1.CompatibilityStatus.
+ */
+export const CompatibilityStatusSchema: GenEnum<CompatibilityStatus> = /*@__PURE__*/
+  enumDesc(file_rustpanel_v1_appstore, 0);
+
+/**
+ * InstallMethod 描述模板的安装路径。
+ *
+ * @generated from enum rustpanel.v1.InstallMethod
+ */
+export enum InstallMethod {
+  /**
+   * @generated from enum value: INSTALL_METHOD_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * apt / apk / yum 系统包
+   *
+   * @generated from enum value: INSTALL_METHOD_NATIVE_PACKAGE = 1;
+   */
+  NATIVE_PACKAGE = 1,
+
+  /**
+   * 直接下载预编译二进制
+   *
+   * @generated from enum value: INSTALL_METHOD_BINARY_DOWNLOAD = 2;
+   */
+  BINARY_DOWNLOAD = 2,
+
+  /**
+   * cargo install 等运行时编译
+   *
+   * @generated from enum value: INSTALL_METHOD_CARGO_INSTALL = 3;
+   */
+  CARGO_INSTALL = 3,
+
+  /**
+   * Docker 容器(走 compose)
+   *
+   * @generated from enum value: INSTALL_METHOD_DOCKER_COMPOSE = 4;
+   */
+  DOCKER_COMPOSE = 4,
+}
+
+/**
+ * Describes the enum rustpanel.v1.InstallMethod.
+ */
+export const InstallMethodSchema: GenEnum<InstallMethod> = /*@__PURE__*/
+  enumDesc(file_rustpanel_v1_appstore, 1);
+
+/**
+ * AppCategory 应用分类。
+ *
+ * @generated from enum rustpanel.v1.AppCategory
+ */
+export enum AppCategory {
+  /**
+   * @generated from enum value: APP_CATEGORY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: APP_CATEGORY_WEB_SERVER = 1;
+   */
+  WEB_SERVER = 1,
+
+  /**
+   * @generated from enum value: APP_CATEGORY_DATABASE = 2;
+   */
+  DATABASE = 2,
+
+  /**
+   * @generated from enum value: APP_CATEGORY_RUNTIME = 3;
+   */
+  RUNTIME = 3,
+
+  /**
+   * @generated from enum value: APP_CATEGORY_TOOL = 4;
+   */
+  TOOL = 4,
+
+  /**
+   * @generated from enum value: APP_CATEGORY_VPN = 5;
+   */
+  VPN = 5,
+
+  /**
+   * @generated from enum value: APP_CATEGORY_MONITOR = 6;
+   */
+  MONITOR = 6,
+}
+
+/**
+ * Describes the enum rustpanel.v1.AppCategory.
+ */
+export const AppCategorySchema: GenEnum<AppCategory> = /*@__PURE__*/
+  enumDesc(file_rustpanel_v1_appstore, 2);
 
 /**
  * AppStoreService 提供 Docker-first 应用市场能力。

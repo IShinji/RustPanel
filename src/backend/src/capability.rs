@@ -319,6 +319,60 @@ impl CapabilityService for CapabilityServiceImpl {
 
 // ====== 探测实现 ======
 
+/// 暴露给其他模块(如 appstore)做兼容性判定。同步读 /proc。
+pub fn probe_capabilities_sync() -> Capabilities {
+    probe_capabilities()
+}
+
+/// 同步读取一份资源预算快照,供其他模块判定"装得下吗"。
+/// 不计 NAT 端口预算(那部分需要 IO 读 ports.json,异步)。
+pub fn snapshot_resource_budget_sync() -> ResourceBudget {
+    let mut sys = sysinfo::System::new();
+    sys.refresh_memory();
+    sys.refresh_cpu();
+
+    let memory = MemoryBudget {
+        total_bytes: sys.total_memory(),
+        used_bytes: sys.used_memory(),
+        available_bytes: sys.total_memory().saturating_sub(sys.used_memory()),
+        swap_total_bytes: sys.total_swap(),
+        swap_used_bytes: sys.used_swap(),
+    };
+
+    let mut disks_view = sysinfo::Disks::new_with_refreshed_list();
+    disks_view.refresh();
+    let mut disks: Vec<DiskBudget> = disks_view
+        .list()
+        .iter()
+        .map(|disk| DiskBudget {
+            mount_point: disk.mount_point().to_string_lossy().into_owned(),
+            filesystem: disk.file_system().to_string_lossy().into_owned(),
+            total_bytes: disk.total_space(),
+            used_bytes: disk.total_space().saturating_sub(disk.available_space()),
+            available_bytes: disk.available_space(),
+        })
+        .collect();
+    disks.sort_by(|a, b| {
+        let priority = |m: &str| if m == "/" { 0 } else { 1 };
+        priority(&a.mount_point)
+            .cmp(&priority(&b.mount_point))
+            .then(a.mount_point.cmp(&b.mount_point))
+    });
+    disks.dedup_by(|a, b| a.mount_point == b.mount_point);
+
+    let load = sysinfo::System::load_average();
+
+    ResourceBudget {
+        memory: Some(memory),
+        disks,
+        ports: None,
+        cpu_count: sys.cpus().len() as u32,
+        load_one: load.one,
+        load_five: load.five,
+        load_fifteen: load.fifteen,
+    }
+}
+
 fn probe_capabilities() -> Capabilities {
     let kernel_version = sysinfo::System::kernel_version().unwrap_or_default();
     let is_openvz = std::path::Path::new("/proc/user_beancounters").exists()

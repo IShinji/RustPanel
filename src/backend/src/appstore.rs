@@ -12,10 +12,11 @@ use uuid::Uuid;
 use crate::{
     ok_response,
     proto::rustpanel::v1::{
-        app_store_service_server::AppStoreService, AppTemplate, AppVersion, DeployAppRequest,
-        DeployAppResponse, InstalledApp, ListAppTemplatesRequest, ListAppTemplatesResponse,
-        ListInstalledAppsRequest, ListInstalledAppsResponse, UninstallAppRequest,
-        UninstallAppResponse, UpdateAppRequest, UpdateAppResponse,
+        app_store_service_server::AppStoreService, AppCategory, AppTemplate, AppVersion,
+        Capabilities, CompatibilityStatus, DeployAppRequest, DeployAppResponse, InstallMethod,
+        InstalledApp, ListAppTemplatesRequest, ListAppTemplatesResponse, ListInstalledAppsRequest,
+        ListInstalledAppsResponse, ResourceBudget, UninstallAppRequest, UninstallAppResponse,
+        UpdateAppRequest, UpdateAppResponse,
     },
 };
 
@@ -31,9 +32,18 @@ impl AppStoreService for AppStoreServiceImpl {
         _request: Request<ListAppTemplatesRequest>,
     ) -> Result<GrpcResponse<ListAppTemplatesResponse>, Status> {
         crate::runtime::ensure_module_enabled(crate::runtime::MODULE_APPSTORE)?;
+        // Phase B:在返回模板前先探一下当前主机能力 + 资源预算,
+        // 给每个 entry 填上 compatibility / compatibility_reason,
+        // 前端可以直接按状态分组渲染,不需要二次判定。
+        let capabilities = crate::capability::probe_capabilities_sync();
+        let budget = crate::capability::snapshot_resource_budget_sync();
+        let templates = app_templates()
+            .into_iter()
+            .map(|template| evaluate_compatibility(template, &capabilities, &budget))
+            .collect();
         Ok(GrpcResponse::new(ListAppTemplatesResponse {
             status: Some(ok_response("ok")),
-            templates: app_templates(),
+            templates,
         }))
     }
 
@@ -156,21 +166,156 @@ impl AppStoreService for AppStoreServiceImpl {
 }
 
 pub fn app_templates() -> Vec<AppTemplate> {
-    vec![
+    let mut templates = vec![
+        // ====== 轻量 systemd-first(NAT VPS / OpenVZ 友好) ======
+        native_template(
+            "nginx-light",
+            "Nginx (apt)",
+            "通过 apt 安装 nginx-light,系统包形式运行,常驻 RAM ~5MB。",
+            AppCategory::WebServer,
+            10,
+            8,
+            5,
+            true,
+        ),
+        native_template(
+            "caddy",
+            "Caddy",
+            "Caddy v2 静态二进制,自带 ACME 自动签发 SSL。常驻 RAM ~30MB。",
+            AppCategory::WebServer,
+            64,
+            60,
+            30,
+            true,
+        )
+        .with_install(InstallMethod::BinaryDownload),
+        native_template(
+            "sqlite",
+            "SQLite",
+            "嵌入式数据库,无需常驻进程,RustPanel 默认推荐。",
+            AppCategory::Database,
+            0,
+            5,
+            0,
+            true,
+        ),
+        native_template(
+            "redis-tuned",
+            "Redis (调优)",
+            "apt 安装 redis-server,默认 maxmemory 30MB + LRU 驱逐。常驻 RAM ~10MB。",
+            AppCategory::Database,
+            32,
+            10,
+            10,
+            true,
+        ),
+        native_template(
+            "postgres-tiny",
+            "PostgreSQL (低配版)",
+            "apt 安装 postgresql-15,shared_buffers=8MB / max_connections=8。生产建议 ≥ 256MB RAM。",
+            AppCategory::Database,
+            256,
+            120,
+            60,
+            false,
+        ),
+        native_template(
+            "hugo",
+            "Hugo",
+            "Go 写的静态站点生成器,一次构建后零运行时占用。",
+            AppCategory::Runtime,
+            16,
+            40,
+            0,
+            true,
+        )
+        .with_install(InstallMethod::BinaryDownload),
+        native_template(
+            "zola",
+            "Zola",
+            "Rust 写的静态站点生成器,单二进制,零运行时占用。",
+            AppCategory::Runtime,
+            16,
+            40,
+            0,
+            true,
+        )
+        .with_install(InstallMethod::BinaryDownload),
+        native_template(
+            "restic",
+            "Restic 备份",
+            "Go 写的加密增量备份工具,支持 SFTP/S3/Backblaze 等多种存储后端。",
+            AppCategory::Tool,
+            16,
+            25,
+            0,
+            true,
+        )
+        .with_install(InstallMethod::BinaryDownload),
+        native_template(
+            "rclone",
+            "rclone 云存储同步",
+            "把文件同步到 S3 / OSS / 七牛 / 阿里云 / Backblaze 等 50+ 云存储。",
+            AppCategory::Tool,
+            16,
+            45,
+            0,
+            true,
+        )
+        .with_install(InstallMethod::BinaryDownload),
+        native_template(
+            "fail2ban",
+            "Fail2ban",
+            "扫描日志自动封禁恶意 IP。OpenVZ 上需 iptables 模块开放才能工作。",
+            AppCategory::Tool,
+            32,
+            10,
+            8,
+            true,
+        ),
+        native_template(
+            "wireguard",
+            "WireGuard",
+            "现代加密 VPN。OpenVZ 通常需要 wireguard-go(用户态),不依赖内核模块。",
+            AppCategory::Vpn,
+            16,
+            8,
+            5,
+            false,
+        ),
+        native_template(
+            "certbot",
+            "Certbot (Let's Encrypt)",
+            "ACME 客户端。RustPanel 内置 ACME 客户端,certbot 仅作为兼容备选。",
+            AppCategory::Tool,
+            32,
+            30,
+            0,
+            false,
+        ),
+        // ====== Docker 路线(只有 can_run_docker 时才显示) ======
         AppTemplate {
             slug: "mysql".to_owned(),
             name: "MySQL".to_owned(),
-            description: "MySQL 8 database with persistent storage".to_owned(),
+            description: "MySQL 8 容器,生产建议 ≥ 1GB RAM。".to_owned(),
             image: "mysql:8.4".to_owned(),
             default_ports: vec!["3306:3306".to_owned()],
             versions: app_versions(&[("8.4", "mysql:8.4", true), ("8.0", "mysql:8.0", false)]),
             default_version: "8.4".to_owned(),
             runtime_kind: "database".to_owned(),
+            category: AppCategory::Database as i32,
+            install_method: InstallMethod::DockerCompose as i32,
+            min_ram_mb: 1024,
+            min_disk_mb: 800,
+            compatibility: CompatibilityStatus::Unspecified as i32,
+            compatibility_reason: String::new(),
+            expected_runtime_ram_mb: 600,
+            recommended: false,
         },
         AppTemplate {
             slug: "redis".to_owned(),
-            name: "Redis".to_owned(),
-            description: "Redis 7 cache with append-only persistence".to_owned(),
+            name: "Redis (容器)".to_owned(),
+            description: "Redis 7 Alpine 容器版本。轻量场景建议改用 redis-tuned。".to_owned(),
             image: "redis:7-alpine".to_owned(),
             default_ports: vec!["6379:6379".to_owned()],
             versions: app_versions(&[
@@ -179,11 +324,19 @@ pub fn app_templates() -> Vec<AppTemplate> {
             ]),
             default_version: "7".to_owned(),
             runtime_kind: "cache".to_owned(),
+            category: AppCategory::Database as i32,
+            install_method: InstallMethod::DockerCompose as i32,
+            min_ram_mb: 128,
+            min_disk_mb: 50,
+            compatibility: CompatibilityStatus::Unspecified as i32,
+            compatibility_reason: String::new(),
+            expected_runtime_ram_mb: 30,
+            recommended: false,
         },
         AppTemplate {
             slug: "postgres".to_owned(),
-            name: "PostgreSQL".to_owned(),
-            description: "PostgreSQL 16 database with persistent storage".to_owned(),
+            name: "PostgreSQL (容器)".to_owned(),
+            description: "PostgreSQL 16 Alpine 容器。轻量场景建议改用 postgres-tiny。".to_owned(),
             image: "postgres:16-alpine".to_owned(),
             default_ports: vec!["5432:5432".to_owned()],
             versions: app_versions(&[
@@ -192,11 +345,19 @@ pub fn app_templates() -> Vec<AppTemplate> {
             ]),
             default_version: "16".to_owned(),
             runtime_kind: "database".to_owned(),
+            category: AppCategory::Database as i32,
+            install_method: InstallMethod::DockerCompose as i32,
+            min_ram_mb: 512,
+            min_disk_mb: 400,
+            compatibility: CompatibilityStatus::Unspecified as i32,
+            compatibility_reason: String::new(),
+            expected_runtime_ram_mb: 80,
+            recommended: false,
         },
         AppTemplate {
             slug: "nginx".to_owned(),
-            name: "Nginx".to_owned(),
-            description: "Nginx runtime with version-pinned image".to_owned(),
+            name: "Nginx (容器)".to_owned(),
+            description: "Nginx 1.27 Alpine 容器。轻量场景建议改用 nginx-light。".to_owned(),
             image: "nginx:1.27-alpine".to_owned(),
             default_ports: vec!["8080:80".to_owned()],
             versions: app_versions(&[
@@ -205,11 +366,19 @@ pub fn app_templates() -> Vec<AppTemplate> {
             ]),
             default_version: "1.27".to_owned(),
             runtime_kind: "web".to_owned(),
+            category: AppCategory::WebServer as i32,
+            install_method: InstallMethod::DockerCompose as i32,
+            min_ram_mb: 64,
+            min_disk_mb: 60,
+            compatibility: CompatibilityStatus::Unspecified as i32,
+            compatibility_reason: String::new(),
+            expected_runtime_ram_mb: 25,
+            recommended: false,
         },
         AppTemplate {
             slug: "php".to_owned(),
-            name: "PHP".to_owned(),
-            description: "PHP FPM runtime for multi-version application hosting".to_owned(),
+            name: "PHP-FPM (容器)".to_owned(),
+            description: "PHP 8 FPM 容器。多版本并存可借此实现。".to_owned(),
             image: "php:8.3-fpm-alpine".to_owned(),
             default_ports: vec![],
             versions: app_versions(&[
@@ -218,8 +387,140 @@ pub fn app_templates() -> Vec<AppTemplate> {
             ]),
             default_version: "8.3".to_owned(),
             runtime_kind: "runtime".to_owned(),
+            category: AppCategory::Runtime as i32,
+            install_method: InstallMethod::DockerCompose as i32,
+            min_ram_mb: 128,
+            min_disk_mb: 200,
+            compatibility: CompatibilityStatus::Unspecified as i32,
+            compatibility_reason: String::new(),
+            expected_runtime_ram_mb: 40,
+            recommended: false,
         },
-    ]
+    ];
+    // 按分类 + recommended 排序
+    templates.sort_by(|a, b| {
+        a.category
+            .cmp(&b.category)
+            .then((!a.recommended).cmp(&!b.recommended))
+            .then(a.name.cmp(&b.name))
+    });
+    templates
+}
+
+// 轻量 native 模板的快捷构造器:apt-style,Docker 字段留空。
+#[allow(clippy::too_many_arguments)]
+fn native_template(
+    slug: &str,
+    name: &str,
+    description: &str,
+    category: AppCategory,
+    min_ram_mb: u32,
+    min_disk_mb: u32,
+    expected_runtime_ram_mb: u32,
+    recommended: bool,
+) -> AppTemplate {
+    AppTemplate {
+        slug: slug.to_owned(),
+        name: name.to_owned(),
+        description: description.to_owned(),
+        image: String::new(),
+        default_ports: Vec::new(),
+        versions: Vec::new(),
+        default_version: String::new(),
+        runtime_kind: "native".to_owned(),
+        category: category as i32,
+        install_method: InstallMethod::NativePackage as i32,
+        min_ram_mb,
+        min_disk_mb,
+        compatibility: CompatibilityStatus::Unspecified as i32,
+        compatibility_reason: String::new(),
+        expected_runtime_ram_mb,
+        recommended,
+    }
+}
+
+trait AppTemplateExt {
+    fn with_install(self, method: InstallMethod) -> Self;
+}
+
+impl AppTemplateExt for AppTemplate {
+    fn with_install(mut self, method: InstallMethod) -> Self {
+        self.install_method = method as i32;
+        self
+    }
+}
+
+// 结合主机能力 + 资源预算,给模板打上 compatibility 状态。
+fn evaluate_compatibility(
+    mut template: AppTemplate,
+    capabilities: &Capabilities,
+    budget: &ResourceBudget,
+) -> AppTemplate {
+    let install_method = InstallMethod::try_from(template.install_method).unwrap_or_default();
+
+    // 1. Docker 路线但 Docker 不可用 → NEEDS_DOCKER
+    if install_method == InstallMethod::DockerCompose && !capabilities.can_run_docker {
+        template.compatibility = CompatibilityStatus::NeedsDocker as i32;
+        template.compatibility_reason = if capabilities.docker_block_reason.is_empty() {
+            "本机未启用 Docker".to_owned()
+        } else {
+            capabilities.docker_block_reason.clone()
+        };
+        return template;
+    }
+
+    // 2. fail2ban 在 OpenVZ 且无 iptables 时 → KERNEL_UNSUPPORTED
+    if template.slug == "fail2ban" && capabilities.is_openvz && !capabilities.has_iptables {
+        template.compatibility = CompatibilityStatus::KernelUnsupported as i32;
+        template.compatibility_reason = "OpenVZ 上 iptables 不可写,fail2ban 无法工作".to_owned();
+        return template;
+    }
+
+    // 3. wireguard 内核模块在 OpenVZ 上多半缺,但提示用 wireguard-go(用户态)
+    if template.slug == "wireguard" && capabilities.is_openvz {
+        template.compatibility = CompatibilityStatus::KernelUnsupported as i32;
+        template.compatibility_reason =
+            "OpenVZ 内核通常无 wireguard 模块,可改装 wireguard-go(用户态)".to_owned();
+        return template;
+    }
+
+    // 4. RAM 不够
+    if template.min_ram_mb > 0 {
+        if let Some(memory) = budget.memory.as_ref() {
+            let total_mb = (memory.total_bytes / 1024 / 1024) as u32;
+            if total_mb < template.min_ram_mb {
+                template.compatibility = CompatibilityStatus::ResourceShort as i32;
+                template.compatibility_reason = format!(
+                    "本机仅 {} MB RAM,该应用建议 ≥ {} MB",
+                    total_mb, template.min_ram_mb
+                );
+                return template;
+            }
+        }
+    }
+
+    // 5. Disk 不够
+    if template.min_disk_mb > 0 {
+        if let Some(root) = budget
+            .disks
+            .iter()
+            .find(|d| d.mount_point == "/")
+            .or_else(|| budget.disks.first())
+        {
+            let avail_mb = (root.available_bytes / 1024 / 1024) as u32;
+            if avail_mb < template.min_disk_mb {
+                template.compatibility = CompatibilityStatus::ResourceShort as i32;
+                template.compatibility_reason = format!(
+                    "{} 可用 {} MB,该应用建议 ≥ {} MB",
+                    root.mount_point, avail_mb, template.min_disk_mb
+                );
+                return template;
+            }
+        }
+    }
+
+    template.compatibility = CompatibilityStatus::Compatible as i32;
+    template
 }
 
 fn app_versions(values: &[(&str, &str, bool)]) -> Vec<AppVersion> {

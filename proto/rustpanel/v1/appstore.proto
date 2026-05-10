@@ -11,6 +11,43 @@ message AppVersion {
   bool recommended = 3;
 }
 
+// CompatibilityStatus 描述模板在当前主机的可部署性。
+enum CompatibilityStatus {
+  COMPATIBILITY_STATUS_UNSPECIFIED = 0;
+  // 完全兼容,可装
+  COMPATIBILITY_STATUS_COMPATIBLE = 1;
+  // 内存或磁盘不够
+  COMPATIBILITY_STATUS_RESOURCE_SHORT = 2;
+  // 内核能力不支持(如 OpenVZ 无 overlay2)
+  COMPATIBILITY_STATUS_KERNEL_UNSUPPORTED = 3;
+  // 需要 Docker 但 Docker 在本机不可用
+  COMPATIBILITY_STATUS_NEEDS_DOCKER = 4;
+}
+
+// InstallMethod 描述模板的安装路径。
+enum InstallMethod {
+  INSTALL_METHOD_UNSPECIFIED = 0;
+  // apt / apk / yum 系统包
+  INSTALL_METHOD_NATIVE_PACKAGE = 1;
+  // 直接下载预编译二进制
+  INSTALL_METHOD_BINARY_DOWNLOAD = 2;
+  // cargo install 等运行时编译
+  INSTALL_METHOD_CARGO_INSTALL = 3;
+  // Docker 容器(走 compose)
+  INSTALL_METHOD_DOCKER_COMPOSE = 4;
+}
+
+// AppCategory 应用分类。
+enum AppCategory {
+  APP_CATEGORY_UNSPECIFIED = 0;
+  APP_CATEGORY_WEB_SERVER = 1;
+  APP_CATEGORY_DATABASE = 2;
+  APP_CATEGORY_RUNTIME = 3;
+  APP_CATEGORY_TOOL = 4;
+  APP_CATEGORY_VPN = 5;
+  APP_CATEGORY_MONITOR = 6;
+}
+
 // AppTemplate 描述一个可部署应用模板。
 message AppTemplate {
   string slug = 1;
@@ -21,6 +58,21 @@ message AppTemplate {
   repeated AppVersion versions = 6;
   string default_version = 7;
   string runtime_kind = 8;
+  // === Phase B 新增:轻量化与兼容性筛选元数据 ===
+  AppCategory category = 9;
+  InstallMethod install_method = 10;
+  // 推荐最小 RAM(MB),低于此值标记为"资源不足"
+  uint32 min_ram_mb = 11;
+  // 推荐最小可用磁盘(MB)
+  uint32 min_disk_mb = 12;
+  // 当前主机的可部署性,由后端结合 capability + budget 实时判定
+  CompatibilityStatus compatibility = 13;
+  // 不兼容时的人话理由
+  string compatibility_reason = 14;
+  // 安装后预计常驻 RAM(MB),用于 UI 显示"装完后剩余"
+  uint32 expected_runtime_ram_mb = 15;
+  // 是否官方推荐(在该分类里优先展示)
+  bool recommended = 16;
 }
 
 // InstalledApp 描述已安装应用。
