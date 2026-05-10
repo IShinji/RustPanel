@@ -17,6 +17,7 @@ import {
   Download,
   FileDown,
   FileText,
+  ExternalLink,
   FileUp,
   Folder,
   FolderPlus,
@@ -1929,6 +1930,17 @@ function SoftwareCard({
             {appCategoryLabel(template.category)} · {installMethodLabel(template.installMethod)}
           </span>
         </div>
+        {template.homepage && (
+          <a
+            href={template.homepage}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            title={`官网: ${template.homepage}`}
+          >
+            <ExternalLink className="size-3.5" />
+          </a>
+        )}
       </div>
       <p className="text-xs text-muted-foreground line-clamp-2">{template.description}</p>
       <div className="flex flex-wrap gap-1 text-[11px] text-muted-foreground">
@@ -2899,6 +2911,9 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
   const [selectedVersions, setSelectedVersions] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  // BinaryDownload 安装时后端在 composeYaml 字段塞的人话计划摘要,
+  // 单独存一份用 <pre> 渲染,避免和单行 message 抢空间。
+  const [installSummary, setInstallSummary] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -2927,15 +2942,19 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
   const deployTemplate = async (template: AppTemplate) => {
     try {
       const version = selectedVersions[template.slug] || template.defaultVersion;
-      await clients.appStore.deployApp({
+      const response = await clients.appStore.deployApp({
         slug: template.slug,
         appName: `${template.slug}-${version || "default"}`.replaceAll(".", "-"),
         version
       });
       setMessage(`${template.name} 已开始部署`);
+      // BinaryDownload 路径下 composeYaml 是"上游/版本/asset/装到哪/下一步"
+      // 的人话摘要;Docker 路径下它是真的 compose yaml,也可以让用户看一眼。
+      setInstallSummary(response.composeYaml || "");
       void load();
     } catch (err) {
       setError(safeError(err));
+      setInstallSummary("");
     }
   };
 
@@ -2974,6 +2993,11 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
         <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
           {message}
         </div>
+      )}
+      {installSummary && !error && (
+        <pre className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap font-mono overflow-x-auto m-0">
+          {installSummary}
+        </pre>
       )}
 
       <SoftwareStore

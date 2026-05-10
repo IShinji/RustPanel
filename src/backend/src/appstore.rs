@@ -60,6 +60,7 @@ impl AppStoreService for AppStoreServiceImpl {
         let response = match InstallMethod::try_from(template.install_method).unwrap_or_default() {
             InstallMethod::DockerCompose => deploy_via_compose(template, request).await?,
             InstallMethod::BinaryDownload => deploy_via_binary(template, request).await?,
+            InstallMethod::NativePackage => deploy_via_apt(template, request).await?,
             other => {
                 return Err(Status::unimplemented(format!(
                     "install method {other:?} 暂未实现执行路径"
@@ -94,6 +95,7 @@ impl AppStoreService for AppStoreServiceImpl {
         let response = match InstallMethod::try_from(template.install_method).unwrap_or_default() {
             InstallMethod::DockerCompose => uninstall_via_compose(&app_name).await?,
             InstallMethod::BinaryDownload => uninstall_via_binary(template, &app).await?,
+            InstallMethod::NativePackage => uninstall_via_apt(template, &app).await?,
             other => {
                 return Err(Status::unimplemented(format!(
                     "install method {other:?} 暂未实现卸载路径"
@@ -122,6 +124,7 @@ impl AppStoreService for AppStoreServiceImpl {
             InstallMethod::BinaryDownload => {
                 update_via_binary(template, app, &request.version).await?
             }
+            InstallMethod::NativePackage => update_via_apt(template, app).await?,
             other => {
                 return Err(Status::unimplemented(format!(
                     "install method {other:?} 暂未实现更新路径"
@@ -336,6 +339,157 @@ async fn update_via_binary(
         app: Some(app),
         compose_yaml: summary,
     })
+}
+
+/// slug → 真实的 apt 包名映射(只覆盖当前 appstore 里走 NativePackage 的 slug)。
+/// 没列在这里的 slug 就走 slug 本身作为兜底。pub(crate) 为单测可见。
+pub(crate) fn slug_to_apt_package(slug: &str) -> &str {
+    match slug {
+        "redis-tuned" => "redis-server",
+        "postgres-tiny" => "postgresql",
+        "sqlite" => "sqlite3",
+        "wireguard" => "wireguard",
+        // nginx-light / fail2ban / certbot 包名与 slug 一致
+        other => other,
+    }
+}
+
+async fn deploy_via_apt(
+    template: AppTemplate,
+    request: DeployAppRequest,
+) -> Result<DeployAppResponse, Status> {
+    let app_name = sanitize_app_name(if request.app_name.trim().is_empty() {
+        &template.slug
+    } else {
+        &request.app_name
+    })?;
+    let pkg = slug_to_apt_package(&template.slug).to_owned();
+    let summary = format!(
+        "apt 包: {pkg}\n安装命令: apt-get install -y {pkg}\n备注: 由 apt 控制启动 / 服务状态,RustPanel 不接管 systemd 单元。\n下一步: 若包提供服务(redis-server / postgresql / nginx),`systemctl status {pkg}` 查看运行状况。"
+    );
+
+    let state = if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
+        "planned".to_owned()
+    } else {
+        execute_apt_install(&pkg).await?;
+        "installed".to_owned()
+    };
+
+    let now = current_timestamp();
+    let app = InstalledApp {
+        app_name: app_name.clone(),
+        slug: template.slug,
+        version: "system".to_owned(),
+        image: String::new(),
+        // apt 模式下没有专属 unit / compose,把 apt 包名塞进 compose_path,
+        // 后续 uninstall 反查时直接拿。
+        compose_path: format!("apt:{pkg}"),
+        state,
+        installed_at_seconds: now,
+        updated_at_seconds: now,
+    };
+    save_installed_app(&app).await?;
+
+    Ok(DeployAppResponse {
+        status: Some(ok_response("apt app deployed")),
+        compose_path: format!("apt:{pkg}"),
+        compose_yaml: summary,
+        app: Some(app),
+    })
+}
+
+async fn uninstall_via_apt(
+    template: AppTemplate,
+    app: &InstalledApp,
+) -> Result<UninstallAppResponse, Status> {
+    let pkg = slug_to_apt_package(&template.slug).to_owned();
+    if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
+        execute_apt_remove(&pkg).await?;
+    }
+    let app_dir = appstore_root().join(&app.app_name);
+    if tokio::fs::try_exists(&app_dir).await.unwrap_or(false) {
+        tokio::fs::remove_dir_all(app_dir)
+            .await
+            .map_err(io_status)?;
+    }
+    Ok(UninstallAppResponse {
+        status: Some(ok_response("apt app uninstalled")),
+    })
+}
+
+async fn update_via_apt(
+    template: AppTemplate,
+    mut app: InstalledApp,
+) -> Result<UpdateAppResponse, Status> {
+    let pkg = slug_to_apt_package(&template.slug).to_owned();
+    let summary = format!(
+        "apt 升级: apt-get install --only-upgrade -y {pkg}\n备注: 系统包升级由 apt 源决定可获取版本,RustPanel 不强制锁定版本号。"
+    );
+    if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
+        execute_apt_upgrade(&pkg).await?;
+    }
+    app.state = "updated".to_owned();
+    app.updated_at_seconds = current_timestamp();
+    save_installed_app(&app).await?;
+    Ok(UpdateAppResponse {
+        status: Some(ok_response("apt app updated")),
+        app: Some(app),
+        compose_yaml: summary,
+    })
+}
+
+async fn ensure_apt_available() -> Result<(), Status> {
+    let output = tokio::process::Command::new("sh")
+        .args(["-c", "command -v apt-get"])
+        .output()
+        .await
+        .map_err(io_status)?;
+    if !output.status.success() {
+        return Err(Status::failed_precondition(
+            "当前主机没有 apt-get,NativePackage 路径仅支持 Debian / Ubuntu 系",
+        ));
+    }
+    Ok(())
+}
+
+async fn run_apt(args: &[&str]) -> Result<(), Status> {
+    let output = tokio::process::Command::new("apt-get")
+        .args(args)
+        .env("DEBIAN_FRONTEND", "noninteractive")
+        .output()
+        .await
+        .map_err(io_status)?;
+    if !output.status.success() {
+        return Err(Status::unavailable(format!(
+            "apt-get {} 失败: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    Ok(())
+}
+
+async fn execute_apt_install(pkg: &str) -> Result<(), Status> {
+    ensure_apt_available().await?;
+    // 先 update 一次 source list,避免缓存过期装到不存在的旧版
+    run_apt(&["update"]).await?;
+    run_apt(&["install", "-y", "--no-install-recommends", pkg]).await?;
+    Ok(())
+}
+
+async fn execute_apt_remove(pkg: &str) -> Result<(), Status> {
+    ensure_apt_available().await?;
+    // 只 remove 不 purge:用户的配置 / 数据保留,与 BinaryDownload 路径
+    // "保留 config" 的语义一致。
+    run_apt(&["remove", "-y", pkg]).await?;
+    Ok(())
+}
+
+async fn execute_apt_upgrade(pkg: &str) -> Result<(), Status> {
+    ensure_apt_available().await?;
+    run_apt(&["update"]).await?;
+    run_apt(&["install", "--only-upgrade", "-y", pkg]).await?;
+    Ok(())
 }
 
 pub fn app_templates() -> Vec<AppTemplate> {
@@ -1713,6 +1867,20 @@ mod tests {
                 template.homepage
             );
         }
+    }
+
+    #[test]
+    fn slug_to_apt_package_maps_known_slugs_and_falls_back() {
+        // 命名不一致的:走 map
+        assert_eq!(slug_to_apt_package("redis-tuned"), "redis-server");
+        assert_eq!(slug_to_apt_package("postgres-tiny"), "postgresql");
+        assert_eq!(slug_to_apt_package("sqlite"), "sqlite3");
+        // 命名一致的:slug 兜底
+        assert_eq!(slug_to_apt_package("nginx-light"), "nginx-light");
+        assert_eq!(slug_to_apt_package("fail2ban"), "fail2ban");
+        assert_eq!(slug_to_apt_package("certbot"), "certbot");
+        // 未知 slug 也兜底,executor 端的 apt-get 自己报"无此包"
+        assert_eq!(slug_to_apt_package("nonexistent"), "nonexistent");
     }
 
     #[test]
