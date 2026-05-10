@@ -207,10 +207,13 @@ recommended_profile() {
 modules_for_profile() {
   case "$1" in
     micro)
-      printf 'core,audit,monitor,files,terminal,static-sites,workloads,proxy,cron,database'
+      # Phase B 后:appstore 已是 12 个轻量 native 包,sites 已 NAT/IPv6 感知,
+      # ssl 已支持 DNS-01,security 在 OpenVZ 上 iptables 受限但其它能用,
+      # 因此从 micro 默认开启列表里把这些加回来。docker / cluster 仍然不开。
+      printf 'core,audit,monitor,files,terminal,security,appstore,sites,ssl,static-sites,workloads,proxy,cron,database'
       ;;
     lite)
-      printf 'core,audit,monitor,files,terminal,static-sites,cron,database'
+      printf 'core,audit,monitor,files,terminal,security,appstore,sites,ssl,static-sites,cron,database'
       ;;
     standard)
       printf 'core,audit,monitor,files,terminal,security,docker,appstore,sites,ssl,database,cron'
@@ -227,10 +230,11 @@ modules_for_profile() {
 disabled_modules_for_profile() {
   case "$1" in
     micro)
-      printf 'docker,appstore,sites,ssl,security,cluster'
+      # 只禁用真跑不动的:Docker(OpenVZ 内核多半缺 overlay2)、cluster(单机)
+      printf 'docker,cluster'
       ;;
     lite)
-      printf 'docker,appstore,sites,ssl,security,cluster,workloads,proxy'
+      printf 'docker,cluster,workloads,proxy'
       ;;
     *)
       printf ''
