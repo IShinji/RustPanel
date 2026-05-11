@@ -631,8 +631,19 @@ async fn run_apt(args: &[&str]) -> Result<(), Status> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         // 128MB OpenVZ 经常在 apt-get install 里撞 numproc 上限,fork 失败。
         // 给个明确的排错提示,免得用户被"Failed to fork"原文吓懵。
+        // **不再建议加 swap** —— OpenVZ 客户机加不了 swap(swap 是宿主控制的)。
+        // 主推走"单文件静态二进制"路线绕开 apt 整条链。
         let hint = if stderr.contains("Failed to fork") || stderr.contains("fork: ") {
-            "\n提示: 看起来是宿主机 numproc / 内存限制不够。可以试:\n  1. 给 VPS 加 swap(`fallocate -l 256M /swap; mkswap /swap; swapon /swap`)\n  2. 暂停其它内存大户:`systemctl stop rustpanel-backend` 后手动 `apt-get install -y nginx`,装完再启面板\n  3. 如果是 OpenVZ,联系 host 调高 numproc 上限"
+            concat!(
+                "\n看起来是宿主机 numproc(fork 上限)/ 内存太紧,apt 跑不动 dpkg 子进程。",
+                "\n这台 VPS 上 nginx 通过 apt 装基本无解 —— OpenVZ 加不了 swap,host 不调 numproc 也没辙。",
+                "\n建议**改装单文件静态二进制**的反代,完全绕开 apt:",
+                "\n  · Caddy(Go,自带 HTTP/3 + 自动 ACME,~30MB RAM)— 软件商店搜 caddy",
+                "\n  · rpxy(Rust,HTTP/3,~15MB RAM)— 软件商店搜 rpxy",
+                "\n  · static-web-server / SWS(Rust,纯静态服务 ~5MB)— 软件商店搜 sws",
+                "\nRustPanel 已经在创建站点时同步写了 rpxy 站点片段,装上 rpxy 就直接接管。",
+                "\n如果坚持要 nginx,可以暂停其它常驻进程腾出 fork 槽位再手动 `apt-get install -y nginx`。"
+            )
         } else {
             ""
         };
