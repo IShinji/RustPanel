@@ -367,19 +367,45 @@ pub(crate) fn slug_to_apt_package(slug: &str) -> &str {
 /// 容器里 gpg 经常因为 gpg-agent fork 失败报 "Failed to fork";直接把
 /// .asc 文件丢到 /etc/apt/keyrings 让 apt 自己消费,无 gpg 依赖。
 const NGINX_MAINLINE_PREINSTALL: &str = r#"set -eEuo pipefail
-# RustPanel build marker: nginx-mainline-asc-v2 —— 用这一行能在错误回传
-# 里确认当前真在跑新版脚本(老版本走 gpg dearmor 那一套,看不到此 marker)。
+# RustPanel build marker: nginx-mainline-asc-v3-zero-apt-deps —— 出现这一行
+# 即证明后端在跑去掉 apt 依赖装载的新版本。
 export DEBIAN_FRONTEND=noninteractive
-# set -x 把每一条命令打到 stderr,失败时 RustPanel 把 stderr 回灌到
-# banner,看得到具体卡在哪一行。失败行在 trap 里再补一句明确提示。
-trap 'echo "BUILD: nginx-mainline-asc-v2" >&2; echo "FAIL line $LINENO -> $BASH_COMMAND" >&2' ERR
+trap 'echo "BUILD: nginx-mainline-asc-v3-zero-apt-deps" >&2; echo "FAIL line $LINENO -> $BASH_COMMAND" >&2' ERR
 set -x
-apt-get update
-apt-get install -y curl ca-certificates lsb-release
+
+# 故意**不跑 apt-get install** —— 128MB OpenVZ 上 apt 自己起几个 perl /
+# dpkg 子进程就会撞 numproc 上限报 "Failed to fork"。改成全部用系统已有
+# 的工具:
+#   - /etc/os-release 始终存在(systemd 标准化)
+#   - curl 或 wget 至少一个会被发行版默认装
+#   - ca-certificates 默认装(HTTPS 拉 nginx.org 不出错就是有)
+
+# 读发行版与 codename。VERSION_CODENAME 在 Debian 10+/Ubuntu 16.04+ 都有,
+# Ubuntu 衍生还会塞 UBUNTU_CODENAME 兜底。
+. /etc/os-release
+DISTRO=$(echo "${ID:-debian}" | tr '[:upper:]' '[:lower:]')
+CODENAME="${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}"
+if [ -z "${CODENAME}" ]; then
+  echo "/etc/os-release 没有 VERSION_CODENAME,无法决定 apt 源 codename" >&2
+  exit 1
+fi
+
+# curl 优先,wget 兜底,都没有再报错——基本不会走到第三个分支
+fetch() {
+  local url="$1" dest="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$dest"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$dest" "$url"
+  else
+    echo "本机既没有 curl 也没有 wget;请先手动 apt-get install curl,再来一次" >&2
+    return 1
+  fi
+}
+
 install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://nginx.org/keys/nginx_signing.key -o /etc/apt/keyrings/nginx-archive.asc
-DISTRO=$(lsb_release -is | tr '[:upper:]' '[:lower:]')
-CODENAME=$(lsb_release -cs)
+fetch https://nginx.org/keys/nginx_signing.key /etc/apt/keyrings/nginx-archive.asc
+
 echo "deb [signed-by=/etc/apt/keyrings/nginx-archive.asc] http://nginx.org/packages/mainline/${DISTRO} ${CODENAME} nginx" > /etc/apt/sources.list.d/nginx.list
 cat > /etc/apt/preferences.d/99nginx <<'PIN'
 Package: *
@@ -387,6 +413,10 @@ Pin: origin nginx.org
 Pin: release o=nginx
 Pin-Priority: 900
 PIN
+
+# 提前 apt-get update,让后面 execute_apt_install 的 install 步骤少 fork 一次。
+# 注意:update 比 install 轻得多,基本只是网络下载 + 校验,fork 子进程少。
+apt-get update
 "#;
 
 /// slug → 安装前要跑的 shell 脚本(完整可执行 bash 片段)。返回 None
@@ -598,10 +628,19 @@ async fn run_apt(args: &[&str]) -> Result<(), Status> {
         .await
         .map_err(io_status)?;
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // 128MB OpenVZ 经常在 apt-get install 里撞 numproc 上限,fork 失败。
+        // 给个明确的排错提示,免得用户被"Failed to fork"原文吓懵。
+        let hint = if stderr.contains("Failed to fork") || stderr.contains("fork: ") {
+            "\n提示: 看起来是宿主机 numproc / 内存限制不够。可以试:\n  1. 给 VPS 加 swap(`fallocate -l 256M /swap; mkswap /swap; swapon /swap`)\n  2. 暂停其它内存大户:`systemctl stop rustpanel-backend` 后手动 `apt-get install -y nginx`,装完再启面板\n  3. 如果是 OpenVZ,联系 host 调高 numproc 上限"
+        } else {
+            ""
+        };
         return Err(Status::unavailable(format!(
-            "apt-get {} 失败: {}",
+            "apt-get {} 失败: {}{}",
             args.join(" "),
-            String::from_utf8_lossy(&output.stderr)
+            stderr.trim(),
+            hint
         )));
     }
     Ok(())
@@ -609,8 +648,12 @@ async fn run_apt(args: &[&str]) -> Result<(), Status> {
 
 async fn execute_apt_install(pkg: &str) -> Result<(), Status> {
     ensure_apt_available().await?;
-    // 先 update 一次 source list,避免缓存过期装到不存在的旧版
+    // 先 update 一次 source list,避免缓存过期装到不存在的旧版。
+    // pre-install 钩子可能已经 update 过一次,但再来一次便宜,确保
+    // 源是最新状态。
     run_apt(&["update"]).await?;
+    // --no-install-recommends 缩小依赖闭包,128MB VPS 上 apt-get install
+    // 自身就够吃 RAM 了,recommends 经常进一步推几十 MB 没必要的包。
     run_apt(&["install", "-y", "--no-install-recommends", pkg]).await?;
     Ok(())
 }
@@ -2424,6 +2467,17 @@ mod tests {
             "脚本不应再依赖 gpg --dearmor"
         );
         assert!(!script.contains("gnupg"), "脚本不应再 apt install gnupg*");
+        // v3 关键回归:**不能**再用 apt-get install 装 curl/lsb-release 等
+        // pre-install 依赖,因为 apt-get install 在 128MB OpenVZ 上经常 fork
+        // 失败。脚本应该完全依赖系统已有工具 + /etc/os-release。
+        assert!(
+            !script.contains("apt-get install -y curl"),
+            "v3 起 pre-install 不能再 apt install curl 等依赖,应当 fallback curl/wget/os-release"
+        );
+        assert!(
+            script.contains("/etc/os-release"),
+            "v3 起应当用 /etc/os-release 决定 codename,不再依赖 lsb_release"
+        );
         // 其它 slug 不应有 pre-install
         assert!(slug_to_apt_pre_install("nginx-light").is_none());
         assert!(slug_to_apt_pre_install("redis-tuned").is_none());
