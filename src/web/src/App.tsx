@@ -4814,6 +4814,10 @@ function SslPanel({
   const cert = certificates.find((c) => c.domain === primaryDomain);
 
   const requestSsl = async () => {
+    if (!primaryDomain) {
+      onError("本站点没有绑定域名,无法申请证书 — 在'基础'Tab 填上 domains 后再来");
+      return;
+    }
     try {
       const response = await clients.ssl.requestCertificate({
         domain: primaryDomain,
@@ -4875,9 +4879,13 @@ function SslPanel({
         <div className="text-xs text-muted-foreground">
           首次点击返回需添加的 TXT 记录;添加后再点一次完成签发。
         </div>
-        <UIButton size="sm" onClick={() => void requestSsl()}>
+        <UIButton
+          size="sm"
+          onClick={() => void requestSsl()}
+          disabled={!primaryDomain}
+        >
           <ShieldCheck className="size-3.5" />
-          申请 {primaryDomain || "证书"}
+          {primaryDomain ? `一键申请 ${primaryDomain}` : "需先在'基础'Tab 绑定域名"}
         </UIButton>
       </div>
 

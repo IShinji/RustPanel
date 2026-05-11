@@ -162,6 +162,18 @@ impl SiteService for SiteServiceImpl {
             internal_port,
         };
 
+        // 落 sidecar 元数据:list_site_configs 之后回到详情抽屉能拿到
+        // 完整的 domains/kind/root/binding,SSL Tab 也能拿到 primaryDomain
+        // 去签证书。失败不阻塞创建(只 log),但这是软伤,正常应当成功。
+        if let Err(error) = self.store.save_nginx_site_metadata(&site).await {
+            tracing::warn!(
+                target = "site.metadata",
+                site = %site.name,
+                error = %error,
+                "save nginx site metadata failed (non-fatal; list_sites will fall back to stub)"
+            );
+        }
+
         // 机会主义起 sws@<name>.service:Static 站点 + SWS 已装时,
         // 写 per-site 配置并 enable --now;SWS 没装就跳过,什么都不留下。
         // 失败不阻塞站点创建。
@@ -387,30 +399,55 @@ async fn list_site_configs(store: &SiteStore) -> Result<Vec<SiteItem>, Status> {
 
     while let Some(entry) = entries.next_entry().await.map_err(io_status)? {
         let path = entry.path();
-        if path.extension().and_then(|extension| extension.to_str()) == Some("conf") {
-            sites.push(SiteItem {
-                name: path
-                    .file_stem()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_default(),
-                domains: Vec::new(),
-                root: String::new(),
-                proxy_target: String::new(),
-                ssl_enabled: false,
-                config_path: path.to_string_lossy().to_string(),
-                engine: SITE_ENGINE_NGINX.to_owned(),
-                public_path: String::new(),
-                listen_addr: String::new(),
-                kind: 0,
-                binding: None,
-                tls_strategy: 0,
-                systemd_unit: String::new(),
-                internal_port: 0,
-            });
+        if path.extension().and_then(|extension| extension.to_str()) != Some("conf") {
+            continue;
+        }
+        // 文件名形如 rustpanel-<safe_name>.conf 或 rustpanel-proxy-<safe>.conf;
+        // 反代规则的 .conf 不属于 site,跳过。
+        let stem = path
+            .file_stem()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let safe_name_part = match stem.strip_prefix("rustpanel-") {
+            Some(rest) if !rest.starts_with("proxy-") => rest.to_owned(),
+            _ => {
+                // 不认识前缀的 .conf 当作 legacy stub 推一份,name 用文件 stem
+                sites.push(legacy_site_stub(&path, stem.clone()));
+                continue;
+            }
+        };
+        // 优先用 sidecar JSON;没找到就 fallback 到 legacy stub
+        if let Some(mut full) = store.load_nginx_site_metadata(&safe_name_part).await {
+            // 万一两边对不上(sidecar 里旧 config_path),以磁盘当前文件为准
+            full.config_path = path.to_string_lossy().to_string();
+            sites.push(full);
+        } else {
+            sites.push(legacy_site_stub(&path, stem));
         }
     }
 
     Ok(sites)
+}
+
+/// 没有 sidecar 元数据(老站点 / 手动添加)时的兜底 stub —— 至少让
+/// 主表看到这一行,知道有这么个 vhost 在,虽然 domains 等字段空。
+fn legacy_site_stub(path: &std::path::Path, stem: String) -> SiteItem {
+    SiteItem {
+        name: stem,
+        domains: Vec::new(),
+        root: String::new(),
+        proxy_target: String::new(),
+        ssl_enabled: false,
+        config_path: path.to_string_lossy().to_string(),
+        engine: SITE_ENGINE_NGINX.to_owned(),
+        public_path: String::new(),
+        listen_addr: String::new(),
+        kind: 0,
+        binding: None,
+        tls_strategy: 0,
+        systemd_unit: String::new(),
+        internal_port: 0,
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -504,6 +541,38 @@ impl SiteStore {
 
     fn sites_path(&self) -> PathBuf {
         self.root.join("sites.json")
+    }
+
+    /// nginx 路径站点的元数据 sidecar 目录。list_site_configs 只能从
+    /// /etc/nginx 文件名反推一个名字,domains/root/kind/binding 这些
+    /// 创建时填的字段无法从 nginx 配置里"逆向"出来 —— 所以 create_site
+    /// 时落一份 JSON sidecar,list 时再合并回 SiteItem。
+    fn nginx_metadata_dir(&self) -> PathBuf {
+        self.root.join("nginx-sites")
+    }
+
+    fn nginx_metadata_path(&self, safe_name: &str) -> PathBuf {
+        self.nginx_metadata_dir().join(format!("{safe_name}.json"))
+    }
+
+    async fn save_nginx_site_metadata(&self, site: &SiteItem) -> Result<(), Status> {
+        let safe = safe_name(&site.name)?;
+        let dir = self.nginx_metadata_dir();
+        tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
+        let path = self.nginx_metadata_path(&safe);
+        let stored = StoredSite::from_proto(site.clone());
+        let body = serde_json::to_vec_pretty(&stored).map_err(io_status)?;
+        let tmp = path.with_extension("json.rustpanel-tmp");
+        tokio::fs::write(&tmp, body).await.map_err(io_status)?;
+        tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
+        Ok(())
+    }
+
+    async fn load_nginx_site_metadata(&self, safe_name: &str) -> Option<SiteItem> {
+        let path = self.nginx_metadata_path(safe_name);
+        let bytes = tokio::fs::read(&path).await.ok()?;
+        let stored: StoredSite = serde_json::from_slice(&bytes).ok()?;
+        Some(stored.into_proto())
     }
 }
 
