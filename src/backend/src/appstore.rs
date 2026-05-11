@@ -1798,7 +1798,7 @@ async fn resolve_release_asset(
         asset
             .get("name")
             .and_then(|n| n.as_str())
-            .map(|name| name.contains(needle))
+            .map(|name| name.contains(needle) && !is_signature_or_checksum(name))
             .unwrap_or(false)
     });
     let asset = candidate.ok_or_else(|| {
@@ -1829,6 +1829,29 @@ async fn resolve_release_asset(
         asset_name,
         asset_url,
     })
+}
+
+/// release assets 里要排除的伴生文件类(签名 / 校验和)。
+///
+/// 之所以单独抽出来:asset_pattern 现在用子串匹配,容易顺带命中同名的
+/// `.sha256sum` / `.sig` / `.asc`。典型坑:tuic 1.0.0 同时上传
+/// `tuic-server-1.0.0-x86_64-unknown-linux-musl` 和
+/// `tuic-server-1.0.0-x86_64-unknown-linux-musl.sha256sum`,后者一旦先
+/// 命中就会被 curl 当二进制下载,然后 chmod +x 装上去 → 跑不起来。
+fn is_signature_or_checksum(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    [
+        ".sha256sum",
+        ".sha256",
+        ".sha512",
+        ".sha1",
+        ".md5",
+        ".sig",
+        ".asc",
+        ".minisig",
+    ]
+    .iter()
+    .any(|suffix| lower.ends_with(suffix))
 }
 
 /// curl 拉 GitHub Release JSON,反序列化成 serde_json::Value。
@@ -2154,8 +2177,9 @@ pub(crate) fn phase_g_install_plan(slug: &str) -> Option<BinaryInstallPlan> {
         },
         "leaf" => BinaryInstallPlan {
             upstream_repo: "eycorsican/leaf",
-            // leaf 的 release asset 是单文件 .gz,不是 tar.gz
-            asset_pattern: "x86_64-unknown-linux-gnu.gz",
+            // leaf release 实际命名是 `leaf-x86_64-unknown-linux-musl.gz`
+            // (gh release view 校验过,无 -gnu 变体)。
+            asset_pattern: "x86_64-unknown-linux-musl.gz",
             binary_path_in_archive: "",
             install_to: "/usr/local/bin/leaf",
             config_path: "/etc/leaf/config.conf",
@@ -2174,8 +2198,10 @@ pub(crate) fn phase_g_install_plan(slug: &str) -> Option<BinaryInstallPlan> {
             post_install_hint: "出站必须配 SMTP relay(Resend/SES/Postmark),不要直连 25;在面板 vSMTP Tab 维护 alias 映射后 `systemctl restart vsmtp`。",
         },
         "tuic" => BinaryInstallPlan {
-            upstream_repo: "EAimTY/tuic",
-            // TUIC 发布裸二进制(无归档)
+            // 原作者 EAimTY 已经把仓库迁移到 tuic-protocol;旧地址 404。
+            upstream_repo: "tuic-protocol/tuic",
+            // TUIC 发布裸二进制(无归档)。同目录下还有 `.sha256sum` 伴生
+            // 文件命中同一 needle,resolve_release_asset 里已经过滤掉。
             asset_pattern: "x86_64-unknown-linux-musl",
             binary_path_in_archive: "",
             install_to: "/usr/local/bin/tuic-server",
@@ -2633,6 +2659,29 @@ mod tests {
         // 其它 slug 不应有 pre-install
         assert!(slug_to_apt_pre_install("nginx-light").is_none());
         assert!(slug_to_apt_pre_install("redis-tuned").is_none());
+    }
+
+    #[test]
+    fn is_signature_or_checksum_excludes_sidecar_files() {
+        // tuic 实际命名:同 musl 后缀的二进制和校验和同时存在
+        assert!(!is_signature_or_checksum(
+            "tuic-server-1.0.0-x86_64-unknown-linux-musl"
+        ));
+        assert!(is_signature_or_checksum(
+            "tuic-server-1.0.0-x86_64-unknown-linux-musl.sha256sum"
+        ));
+        // 其它常见 sidecar 命名
+        assert!(is_signature_or_checksum("foo.tar.gz.sig"));
+        assert!(is_signature_or_checksum("foo.tar.gz.asc"));
+        // 大写后缀也命中
+        assert!(is_signature_or_checksum("FOO.SHA256"));
+        // 正常 release tarball 不应被排除
+        assert!(!is_signature_or_checksum(
+            "rpxy-x86_64-unknown-linux-musl.tar.gz"
+        ));
+        assert!(!is_signature_or_checksum(
+            "leaf-x86_64-unknown-linux-musl.gz"
+        ));
     }
 
     #[test]
