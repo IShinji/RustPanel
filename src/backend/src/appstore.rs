@@ -366,8 +366,14 @@ pub(crate) fn slug_to_apt_package(slug: &str) -> &str {
 /// keyring),**完全跳过 `gpg --dearmor` 这一步** —— 最小镜像 / OpenVZ
 /// 容器里 gpg 经常因为 gpg-agent fork 失败报 "Failed to fork";直接把
 /// .asc 文件丢到 /etc/apt/keyrings 让 apt 自己消费,无 gpg 依赖。
-const NGINX_MAINLINE_PREINSTALL: &str = r#"set -euo pipefail
+const NGINX_MAINLINE_PREINSTALL: &str = r#"set -eEuo pipefail
+# RustPanel build marker: nginx-mainline-asc-v2 —— 用这一行能在错误回传
+# 里确认当前真在跑新版脚本(老版本走 gpg dearmor 那一套,看不到此 marker)。
 export DEBIAN_FRONTEND=noninteractive
+# set -x 把每一条命令打到 stderr,失败时 RustPanel 把 stderr 回灌到
+# banner,看得到具体卡在哪一行。失败行在 trap 里再补一句明确提示。
+trap 'echo "BUILD: nginx-mainline-asc-v2" >&2; echo "FAIL line $LINENO -> $BASH_COMMAND" >&2' ERR
+set -x
 apt-get update
 apt-get install -y curl ca-certificates lsb-release
 install -d -m 0755 /etc/apt/keyrings
@@ -423,6 +429,8 @@ pub(crate) async fn ensure_nginx_installed() -> Result<bool, Status> {
 
 /// 跑 pre-install 脚本(bash -c)。SKIP_EXECUTE 时干跑跳过。
 /// 失败时把 stdout / stderr 都塞到错误消息里,前端 banner 才能看清楚卡哪。
+/// 为了防止 banner 撑爆,详情只截最后 1.5KB 字符(失败行的 trap 输出
+/// 通常在 stderr 末尾)。
 async fn run_pre_install(script: &str) -> Result<(), Status> {
     if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
         return Ok(());
@@ -437,20 +445,39 @@ async fn run_pre_install(script: &str) -> Result<(), Status> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        // 大多数失败信息在 stderr,但偶尔 set -e 触发 bash 报错在 stdout
-        let detail = if !stderr.trim().is_empty() {
+        // 大多数失败信息在 stderr(set -x 也写 stderr),偶尔 set -e 触发
+        // bash 报错在 stdout。两边都看,优先 stderr。
+        let detail_full = if !stderr.trim().is_empty() {
             stderr.to_string()
         } else if !stdout.trim().is_empty() {
             stdout.to_string()
         } else {
             format!("exit code {:?}", output.status.code())
         };
+        // 截尾 1500 字符,够装下 set -x 最近几条 + trap 的 FAIL 行
+        let detail = tail_chars(detail_full.trim(), 1500);
         return Err(Status::unavailable(format!(
-            "apt pre-install script failed: {}",
-            detail.trim()
+            "apt pre-install script failed:\n{}",
+            detail
         )));
     }
     Ok(())
+}
+
+/// 按字符截尾,保留最后 n 个字符,前面加 "...(前略)\n" 让人知道被截了。
+fn tail_chars(input: &str, n: usize) -> String {
+    if input.chars().count() <= n {
+        return input.to_owned();
+    }
+    let tail: String = input
+        .chars()
+        .rev()
+        .take(n)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("...(前略)\n{tail}")
 }
 
 async fn deploy_via_apt(
@@ -2364,6 +2391,19 @@ mod tests {
         assert_eq!(slug_to_apt_package("nginx-mainline"), "nginx");
         // 未知 slug 也兜底,executor 端的 apt-get 自己报"无此包"
         assert_eq!(slug_to_apt_package("nonexistent"), "nonexistent");
+    }
+
+    #[test]
+    fn tail_chars_keeps_last_n() {
+        assert_eq!(tail_chars("abc", 10), "abc");
+        assert_eq!(tail_chars("abcdefghij", 5), "...(前略)\nfghij");
+        // 多字节字符不应在中间截断
+        let with_chinese = "前面非常长的一段日志输出包括 set -x 的轨迹".to_owned();
+        let trimmed = tail_chars(&with_chinese, 5);
+        assert!(trimmed.starts_with("...(前略)\n"));
+        // 输出 5 个汉字
+        let after_prefix = trimmed.trim_start_matches("...(前略)\n");
+        assert_eq!(after_prefix.chars().count(), 5);
     }
 
     #[test]
