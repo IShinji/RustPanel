@@ -486,10 +486,10 @@ async fn run_pre_install(script: &str) -> Result<(), Status> {
         };
         // 截尾 1500 字符,够装下 set -x 最近几条 + trap 的 FAIL 行
         let detail = tail_chars(detail_full.trim(), 1500);
-        return Err(Status::unavailable(format!(
+        return Err(Status::unavailable(sanitize_status_text(format!(
             "apt pre-install script failed:\n{}",
             detail
-        )));
+        ))));
     }
     Ok(())
 }
@@ -633,6 +633,7 @@ async fn run_apt(args: &[&str]) -> Result<(), Status> {
         // 给个明确的排错提示,免得用户被"Failed to fork"原文吓懵。
         // **不再建议加 swap** —— OpenVZ 客户机加不了 swap(swap 是宿主控制的)。
         // 主推走"单文件静态二进制"路线绕开 apt 整条链。
+        // sanitize_status_text 防止 stderr 里的 `%` 让 gRPC-Web 解码炸 URI malformed。
         let hint = if stderr.contains("Failed to fork") || stderr.contains("fork: ") {
             concat!(
                 "\n看起来是宿主机 numproc(fork 上限)/ 内存太紧,apt 跑不动 dpkg 子进程。",
@@ -647,12 +648,12 @@ async fn run_apt(args: &[&str]) -> Result<(), Status> {
         } else {
             ""
         };
-        return Err(Status::unavailable(format!(
+        return Err(Status::unavailable(sanitize_status_text(format!(
             "apt-get {} 失败: {}{}",
             args.join(" "),
             stderr.trim(),
             hint
-        )));
+        ))));
     }
     Ok(())
 }
@@ -1653,7 +1654,17 @@ impl StoredInstalledApp {
 }
 
 fn io_status(error: impl std::fmt::Display) -> Status {
-    Status::internal(error.to_string())
+    Status::internal(sanitize_status_text(error.to_string()))
+}
+
+/// gRPC-Web 客户端会对 `grpc-message` trailer 做 percent-decode。如果错误
+/// 消息里出现孤零零的 `%`(curl 进度条 / systemd 模板 %n / apt 进度 % 等),
+/// 客户端 `decodeURIComponent` 直接抛 "URI malformed",真正的报错就被
+/// 这层错误覆盖看不见了。
+/// 这里**所有面向 Status 的文本**都先过这函数:把 `%` 替换成 `%25`(它
+/// 自己的 percent-encoded 形式),解码后回到 `%`,显示无损。
+pub(crate) fn sanitize_status_text(input: impl Into<String>) -> String {
+    input.into().replace('%', "%25")
 }
 
 // =====================================================================
@@ -1746,10 +1757,10 @@ async fn resolve_binary_version(
         .await
         .map_err(io_status)?;
     if !output.status.success() {
-        return Err(Status::unavailable(format!(
+        return Err(Status::unavailable(sanitize_status_text(format!(
             "GitHub Releases API 拉取失败: {}",
             String::from_utf8_lossy(&output.stderr)
-        )));
+        ))));
     }
     let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(io_status)?;
     let tag = parsed
@@ -1781,10 +1792,10 @@ async fn download_asset(url: &str, dest: &Path) -> Result<(), Status> {
         .await
         .map_err(io_status)?;
     if !output.status.success() {
-        return Err(Status::unavailable(format!(
+        return Err(Status::unavailable(sanitize_status_text(format!(
             "下载失败 ({url}): {}",
             String::from_utf8_lossy(&output.stderr)
-        )));
+        ))));
     }
     Ok(())
 }
@@ -1897,11 +1908,11 @@ async fn systemctl(args: &[&str]) -> Result<(), Status> {
         .await
         .map_err(io_status)?;
     if !output.status.success() {
-        return Err(Status::unavailable(format!(
+        return Err(Status::unavailable(sanitize_status_text(format!(
             "systemctl {} 失败: {}",
             args.join(" "),
             String::from_utf8_lossy(&output.stderr)
-        )));
+        ))));
     }
     Ok(())
 }
@@ -2470,6 +2481,19 @@ mod tests {
         assert_eq!(slug_to_apt_package("nginx-mainline"), "nginx");
         // 未知 slug 也兜底,executor 端的 apt-get 自己报"无此包"
         assert_eq!(slug_to_apt_package("nonexistent"), "nonexistent");
+    }
+
+    #[test]
+    fn sanitize_status_text_escapes_lone_percent_signs() {
+        // 没有 % → 不动
+        assert_eq!(sanitize_status_text("hello world"), "hello world");
+        // 单独 % → 替换成 %25(client decodeURIComponent 还原)
+        assert_eq!(sanitize_status_text("50% done"), "50%25 done");
+        // 多个 % → 全替
+        assert_eq!(sanitize_status_text("a%b%c"), "a%25b%25c");
+        // 即便已经 percent-encoded(%20),也会被进一步转义
+        // —— 这是 safe choice:宁多一层,gRPC-Web 那头解一次回到 %20
+        assert_eq!(sanitize_status_text("foo%20bar"), "foo%2520bar");
     }
 
     #[test]
