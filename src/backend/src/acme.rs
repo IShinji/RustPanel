@@ -190,13 +190,29 @@ pub async fn request_or_resume_dns01(
     domain: &str,
     email: &str,
 ) -> Result<RequestOutcome, AcmeError> {
-    let pending = read_pending(domain).await?;
-    if let Some(state) = pending {
-        // 第二次调用:复用 Order 完成 finalize
-        finalize_order(state).await
-    } else {
-        // 第一次调用:创建账户 + Order,返回 TXT
-        start_order(domain, email).await
+    // pending 读不出来不算致命:可能是上次 instant-acme 版本的 schema
+    // 落到磁盘后我们升级了,字段对不上(典型报错 "missing field token");
+    // 也可能是 order URL 已经过期(LE 一次性的)。这种情况直接丢掉脏
+    // 状态,当成"从未发起过"重新走 start_order,而不是把错误抛给用户
+    // 让他不知道怎么继续。
+    match read_pending(domain).await {
+        Ok(Some(state)) => match finalize_order(state).await {
+            Ok(outcome) => Ok(outcome),
+            // instant-acme 内部 (de)serialize 失败 / 存的 order URL 过期
+            // → 也按"脏状态"处理,清掉重来。Authorization/Order 业务态
+            // 的错(Invalid / Expired / 用户没加 TXT 等)保留,不能默默
+            // 抹掉,得让调用方看到真实原因。
+            Err(AcmeError::Json(_) | AcmeError::Acme(_)) => {
+                let _ = delete_pending(domain).await;
+                start_order(domain, email).await
+            }
+            Err(other) => Err(other),
+        },
+        Ok(None) => start_order(domain, email).await,
+        Err(_) => {
+            let _ = delete_pending(domain).await;
+            start_order(domain, email).await
+        }
     }
 }
 

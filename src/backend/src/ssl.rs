@@ -126,6 +126,7 @@ impl SslService for SslServiceImpl {
                                 .map_err(|e| Status::internal(format!("acme install: {e}")))?;
                         let _ = cert_dir; // 兼容旧路径
                         let _ = (cert_path, key_path);
+                        clear_bootstrap_marker(&request.domain).await;
                         send_progress(
                             &sender,
                             &request.domain,
@@ -171,6 +172,7 @@ impl SslService for SslServiceImpl {
                 .await
                 .map_err(|e| Status::internal(format!("acme install: {e}")))?;
         let _ = (cert_path, key_path);
+        clear_bootstrap_marker(&request.domain).await;
         send_progress(
             &sender,
             &request.domain,
@@ -248,6 +250,7 @@ impl SslService for SslServiceImpl {
                 .await
                 .map_err(io_status)?;
         }
+        clear_bootstrap_marker(&request.domain).await;
         let certificate = certificate_item(&request.domain, CertificateState::Issued).await?;
         let _ = reload_nginx().await;
 
@@ -266,8 +269,19 @@ impl SslService for SslServiceImpl {
         // 之前直接调 issue_certificate 写自签覆盖,等于把用户的 Let's Encrypt
         // 真证书踩成自签 —— **不是续签**。改成走真实 DNS-01 ACME:第一次
         // 返回 TXT(用 output 字段透出),第二次完成。
-        // email 用占位 "admin@<domain>",ACME 接受任意符合 RFC 的邮箱。
-        let outcome = crate::acme::request_or_resume_dns01(&domain, &format!("admin@{domain}"))
+        // email 从面板 AcmeSettings 里取(GetAcmeSettings/UpdateAcmeSettings),
+        // 之前用 `admin@<domain>` 是占位 → 用户域名要是 example.com 还会被
+        // LE forbiddenDomains 拒。
+        let settings = crate::acme::read_settings()
+            .await
+            .map_err(|e| Status::internal(format!("read acme settings: {e}")))?;
+        let email = settings.contact_email.trim().to_owned();
+        if email.is_empty() {
+            return Err(Status::failed_precondition(
+                "未设置 ACME 联系邮箱;请去面板设置里填一次真实邮箱再续签",
+            ));
+        }
+        let outcome = crate::acme::request_or_resume_dns01(&domain, &email)
             .await
             .map_err(|e| Status::internal(format!("acme renew: {e}")))?;
         match outcome {
@@ -282,6 +296,7 @@ impl SslService for SslServiceImpl {
                 crate::acme::install_certificate(&domain, &cert, &cert_root())
                     .await
                     .map_err(|e| Status::internal(format!("acme install: {e}")))?;
+                clear_bootstrap_marker(&domain).await;
                 let item = certificate_item(&domain, CertificateState::Issued).await?;
                 let reload_output = reload_nginx()
                     .await
@@ -416,17 +431,34 @@ async fn certificate_item(
         .unwrap_or_else(|_| "default".to_owned())
         .trim()
         .to_owned();
+    // bootstrap marker 存在 → 这是占位自签证书,真 ACME 还没签下来。
+    // 不能让 UI 显示"已签发剩余 30 天",会误导用户以为面板真签了。
+    // 改成 state=PENDING + warning="self-signed-bootstrap",UI 负责把
+    // 它渲染成"待签发 (placeholder)"而不是绿色已就绪。
+    let is_bootstrap = tokio::fs::try_exists(&bootstrap_marker_path(domain))
+        .await
+        .unwrap_or(false);
+    let effective_state = if is_bootstrap {
+        CertificateState::Pending
+    } else {
+        state
+    };
+    let warning = if is_bootstrap {
+        "self-signed-bootstrap".to_owned()
+    } else {
+        warning_level(days_until_expiry).to_owned()
+    };
 
     Ok(CertificateItem {
         domain: domain.to_owned(),
         certificate_path: cert_path.to_string_lossy().to_string(),
         private_key_path: key_path.to_string_lossy().to_string(),
         expires_at_seconds,
-        state: state.into(),
+        state: effective_state.into(),
         group,
         days_until_expiry,
         auto_renew_enabled: true,
-        warning_level: warning_level(days_until_expiry).to_owned(),
+        warning_level: warning,
     })
 }
 
@@ -479,6 +511,14 @@ async fn create_self_signed_certificate(
     params
         .distinguished_name
         .push(rcgen::DnType::CommonName, domain);
+    // rcgen 0.13 默认把 not_after 塞到 4096-01-01,这玩意一进 UI 就显示
+    //   "剩余 755921 天" —— 用户看了完全摸不着头脑、还以为面板瞎签了。
+    // bootstrap 自签证书本就是临时占位(给 nginx -t 通过),设 30 天就够;
+    // 真 LE 签发会原地覆盖,不会出现"30 天后自签真的过期"的情况;
+    // 真出现了也是真实情况(用户没完成 ACME 流程),UI 早就该报警。
+    let now = time::OffsetDateTime::now_utc();
+    params.not_before = now - time::Duration::hours(1);
+    params.not_after = now + time::Duration::days(30);
     let keypair =
         rcgen::KeyPair::generate().map_err(|e| Status::internal(format!("rcgen key: {e}")))?;
     let cert = params
@@ -630,7 +670,24 @@ pub(crate) async fn bootstrap_self_signed_if_missing(domain: &str) -> Result<(),
     if let Some(parent) = cert_path.parent() {
         tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
     }
-    create_self_signed_certificate(domain, &cert_path, &key_path).await
+    create_self_signed_certificate(domain, &cert_path, &key_path).await?;
+    // 留个 sidecar 标记 → list_certificates 知道这只是占位、不是真 LE
+    // 证书,UI 能据此显示"待签发"而不是"已签发剩余 30 天"。
+    // 真 ACME 签完 install_certificate 时会清掉这个 marker(下面的
+    // clear_bootstrap_marker)。
+    let marker = bootstrap_marker_path(domain);
+    let _ = tokio::fs::write(&marker, b"self-signed placeholder\n").await;
+    Ok(())
+}
+
+fn bootstrap_marker_path(domain: &str) -> PathBuf {
+    domain_cert_dir(domain).join("rustpanel-bootstrap")
+}
+
+/// 真 ACME 签发完成 / 用户导入证书后调用,清掉 bootstrap 标记。
+/// 找不到文件(从来没 bootstrap 过)也没事。
+pub(crate) async fn clear_bootstrap_marker(domain: &str) {
+    let _ = tokio::fs::remove_file(bootstrap_marker_path(domain)).await;
 }
 
 fn current_timestamp() -> u64 {
