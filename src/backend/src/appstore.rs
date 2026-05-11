@@ -1854,6 +1854,34 @@ fn is_signature_or_checksum(name: &str) -> bool {
     .any(|suffix| lower.ends_with(suffix))
 }
 
+/// 递归列出目录下所有相对路径(给 "找不到二进制" 错误现场用)。
+/// 容错:任何 IO 错误返回空数组,这是 best-effort 的 debug 信息,
+/// 不该把它自己的错误盖掉真正的 "missing binary" 错。
+async fn list_dir_contents(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, prefix: &Path, out: &mut Vec<String>, depth: usize) {
+        if depth > 3 || out.len() > 32 {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let rel = path
+                .strip_prefix(prefix)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| path.display().to_string());
+            out.push(rel);
+            if path.is_dir() {
+                walk(&path, prefix, out, depth + 1);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, root, &mut out, 0);
+    out
+}
+
 /// curl 拉 GitHub Release JSON,反序列化成 serde_json::Value。
 /// 失败 / HTTP 错误 / JSON 解析错都收敛成 Status,带 sanitize 防御。
 async fn fetch_release_json(api_url: &str) -> Result<serde_json::Value, Status> {
@@ -2051,7 +2079,7 @@ async fn execute_binary_install(
 
     let extract_root = extract_archive(&archive_path, &work_dir).await?;
     let binary_src = if plan.binary_path_in_archive.is_empty() {
-        extract_root
+        extract_root.clone()
     } else {
         // binary_path_in_archive 里可能含 {version} 占位(典型 SWS)。
         let rel = expand_asset_pattern(plan.binary_path_in_archive, &resolved.version);
@@ -2063,6 +2091,18 @@ async fn execute_binary_install(
             work_dir.join(rel)
         }
     };
+
+    // 解压后 binary_path_in_archive 没找着的话,光丢 "No such file" 没用 ——
+    // 把实际文件树挂出来,自己 / 用户能直接对照修 plan 而不用 ssh 上去翻。
+    if !tokio::fs::try_exists(&binary_src).await.unwrap_or(false) {
+        return Err(Status::internal(sanitize_status_text(format!(
+            "归档解开后没找到二进制 {}(plan.binary_path_in_archive=\"{}\")。\
+             work_dir 实际内容: [{}]",
+            binary_src.display(),
+            plan.binary_path_in_archive,
+            list_dir_contents(&work_dir).await.join(", ")
+        ))));
+    }
 
     install_binary_atomic(&binary_src, Path::new(plan.install_to)).await?;
     write_systemd_unit(slug, plan.systemd_unit).await?;
@@ -2158,7 +2198,10 @@ pub(crate) fn phase_g_install_plan(slug: &str) -> Option<BinaryInstallPlan> {
             upstream_repo: "junkurihara/rust-rpxy",
             // 用子串匹配 release 里 linux-musl tarball,不再猜确切文件名
             asset_pattern: "x86_64-unknown-linux-musl.tar.gz",
-            binary_path_in_archive: "rpxy",
+            // tar 解出来根目录里只有这一个文件,没有子目录,文件名就是
+            // asset 文件名去掉 `.tar.gz`(`tar tzf` 实测):
+            //   ./rpxy-x86_64-unknown-linux-musl
+            binary_path_in_archive: "rpxy-x86_64-unknown-linux-musl",
             install_to: "/usr/local/bin/rpxy",
             config_path: "/etc/rpxy/config.toml",
             systemd_unit: RPXY_SERVICE,
