@@ -793,6 +793,10 @@ fn rpxy_fragment_path(site_name: &str) -> PathBuf {
 
 /// 把 site_to_rpxy_app_block 生成的片段原子写入 sites.d 目录。
 /// 调用方应当确保 site_name 已经做过 sanitize_app_name。
+///
+/// 写完会**马上 assemble 一份完整的 /etc/rpxy/config.toml**(base + 所有
+/// 片段拼起来)—— rpxy 自己不读 sites.d/,只读 --config 那一个文件,
+/// 我们必须自己组装。
 pub(crate) async fn write_rpxy_site_fragment(
     site_name: &str,
     block: &str,
@@ -805,6 +809,7 @@ pub(crate) async fn write_rpxy_site_fragment(
         .await
         .map_err(io_status)?;
     tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
+    assemble_rpxy_config().await?;
     Ok(path)
 }
 
@@ -814,6 +819,72 @@ pub(crate) async fn remove_rpxy_site_fragment(site_name: &str) -> Result<(), Sta
     if tokio::fs::try_exists(&path).await.unwrap_or(false) {
         tokio::fs::remove_file(&path).await.map_err(io_status)?;
     }
+    assemble_rpxy_config().await?;
+    Ok(())
+}
+
+/// rpxy 主配置文件路径,RUSTPANEL_RPXY_CONFIG_PATH 可覆盖(测试用)。
+fn rpxy_main_config_path() -> PathBuf {
+    env::var("RUSTPANEL_RPXY_CONFIG_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/etc/rpxy/config.toml"))
+}
+
+/// 拼装完整 rpxy 配置:base globals(listen_port_*) + sites.d/ 下所有
+/// `[apps."<name>"]` 片段,原子写到 config.toml,触发 rpxy --config-watch
+/// 自动 reload。
+///
+/// 之前的设计错把片段丢 sites.d/ 就完事 —— rpxy 根本不读那个目录,
+/// 只读 --config 单文件,base config.toml 里 `[apps]` 空 → rpxy 启动
+/// 报 "Wrong application spec" 死循环。
+async fn assemble_rpxy_config() -> Result<(), Status> {
+    let dir = rpxy_fragment_dir();
+    let mut fragments: Vec<String> = Vec::new();
+    if tokio::fs::try_exists(&dir).await.unwrap_or(false) {
+        let mut entries = tokio::fs::read_dir(&dir).await.map_err(io_status)?;
+        let mut paths: Vec<PathBuf> = Vec::new();
+        while let Some(entry) = entries.next_entry().await.map_err(io_status)? {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("toml") {
+                paths.push(p);
+            }
+        }
+        // 排序保证 reload 后 config 内容确定,排查 diff 时不抖
+        paths.sort();
+        for p in paths {
+            if let Ok(content) = tokio::fs::read_to_string(&p).await {
+                fragments.push(content.trim_end().to_owned());
+            }
+        }
+    }
+    let mut full = String::new();
+    full.push_str("# RustPanel auto-generated. Hand-edits to this file are clobbered\n");
+    full.push_str("# on the next site change; edit /etc/rpxy/sites.d/<name>.toml instead.\n");
+    full.push_str("listen_port = 80\n");
+    full.push_str("listen_port_tls = 443\n");
+    full.push('\n');
+    if fragments.is_empty() {
+        // rpxy 至少要一个 [apps.<x>] 才不会报错。占位 app 反代回环到
+        // 一个肯定 closed 的端口,这样空配置也能让 rpxy 起来 listen 80/443
+        // 等用户加站点,而不是死循环 restart。
+        full.push_str("[apps.\"__placeholder__\"]\n");
+        full.push_str("server_name = \"_\"\n");
+        full.push_str("reverse_proxy = [{ upstream = [{ location = \"127.0.0.1:1\" }] }]\n");
+    } else {
+        for frag in fragments {
+            full.push_str(&frag);
+            full.push_str("\n\n");
+        }
+    }
+    let path = rpxy_main_config_path();
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+    let tmp = path.with_extension("toml.rustpanel-tmp");
+    tokio::fs::write(&tmp, full.as_bytes())
+        .await
+        .map_err(io_status)?;
+    tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
     Ok(())
 }
 
@@ -2277,17 +2348,17 @@ RestartSec=3s
 WantedBy=multi-user.target
 "#;
 
-const RPXY_CONFIG: &str = r#"# RustPanel 默认 rpxy 配置骨架。
-# 站点条目由 sites 模块在用户增删站点时自动写入,这里只放全局段。
-listen_port = 8080
-listen_port_tls = 8443
+const RPXY_CONFIG: &str = r#"# RustPanel auto-generated rpxy bootstrap config.
+# 站点添加时 assemble_rpxy_config 会**整文件覆盖**这份,把
+# sites.d/*.toml 拼进来。手改这里没用。
+listen_port = 80
+listen_port_tls = 443
 
-[apps]
-# 例:
-# [apps."example"]
-# server_name = "example.com"
-# reverse_proxy = [{ location = "/", upstream = [{ location = "127.0.0.1:3000" }] }]
-# tls = { https_redirection = true, acme = true }
+# 占位 app:rpxy 不允许零 app,否则报 "Wrong application spec" 死循环。
+# 站点添加后 assemble_rpxy_config 会用真 app 块取代它。
+[apps."__placeholder__"]
+server_name = "_"
+reverse_proxy = [{ upstream = [{ location = "127.0.0.1:1" }] }]
 "#;
 
 const SWS_SERVICE: &str = r#"[Unit]
