@@ -1000,6 +1000,27 @@ pub(crate) async fn remove_sws_site_config(site_name: &str) -> Result<(), Status
     Ok(())
 }
 
+/// 确保站点根目录存在,并放一个起手 index.html(已存在则不动)。
+///
+/// SWS 启动时如果 root 目录不存在直接 crash 退出,systemd Restart=on-failure
+/// 进入死循环 —— 这次踩了 871 次。create_dir_all 是 idempotent 的,
+/// 不会清掉用户文件。占位 index.html 也只在缺失时写,保留用户已有内容。
+async fn ensure_site_root_with_placeholder(site_name: &str, root: &str) -> Result<(), Status> {
+    tokio::fs::create_dir_all(root).await.map_err(io_status)?;
+    let index = std::path::Path::new(root).join("index.html");
+    if !tokio::fs::try_exists(&index).await.unwrap_or(false) {
+        let body = format!(
+            "<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>{site_name}</title></head>\n<body><h1>It works!</h1>\n<p>Site <code>{site_name}</code> is served by static-web-server via rpxy.</p>\n<p>Replace this file with your content under <code>{root}</code>.</p>\n</body></html>\n",
+            site_name = site_name,
+            root = root,
+        );
+        tokio::fs::write(&index, body.as_bytes())
+            .await
+            .map_err(io_status)?;
+    }
+    Ok(())
+}
+
 /// 检查 static-web-server 二进制是否已安装,作为"要不要起 sws@instance"
 /// 的判断条件。没装的话,site.rs 那边的 hook 会直接跳过,不会留下
 /// orphan systemd unit。
@@ -1021,6 +1042,11 @@ pub(crate) async fn start_sws_for_site(
         return Ok(false);
     }
     ensure_sws_template_unit().await?;
+    // SWS 启动时 root 目录不存在直接 crash → systemd Restart=on-failure
+    // 死循环(用户上一票踩到 871 次)。create_dir_all 把目录拉起来,
+    // 再丢一个起手 index.html,让 SWS 起码能 200 而不是 404 + 用户也能
+    // 一眼确认"管道是通的"。已存在的 index 不动,免得踩用户内容。
+    ensure_site_root_with_placeholder(site_name, root).await?;
     write_sws_site_config(site_name, root, port).await?;
     if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
         systemctl(&["daemon-reload"]).await?;
