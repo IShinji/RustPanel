@@ -355,8 +355,17 @@ async function ensureAcmeEmail(): Promise<string | null> {
     return null;
   }
   try {
+    // 先读一次保住 production 字段不被覆盖成默认 false。
+    // (update 用整对象覆盖,proto 没有 PATCH 语义)
+    let production = false;
+    try {
+      const current = await clients.ssl.getAcmeSettings({});
+      production = current.settings?.production ?? false;
+    } catch {
+      // 读不到当默认 staging,后续用户在 Settings 页可以改
+    }
     await clients.ssl.updateAcmeSettings({
-      settings: { contactEmail: trimmed }
+      settings: { contactEmail: trimmed, production }
     });
   } catch (err) {
     console.warn("persist acme email failed:", err);
@@ -4102,12 +4111,24 @@ function SitesSsl({ clients }: { clients: Clients }) {
   const renewCertificate = async (certificate: CertificateItem) => {
     try {
       const response = await clients.ssl.renewCertificate({ domain: certificate.domain });
-      // 续签现在走真实 DNS-01:第一次返回 TXT(放在 output 字段),
-      // 用户加 DNS 后再点一次完成。把 status.message + output 拼起来
-      // 多行展示,whitespace-pre-line 让换行渲染出来。
       const head = response.status?.message ?? `${certificate.domain} 已续签`;
-      const detail = response.output;
-      setMessage(detail ? `${head}\n\n${detail}` : head);
+      // 续签是两步:第一次后端返 Challenge,dns_record_name 非空 → 提示用户加
+      // TXT,信息单独显示;第二次后端返 Issued,output 是 reload 的辅助信息
+      // (典型 "rpxy reloaded"),作为副 message 显示但不阻断成功状态。
+      if (response.dnsRecordName) {
+        const tipLines = [
+          head,
+          "",
+          `TXT 名称: ${response.dnsRecordName}`,
+          `TXT 值:   ${response.dnsRecordValue}`,
+          "",
+          "把这条 TXT 加到 DNS 解析(CF 控制台要灰云 DNS only),等 1-2 分钟传播后再点一次续签完成签发。"
+        ];
+        setMessage(tipLines.join("\n"));
+      } else {
+        const detail = response.output;
+        setMessage(detail ? `${head} · ${detail}` : head);
+      }
       await load();
     } catch (err) {
       setError(safeError(err));
@@ -4322,9 +4343,15 @@ function SitesSsl({ clients }: { clients: Clients }) {
                       {cert.group || "default"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={cert.warningLevel === "ok" ? "success" : "destructive"}>
-                        {cert.daysUntilExpiry} 天
-                      </Badge>
+                      {cert.warningLevel === "self-signed-bootstrap" ? (
+                        <Badge variant="warning" title="占位自签证书,等待真 ACME 签发">
+                          占位 · 待签发
+                        </Badge>
+                      ) : (
+                        <Badge variant={cert.warningLevel === "ok" ? "success" : "destructive"}>
+                          {cert.daysUntilExpiry} 天
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
@@ -5362,7 +5389,21 @@ function SslPanel({
     if (!cert) return;
     try {
       const response = await clients.ssl.renewCertificate({ domain: cert.domain });
-      onMessage(response.output || `${cert.domain} 已续签`);
+      const head = response.status?.message ?? `${cert.domain} 已续签`;
+      if (response.dnsRecordName) {
+        const tipLines = [
+          head,
+          "",
+          `TXT 名称: ${response.dnsRecordName}`,
+          `TXT 值:   ${response.dnsRecordValue}`,
+          "",
+          "把这条 TXT 加到 DNS 解析(CF 上要灰云 DNS only),传播后再点续签完成签发。"
+        ];
+        onMessage(tipLines.join("\n"));
+      } else {
+        const detail = response.output;
+        onMessage(detail ? `${head} · ${detail}` : head);
+      }
       onChanged();
     } catch (err) {
       onError(safeError(err));
@@ -6808,6 +6849,7 @@ function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout: () =>
         </TabsContent>
 
         <TabsContent value="ssl" className="mt-4 flex flex-col gap-4">
+          <AcmeSettingsCard clients={clients} onMessage={setMessage} onError={setError} />
           <Card>
             <CardHeader>
               <CardTitle>申请 Let's Encrypt 证书</CardTitle>
@@ -6966,7 +7008,15 @@ function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout: () =>
                           <TableCell className="font-medium">{cert.domain}</TableCell>
                           <TableCell>{cert.group || "default"}</TableCell>
                           <TableCell>
-                            <Badge variant="muted">{cert.warningLevel || "已导入"}</Badge>
+                            {cert.warningLevel === "self-signed-bootstrap" ? (
+                              <Badge variant="warning" title="占位自签证书,等待真 ACME 签发">
+                                占位 · 待签发
+                              </Badge>
+                            ) : (
+                              <Badge variant="muted">
+                                {cert.warningLevel || "已导入"}
+                              </Badge>
+                            )}
                           </TableCell>
                         </UITableRow>
                       ))}
@@ -7020,6 +7070,111 @@ function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout: () =>
         </TabsContent>
       </Tabs>
     </section>
+  );
+}
+
+// AcmeSettingsCard:面板级 ACME 偏好(联系邮箱 + staging↔production 开关)。
+// 替代之前藏在 RUSTPANEL_ACME_PRODUCTION env var 里的 prod toggle ——
+// 用户不用 ssh 改 .env 再 restart backend,直接 UI 里勾。
+function AcmeSettingsCard({
+  clients,
+  onMessage,
+  onError
+}: {
+  clients: Clients;
+  onMessage: (text: string) => void;
+  onError: (text: string) => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [production, setProduction] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const resp = await clients.ssl.getAcmeSettings({});
+        if (cancelled) return;
+        setEmail(resp.settings?.contactEmail ?? "");
+        setProduction(resp.settings?.production ?? false);
+      } catch (err) {
+        if (!cancelled) onError(safeError(err));
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clients, onError]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const resp = await clients.ssl.updateAcmeSettings({
+        settings: { contactEmail: email.trim(), production }
+      });
+      setEmail(resp.settings?.contactEmail ?? email);
+      setProduction(resp.settings?.production ?? production);
+      onMessage(
+        `ACME 设置已保存 · 模式: ${production ? "production(真证书,浏览器认)" : "staging(测试,浏览器红色)"}`
+      );
+    } catch (err) {
+      onError(safeError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>ACME 设置</CardTitle>
+        <CardDescription>
+          面板级 Let&apos;s Encrypt 偏好,所有站点共用。改完点保存,下次申请 / 续签立即生效,无需重启后端。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="grid gap-2">
+          <UILabel htmlFor="acme-settings-email">联系邮箱</UILabel>
+          <UIInput
+            id="acme-settings-email"
+            type="email"
+            placeholder="you@example.org"
+            value={email}
+            disabled={!loaded || saving}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <p className="text-xs text-muted-foreground m-0">
+            LE 用这个邮箱发证书快过期提醒。<code>example.com / .org / .net</code> 会被服务端拒。
+          </p>
+        </div>
+        <div className="flex items-start gap-3">
+          <Switch
+            id="acme-production"
+            checked={production}
+            disabled={!loaded || saving}
+            onCheckedChange={(checked) => setProduction(checked)}
+          />
+          <div className="flex flex-col gap-1">
+            <UILabel htmlFor="acme-production" className="cursor-pointer">
+              使用 production(真证书)
+            </UILabel>
+            <p className="text-xs text-muted-foreground m-0">
+              关闭 = staging 测试目录(Issuer 含 <code>STAGING</code>,浏览器不信任,但有 IP/域名速率限制宽松)。
+              <br />
+              开启 = LE production(Issuer 是 R10/R11/E5/E6 之类,浏览器认,**用前先确认 staging 全流程跑通**)。
+            </p>
+          </div>
+        </div>
+        <div>
+          <UIButton onClick={save} disabled={!loaded || saving || !email.trim()}>
+            {saving ? "保存中..." : "保存"}
+          </UIButton>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

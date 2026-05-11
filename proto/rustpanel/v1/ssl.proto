@@ -98,10 +98,20 @@ message RenewCertificateRequest {
 }
 
 // RenewCertificateResponse 返回续签后的证书。
+//
+// 续签和申请一样是两步:第一次返回 TXT(dns_record_name / dns_record_value
+// 非空,certificate 为空),第二次返回真证书(certificate 非空,
+// dns_record_* 为空)。output 是辅助信息(reload 结果之类),不参与状态机判断。
 message RenewCertificateResponse {
   Response status = 1;
   CertificateItem certificate = 2;
+  // 辅助信息(典型:"rpxy reloaded" / "no proxy backend active to reload")。
+  // 续签 cert 装盘成功后无论 reload 结果如何都不算 RPC 失败;reload 失败
+  // 也只是 output 里多一句话,不该让前端误以为 cert 没签下来。
   string output = 3;
+  // 第一次调用返回 TXT 挑战时填:用户需要把这条 TXT 加到 DNS 服务商。
+  string dns_record_name = 4;
+  string dns_record_value = 5;
 }
 
 // WatchCertificateProgressRequest 表示证书进度订阅请求。
@@ -122,6 +132,12 @@ message AcmeSettings {
   // example.com / example.org / example.net 域被 LE 列入 forbiddenDomains,
   // 后端 / 前端都拒绝写入这三个域。
   string contact_email = 1;
+  // false = 用 LE staging directory(快速测试,不消耗 LE 速率限制,
+  //        但签出来的 cert 浏览器红色不信任)
+  // true  = 用 LE production directory(真证书,浏览器认,有 rate limit)
+  // 之前这个开关藏在 RUSTPANEL_ACME_PRODUCTION env var 里,
+  // 用户得改 .env 文件 + 重启 backend —— 现在 UI 里直接 toggle。
+  bool production = 2;
 }
 
 // GetAcmeSettingsRequest 读 ACME 面板级设置。

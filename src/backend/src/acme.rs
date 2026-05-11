@@ -113,6 +113,11 @@ fn settings_path() -> PathBuf {
 pub struct AcmeSettings {
     #[serde(default)]
     pub contact_email: String,
+    /// false → LE staging,true → LE production。
+    /// 默认 false 给开发 / 第一次试管道用,确认面板能跑通后再 UI toggle 到
+    /// true 拿真证书。
+    #[serde(default)]
+    pub production: bool,
 }
 
 /// Let's Encrypt 自 2024 起把这三个 RFC 2606 保留域加入 forbiddenDomains,
@@ -146,11 +151,18 @@ pub async fn write_settings(settings: &AcmeSettings) -> Result<(), AcmeError> {
     Ok(())
 }
 
-fn directory_url() -> &'static str {
-    if env::var("RUSTPANEL_ACME_PRODUCTION")
+/// LE directory URL,优先看 AcmeSettings.production(UI toggle)。
+/// 兜底:env var RUSTPANEL_ACME_PRODUCTION=1(老部署 / 单测 / 升级前的
+/// 二进制兼容路径)。读 settings 失败时 fallback 到 env,settings 文件
+/// 不存在时也走 env,完全保留旧行为。
+async fn directory_url() -> &'static str {
+    let production = match read_settings().await {
+        Ok(s) => s.production,
+        Err(_) => false,
+    } || env::var("RUSTPANEL_ACME_PRODUCTION")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-    {
+        .unwrap_or(false);
+    if production {
         LetsEncrypt::Production.url()
     } else {
         LetsEncrypt::Staging.url()
@@ -222,7 +234,7 @@ async fn start_order(domain: &str, email: &str) -> Result<RequestOutcome, AcmeEr
         only_return_existing: false,
     };
     let (account, credentials) = Account::builder()?
-        .create(&new_account, directory_url().to_owned(), None)
+        .create(&new_account, directory_url().await.to_owned(), None)
         .await?;
 
     let identifier = Identifier::Dns(domain.to_owned());
@@ -345,7 +357,7 @@ pub async fn request_http01_blocking(
         only_return_existing: false,
     };
     let (account, _credentials) = Account::builder()?
-        .create(&new_account, directory_url().to_owned(), None)
+        .create(&new_account, directory_url().await.to_owned(), None)
         .await?;
 
     let identifier = Identifier::Dns(domain.to_owned());
@@ -430,28 +442,60 @@ pub async fn install_certificate(
 mod tests {
     use super::*;
 
-    // 两个 env-driven 检查合到一个测试里串行跑,避免与其它平行测试共享
-    // RUSTPANEL_ACME_PRODUCTION 这个 process-global env var。
-    #[test]
-    fn directory_url_respects_production_env() {
+    // RUSTPANEL_ACME_ROOT / RUSTPANEL_ACME_PRODUCTION 是 process-global env
+    // vars。cargo test 默认并发,多个 acme 测试同时改 env 会互相清掉对方
+    // 的 tempdir 路径 → 一个测试读不到另一个写的文件。用 tokio 的 Mutex
+    // 而不是 std 的 —— clippy await_holding_lock 不让跨 await 持 std 锁;
+    // tokio::sync::Mutex 设计就是干这个的。
+    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    #[tokio::test]
+    async fn directory_url_respects_production_env() {
+        let _guard = ENV_LOCK.lock().await;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        env::set_var("RUSTPANEL_ACME_ROOT", tmp.path());
         env::remove_var("RUSTPANEL_ACME_PRODUCTION");
-        let staging = directory_url();
+        let staging = directory_url().await;
         assert!(
             staging.contains("staging"),
             "expected staging url, got {staging}"
         );
 
         env::set_var("RUSTPANEL_ACME_PRODUCTION", "1");
-        let production = directory_url();
+        let production = directory_url().await;
         assert!(
             !production.contains("staging"),
             "expected production url, got {production}"
         );
         env::remove_var("RUSTPANEL_ACME_PRODUCTION");
+        env::remove_var("RUSTPANEL_ACME_ROOT");
+    }
+
+    #[tokio::test]
+    async fn directory_url_settings_override_takes_precedence() {
+        let _guard = ENV_LOCK.lock().await;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        env::set_var("RUSTPANEL_ACME_ROOT", tmp.path());
+        env::remove_var("RUSTPANEL_ACME_PRODUCTION");
+
+        write_settings(&AcmeSettings {
+            contact_email: "x@example.org.real".into(),
+            production: true,
+        })
+        .await
+        .unwrap();
+        let url = directory_url().await;
+        assert!(
+            !url.contains("staging"),
+            "settings.production=true 应该走 prod,got {url}"
+        );
+
+        env::remove_var("RUSTPANEL_ACME_ROOT");
     }
 
     #[tokio::test]
     async fn pending_round_trip() {
+        let _guard = ENV_LOCK.lock().await;
         let tmp = tempfile::tempdir().expect("tempdir");
         env::set_var("RUSTPANEL_ACME_ROOT", tmp.path());
 

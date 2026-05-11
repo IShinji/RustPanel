@@ -2371,6 +2371,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/rpxy --config /etc/rpxy/config.toml
+# rpxy 0.11 收到 SIGHUP 会 reload config 不重启进程 —— 让 ssl 模块续签
+# 完证书后能 `systemctl reload rpxy` 干净 reload(rpxy --config-watch 也
+# 会自动 pick file 变化,但走 reload 信号更明确,日志能区分)。
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=3s
 

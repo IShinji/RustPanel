@@ -289,7 +289,9 @@ impl SslService for SslServiceImpl {
                 Ok(GrpcResponse::new(RenewCertificateResponse {
                     status: Some(ok_response("请把下方 TXT 加到 DNS 后再点一次续签完成签发")),
                     certificate: None,
-                    output: format!("TXT 名称: {}\nTXT 值:  {}", c.record_name, c.record_value),
+                    output: String::new(),
+                    dns_record_name: c.record_name,
+                    dns_record_value: c.record_value,
                 }))
             }
             crate::acme::RequestOutcome::Issued(cert) => {
@@ -298,11 +300,16 @@ impl SslService for SslServiceImpl {
                     .map_err(|e| Status::internal(format!("acme install: {e}")))?;
                 clear_bootstrap_marker(&domain).await;
                 let item = certificate_item(&domain, CertificateState::Issued).await?;
+                // reload 是 side-effect,失败也只是 output 里多一行说明,
+                // 不影响 cert 已经签下来并装盘的事实。output 内容会被前端
+                // 当辅助信息显示,不会被当成错误。
                 let reload_output = reload_active_proxy().await;
                 Ok(GrpcResponse::new(RenewCertificateResponse {
                     status: Some(ok_response("certificate renewed via DNS-01")),
                     certificate: Some(item),
                     output: reload_output,
+                    dns_record_name: String::new(),
+                    dns_record_value: String::new(),
                 }))
             }
         }
@@ -334,6 +341,7 @@ impl SslService for SslServiceImpl {
             status: Some(ok_response("ok")),
             settings: Some(ProtoAcmeSettings {
                 contact_email: settings.contact_email,
+                production: settings.production,
             }),
         }))
     }
@@ -360,6 +368,7 @@ impl SslService for SslServiceImpl {
         }
         let to_save = crate::acme::AcmeSettings {
             contact_email: trimmed,
+            production: proto.production,
         };
         crate::acme::write_settings(&to_save)
             .await
@@ -368,6 +377,7 @@ impl SslService for SslServiceImpl {
             status: Some(ok_response("saved")),
             settings: Some(ProtoAcmeSettings {
                 contact_email: to_save.contact_email,
+                production: to_save.production,
             }),
         }))
     }
