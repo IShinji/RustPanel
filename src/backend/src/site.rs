@@ -9,13 +9,13 @@ use crate::{
     ok_response,
     proto::rustpanel::v1::{
         site_service_server::SiteService, CreateSiteRequest, CreateSiteResponse,
-        DeleteReverseProxyRuleRequest, DeleteReverseProxyRuleResponse,
-        ListReverseProxyRulesRequest, ListReverseProxyRulesResponse, ListRewriteTemplatesRequest,
-        ListRewriteTemplatesResponse, ListSitesRequest, ListSitesResponse, ReloadNginxRequest,
-        ReloadNginxResponse, RenderRewriteTemplateRequest, RenderRewriteTemplateResponse,
-        ReverseProxyRule, RewriteTemplate, SiteBindKind, SiteBinding, SiteItem, SiteKind,
-        SiteTlsStrategy, UpsertReverseProxyRuleRequest, UpsertReverseProxyRuleResponse,
-        UpstreamTarget,
+        DeleteReverseProxyRuleRequest, DeleteReverseProxyRuleResponse, DeleteSiteRequest,
+        DeleteSiteResponse, ListReverseProxyRulesRequest, ListReverseProxyRulesResponse,
+        ListRewriteTemplatesRequest, ListRewriteTemplatesResponse, ListSitesRequest,
+        ListSitesResponse, ReloadNginxRequest, ReloadNginxResponse, RenderRewriteTemplateRequest,
+        RenderRewriteTemplateResponse, ReverseProxyRule, RewriteTemplate, SiteBindKind,
+        SiteBinding, SiteItem, SiteKind, SiteTlsStrategy, UpsertReverseProxyRuleRequest,
+        UpsertReverseProxyRuleResponse, UpstreamTarget,
     },
 };
 
@@ -226,6 +226,82 @@ impl SiteService for SiteServiceImpl {
             status: Some(ok_response("site created")),
             site: Some(site),
             rendered_config,
+        }))
+    }
+
+    async fn delete_site(
+        &self,
+        request: Request<DeleteSiteRequest>,
+    ) -> Result<GrpcResponse<DeleteSiteResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
+        let name = request.into_inner().name;
+        if name.trim().is_empty() {
+            return Err(Status::invalid_argument("name is required"));
+        }
+        let safe = safe_name(&name)?;
+        let mut cleaned: Vec<String> = Vec::new();
+
+        // 1) nginx vhost 配置文件
+        let conf_path = nginx_sites_dir().join(format!("rustpanel-{safe}.conf"));
+        if tokio::fs::try_exists(&conf_path).await.unwrap_or(false) {
+            tokio::fs::remove_file(&conf_path)
+                .await
+                .map_err(io_status)?;
+            cleaned.push(conf_path.to_string_lossy().to_string());
+        }
+
+        // 2) sidecar 元数据(create_site 时落的 StoredSite JSON)
+        let sidecar_path = self.store.nginx_metadata_path(&safe);
+        if tokio::fs::try_exists(&sidecar_path).await.unwrap_or(false) {
+            tokio::fs::remove_file(&sidecar_path)
+                .await
+                .map_err(io_status)?;
+            cleaned.push(sidecar_path.to_string_lossy().to_string());
+        }
+
+        // 3) rpxy 站点片段(opportunistic;rpxy 可能没装,fragment 可能不存在)
+        if crate::appstore::remove_rpxy_site_fragment(&safe)
+            .await
+            .is_ok()
+        {
+            cleaned.push(format!("rpxy fragment for {safe}"));
+        }
+        let _ = crate::appstore::reload_rpxy_if_running().await;
+
+        // 4) sws per-site 配置 + 停 instance
+        if crate::appstore::remove_sws_site_config(&safe).await.is_ok() {
+            cleaned.push(format!("sws config for {safe}"));
+        }
+        if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
+            let unit = format!("sws@{safe}.service");
+            // disable --now 即使 unit 不存在也容错;失败不阻塞
+            let _ = tokio::process::Command::new("systemctl")
+                .args(["disable", "--now", &unit])
+                .output()
+                .await;
+        }
+
+        // 5) builtin sites.json 里的记录(engine = builtin 的路径)
+        let mut builtin = self.store.load_builtin_sites().await?;
+        let before = builtin.len();
+        builtin.retain(|item| safe_name(&item.name).ok().as_deref() != Some(&safe));
+        if builtin.len() != before {
+            self.store.save_builtin_sites(&builtin).await?;
+            cleaned.push("builtin sites.json entry".to_owned());
+        }
+
+        // 6) 重载 nginx —— 已删配置文件,需要让 nginx 真正 unregister vhost。
+        //    -s reload 失败说明可能 nginx 没装/没起;静默忽略,不阻塞删除流程。
+        if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
+            let _ = tokio::process::Command::new("nginx")
+                .args(["-s", "reload"])
+                .output()
+                .await;
+        }
+
+        Ok(GrpcResponse::new(DeleteSiteResponse {
+            status: Some(ok_response("site deleted")),
+            cleaned_paths: cleaned,
         }))
     }
 

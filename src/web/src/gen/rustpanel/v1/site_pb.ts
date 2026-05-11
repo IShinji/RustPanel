@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/site.proto.
  */
 export const file_rustpanel_v1_site: GenFile = /*@__PURE__*/
-  fileDesc("ChdydXN0cGFuZWwvdjEvc2l0ZS5wcm90bxIMcnVzdHBhbmVsLnYxIl8KC1NpdGVCaW5kaW5nEigKBGtpbmQYASABKA4yGi5ydXN0cGFuZWwudjEuU2l0ZUJpbmRLaW5kEhAKCG5hdF9wb3J0GAIgASgNEhQKDGlwdjZfYWRkcmVzcxgDIAEoCSLlAgoIU2l0ZUl0ZW0SDAoEbmFtZRgBIAEoCRIPCgdkb21haW5zGAIgAygJEgwKBHJvb3QYAyABKAkSFAoMcHJveHlfdGFyZ2V0GAQgASgJEhMKC3NzbF9lbmFibGVkGAUgASgIEhMKC2NvbmZpZ19wYXRoGAYgASgJEg4KBmVuZ2luZRgHIAEoCRITCgtwdWJsaWNfcGF0aBgIIAEoCRITCgtsaXN0ZW5fYWRkchgJIAEoCRIkCgRraW5kGAogASgOMhYucnVzdHBhbmVsLnYxLlNpdGVLaW5kEioKB2JpbmRpbmcYCyABKAsyGS5ydXN0cGFuZWwudjEuU2l0ZUJpbmRpbmcSMwoMdGxzX3N0cmF0ZWd5GAwgASgOMh0ucnVzdHBhbmVsLnYxLlNpdGVUbHNTdHJhdGVneRIUCgxzeXN0ZW1kX3VuaXQYDSABKAkSFQoNaW50ZXJuYWxfcG9ydBgOIAEoDSJLCg9SZXdyaXRlVGVtcGxhdGUSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRINCgVzdGFjaxgDIAEoCRIPCgdjb250ZW50GAQgASgJIj4KDlVwc3RyZWFtVGFyZ2V0EgsKA3VybBgBIAEoCRIOCgZ3ZWlnaHQYAiABKA0SDwoHaGVhbHRoeRgDIAEoCCKxAgoQUmV2ZXJzZVByb3h5UnVsZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg4KBmRvbWFpbhgDIAEoCRITCgtwYXRoX3ByZWZpeBgEIAEoCRItCgd0YXJnZXRzGAUgAygLMhwucnVzdHBhbmVsLnYxLlVwc3RyZWFtVGFyZ2V0EhsKE2xvYWRfYmFsYW5jZV9tZXRob2QYBiABKAkSFQoNY2FjaGVfZW5hYmxlZBgHIAEoCBIdChVyYXRlX2xpbWl0X3Blcl9taW51dGUYCCABKA0SDwoHZW5hYmxlZBgJIAEoCBITCgtjb25maWdfcGF0aBgKIAEoCRIaChJjcmVhdGVkX2F0X3NlY29uZHMYCyABKAQSGgoSdXBkYXRlZF9hdF9zZWNvbmRzGAwgASgEIhIKEExpc3RTaXRlc1JlcXVlc3QiYgoRTGlzdFNpdGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiUKBXNpdGVzGAIgAygLMhYucnVzdHBhbmVsLnYxLlNpdGVJdGVtIqwCChFDcmVhdGVTaXRlUmVxdWVzdBIMCgRuYW1lGAEgASgJEg8KB2RvbWFpbnMYAiADKAkSDAoEcm9vdBgDIAEoCRIUCgxwcm94eV90YXJnZXQYBCABKAkSEwoLc3NsX2VuYWJsZWQYBSABKAgSDgoGZW5naW5lGAYgASgJEhMKC2xpc3Rlbl9hZGRyGAcgASgJEiQKBGtpbmQYCCABKA4yFi5ydXN0cGFuZWwudjEuU2l0ZUtpbmQSKgoHYmluZGluZxgJIAEoCzIZLnJ1c3RwYW5lbC52MS5TaXRlQmluZGluZxIzCgx0bHNfc3RyYXRlZ3kYCiABKA4yHS5ydXN0cGFuZWwudjEuU2l0ZVRsc1N0cmF0ZWd5EhMKC2JpbmFyeV9wYXRoGAsgASgJInsKEkNyZWF0ZVNpdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USJAoEc2l0ZRgCIAEoCzIWLnJ1c3RwYW5lbC52MS5TaXRlSXRlbRIXCg9yZW5kZXJlZF9jb25maWcYAyABKAkiFAoSUmVsb2FkTmdpbnhSZXF1ZXN0Ik0KE1JlbG9hZE5naW54UmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEg4KBm91dHB1dBgCIAEoCSIdChtMaXN0UmV3cml0ZVRlbXBsYXRlc1JlcXVlc3QieAocTGlzdFJld3JpdGVUZW1wbGF0ZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USMAoJdGVtcGxhdGVzGAIgAygLMh0ucnVzdHBhbmVsLnYxLlJld3JpdGVUZW1wbGF0ZSJLChxSZW5kZXJSZXdyaXRlVGVtcGxhdGVSZXF1ZXN0EhMKC3RlbXBsYXRlX2lkGAEgASgJEhYKDmN1c3RvbV9jb250ZW50GAIgASgJImAKHVJlbmRlclJld3JpdGVUZW1wbGF0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIXCg9yZW5kZXJlZF9jb25maWcYAiABKAkiHgocTGlzdFJldmVyc2VQcm94eVJ1bGVzUmVxdWVzdCJ2Ch1MaXN0UmV2ZXJzZVByb3h5UnVsZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLQoFcnVsZXMYAiADKAsyHi5ydXN0cGFuZWwudjEuUmV2ZXJzZVByb3h5UnVsZSJNCh1VcHNlcnRSZXZlcnNlUHJveHlSdWxlUmVxdWVzdBIsCgRydWxlGAEgASgLMh4ucnVzdHBhbmVsLnYxLlJldmVyc2VQcm94eVJ1bGUijwEKHlVwc2VydFJldmVyc2VQcm94eVJ1bGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLAoEcnVsZRgCIAEoCzIeLnJ1c3RwYW5lbC52MS5SZXZlcnNlUHJveHlSdWxlEhcKD3JlbmRlcmVkX2NvbmZpZxgDIAEoCSIrCh1EZWxldGVSZXZlcnNlUHJveHlSdWxlUmVxdWVzdBIKCgJpZBgBIAEoCSJICh5EZWxldGVSZXZlcnNlUHJveHlSdWxlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlKnMKCFNpdGVLaW5kEhkKFVNJVEVfS0lORF9VTlNQRUNJRklFRBAAEhQKEFNJVEVfS0lORF9TVEFUSUMQARIZChVTSVRFX0tJTkRfUlVTVF9CSU5BUlkQAhIbChdTSVRFX0tJTkRfUkVWRVJTRV9QUk9YWRADKmwKDFNpdGVCaW5kS2luZBIeChpTSVRFX0JJTkRfS0lORF9VTlNQRUNJRklFRBAAEhsKF1NJVEVfQklORF9LSU5EX05BVF9QT1JUEAESHwobU0lURV9CSU5EX0tJTkRfSVBWNl9BRERSRVNTEAIqmQEKD1NpdGVUbHNTdHJhdGVneRIhCh1TSVRFX1RMU19TVFJBVEVHWV9VTlNQRUNJRklFRBAAEhoKFlNJVEVfVExTX1NUUkFURUdZX05PTkUQARInCiNTSVRFX1RMU19TVFJBVEVHWV9MRVRTRU5DUllQVF9ETlMwMRACEh4KGlNJVEVfVExTX1NUUkFURUdZX0lNUE9SVEVEEAMyvQYKC1NpdGVTZXJ2aWNlEkwKCUxpc3RTaXRlcxIeLnJ1c3RwYW5lbC52MS5MaXN0U2l0ZXNSZXF1ZXN0Gh8ucnVzdHBhbmVsLnYxLkxpc3RTaXRlc1Jlc3BvbnNlEk8KCkNyZWF0ZVNpdGUSHy5ydXN0cGFuZWwudjEuQ3JlYXRlU2l0ZVJlcXVlc3QaIC5ydXN0cGFuZWwudjEuQ3JlYXRlU2l0ZVJlc3BvbnNlElIKC1JlbG9hZE5naW54EiAucnVzdHBhbmVsLnYxLlJlbG9hZE5naW54UmVxdWVzdBohLnJ1c3RwYW5lbC52MS5SZWxvYWROZ2lueFJlc3BvbnNlEm0KFExpc3RSZXdyaXRlVGVtcGxhdGVzEikucnVzdHBhbmVsLnYxLkxpc3RSZXdyaXRlVGVtcGxhdGVzUmVxdWVzdBoqLnJ1c3RwYW5lbC52MS5MaXN0UmV3cml0ZVRlbXBsYXRlc1Jlc3BvbnNlEnAKFVJlbmRlclJld3JpdGVUZW1wbGF0ZRIqLnJ1c3RwYW5lbC52MS5SZW5kZXJSZXdyaXRlVGVtcGxhdGVSZXF1ZXN0GisucnVzdHBhbmVsLnYxLlJlbmRlclJld3JpdGVUZW1wbGF0ZVJlc3BvbnNlEnAKFUxpc3RSZXZlcnNlUHJveHlSdWxlcxIqLnJ1c3RwYW5lbC52MS5MaXN0UmV2ZXJzZVByb3h5UnVsZXNSZXF1ZXN0GisucnVzdHBhbmVsLnYxLkxpc3RSZXZlcnNlUHJveHlSdWxlc1Jlc3BvbnNlEnMKFlVwc2VydFJldmVyc2VQcm94eVJ1bGUSKy5ydXN0cGFuZWwudjEuVXBzZXJ0UmV2ZXJzZVByb3h5UnVsZVJlcXVlc3QaLC5ydXN0cGFuZWwudjEuVXBzZXJ0UmV2ZXJzZVByb3h5UnVsZVJlc3BvbnNlEnMKFkRlbGV0ZVJldmVyc2VQcm94eVJ1bGUSKy5ydXN0cGFuZWwudjEuRGVsZXRlUmV2ZXJzZVByb3h5UnVsZVJlcXVlc3QaLC5ydXN0cGFuZWwudjEuRGVsZXRlUmV2ZXJzZVByb3h5UnVsZVJlc3BvbnNlYgZwcm90bzM", [file_rustpanel_v1_common]);
+  fileDesc("ChdydXN0cGFuZWwvdjEvc2l0ZS5wcm90bxIMcnVzdHBhbmVsLnYxIl8KC1NpdGVCaW5kaW5nEigKBGtpbmQYASABKA4yGi5ydXN0cGFuZWwudjEuU2l0ZUJpbmRLaW5kEhAKCG5hdF9wb3J0GAIgASgNEhQKDGlwdjZfYWRkcmVzcxgDIAEoCSLlAgoIU2l0ZUl0ZW0SDAoEbmFtZRgBIAEoCRIPCgdkb21haW5zGAIgAygJEgwKBHJvb3QYAyABKAkSFAoMcHJveHlfdGFyZ2V0GAQgASgJEhMKC3NzbF9lbmFibGVkGAUgASgIEhMKC2NvbmZpZ19wYXRoGAYgASgJEg4KBmVuZ2luZRgHIAEoCRITCgtwdWJsaWNfcGF0aBgIIAEoCRITCgtsaXN0ZW5fYWRkchgJIAEoCRIkCgRraW5kGAogASgOMhYucnVzdHBhbmVsLnYxLlNpdGVLaW5kEioKB2JpbmRpbmcYCyABKAsyGS5ydXN0cGFuZWwudjEuU2l0ZUJpbmRpbmcSMwoMdGxzX3N0cmF0ZWd5GAwgASgOMh0ucnVzdHBhbmVsLnYxLlNpdGVUbHNTdHJhdGVneRIUCgxzeXN0ZW1kX3VuaXQYDSABKAkSFQoNaW50ZXJuYWxfcG9ydBgOIAEoDSJLCg9SZXdyaXRlVGVtcGxhdGUSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRINCgVzdGFjaxgDIAEoCRIPCgdjb250ZW50GAQgASgJIj4KDlVwc3RyZWFtVGFyZ2V0EgsKA3VybBgBIAEoCRIOCgZ3ZWlnaHQYAiABKA0SDwoHaGVhbHRoeRgDIAEoCCKxAgoQUmV2ZXJzZVByb3h5UnVsZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg4KBmRvbWFpbhgDIAEoCRITCgtwYXRoX3ByZWZpeBgEIAEoCRItCgd0YXJnZXRzGAUgAygLMhwucnVzdHBhbmVsLnYxLlVwc3RyZWFtVGFyZ2V0EhsKE2xvYWRfYmFsYW5jZV9tZXRob2QYBiABKAkSFQoNY2FjaGVfZW5hYmxlZBgHIAEoCBIdChVyYXRlX2xpbWl0X3Blcl9taW51dGUYCCABKA0SDwoHZW5hYmxlZBgJIAEoCBITCgtjb25maWdfcGF0aBgKIAEoCRIaChJjcmVhdGVkX2F0X3NlY29uZHMYCyABKAQSGgoSdXBkYXRlZF9hdF9zZWNvbmRzGAwgASgEIhIKEExpc3RTaXRlc1JlcXVlc3QiYgoRTGlzdFNpdGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiUKBXNpdGVzGAIgAygLMhYucnVzdHBhbmVsLnYxLlNpdGVJdGVtIqwCChFDcmVhdGVTaXRlUmVxdWVzdBIMCgRuYW1lGAEgASgJEg8KB2RvbWFpbnMYAiADKAkSDAoEcm9vdBgDIAEoCRIUCgxwcm94eV90YXJnZXQYBCABKAkSEwoLc3NsX2VuYWJsZWQYBSABKAgSDgoGZW5naW5lGAYgASgJEhMKC2xpc3Rlbl9hZGRyGAcgASgJEiQKBGtpbmQYCCABKA4yFi5ydXN0cGFuZWwudjEuU2l0ZUtpbmQSKgoHYmluZGluZxgJIAEoCzIZLnJ1c3RwYW5lbC52MS5TaXRlQmluZGluZxIzCgx0bHNfc3RyYXRlZ3kYCiABKA4yHS5ydXN0cGFuZWwudjEuU2l0ZVRsc1N0cmF0ZWd5EhMKC2JpbmFyeV9wYXRoGAsgASgJInsKEkNyZWF0ZVNpdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USJAoEc2l0ZRgCIAEoCzIWLnJ1c3RwYW5lbC52MS5TaXRlSXRlbRIXCg9yZW5kZXJlZF9jb25maWcYAyABKAkiIQoRRGVsZXRlU2l0ZVJlcXVlc3QSDAoEbmFtZRgBIAEoCSJTChJEZWxldGVTaXRlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEhUKDWNsZWFuZWRfcGF0aHMYAiADKAkiFAoSUmVsb2FkTmdpbnhSZXF1ZXN0Ik0KE1JlbG9hZE5naW54UmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEg4KBm91dHB1dBgCIAEoCSIdChtMaXN0UmV3cml0ZVRlbXBsYXRlc1JlcXVlc3QieAocTGlzdFJld3JpdGVUZW1wbGF0ZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USMAoJdGVtcGxhdGVzGAIgAygLMh0ucnVzdHBhbmVsLnYxLlJld3JpdGVUZW1wbGF0ZSJLChxSZW5kZXJSZXdyaXRlVGVtcGxhdGVSZXF1ZXN0EhMKC3RlbXBsYXRlX2lkGAEgASgJEhYKDmN1c3RvbV9jb250ZW50GAIgASgJImAKHVJlbmRlclJld3JpdGVUZW1wbGF0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIXCg9yZW5kZXJlZF9jb25maWcYAiABKAkiHgocTGlzdFJldmVyc2VQcm94eVJ1bGVzUmVxdWVzdCJ2Ch1MaXN0UmV2ZXJzZVByb3h5UnVsZXNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLQoFcnVsZXMYAiADKAsyHi5ydXN0cGFuZWwudjEuUmV2ZXJzZVByb3h5UnVsZSJNCh1VcHNlcnRSZXZlcnNlUHJveHlSdWxlUmVxdWVzdBIsCgRydWxlGAEgASgLMh4ucnVzdHBhbmVsLnYxLlJldmVyc2VQcm94eVJ1bGUijwEKHlVwc2VydFJldmVyc2VQcm94eVJ1bGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USLAoEcnVsZRgCIAEoCzIeLnJ1c3RwYW5lbC52MS5SZXZlcnNlUHJveHlSdWxlEhcKD3JlbmRlcmVkX2NvbmZpZxgDIAEoCSIrCh1EZWxldGVSZXZlcnNlUHJveHlSdWxlUmVxdWVzdBIKCgJpZBgBIAEoCSJICh5EZWxldGVSZXZlcnNlUHJveHlSdWxlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlKnMKCFNpdGVLaW5kEhkKFVNJVEVfS0lORF9VTlNQRUNJRklFRBAAEhQKEFNJVEVfS0lORF9TVEFUSUMQARIZChVTSVRFX0tJTkRfUlVTVF9CSU5BUlkQAhIbChdTSVRFX0tJTkRfUkVWRVJTRV9QUk9YWRADKmwKDFNpdGVCaW5kS2luZBIeChpTSVRFX0JJTkRfS0lORF9VTlNQRUNJRklFRBAAEhsKF1NJVEVfQklORF9LSU5EX05BVF9QT1JUEAESHwobU0lURV9CSU5EX0tJTkRfSVBWNl9BRERSRVNTEAIqmQEKD1NpdGVUbHNTdHJhdGVneRIhCh1TSVRFX1RMU19TVFJBVEVHWV9VTlNQRUNJRklFRBAAEhoKFlNJVEVfVExTX1NUUkFURUdZX05PTkUQARInCiNTSVRFX1RMU19TVFJBVEVHWV9MRVRTRU5DUllQVF9ETlMwMRACEh4KGlNJVEVfVExTX1NUUkFURUdZX0lNUE9SVEVEEAMyjgcKC1NpdGVTZXJ2aWNlEkwKCUxpc3RTaXRlcxIeLnJ1c3RwYW5lbC52MS5MaXN0U2l0ZXNSZXF1ZXN0Gh8ucnVzdHBhbmVsLnYxLkxpc3RTaXRlc1Jlc3BvbnNlEk8KCkNyZWF0ZVNpdGUSHy5ydXN0cGFuZWwudjEuQ3JlYXRlU2l0ZVJlcXVlc3QaIC5ydXN0cGFuZWwudjEuQ3JlYXRlU2l0ZVJlc3BvbnNlEk8KCkRlbGV0ZVNpdGUSHy5ydXN0cGFuZWwudjEuRGVsZXRlU2l0ZVJlcXVlc3QaIC5ydXN0cGFuZWwudjEuRGVsZXRlU2l0ZVJlc3BvbnNlElIKC1JlbG9hZE5naW54EiAucnVzdHBhbmVsLnYxLlJlbG9hZE5naW54UmVxdWVzdBohLnJ1c3RwYW5lbC52MS5SZWxvYWROZ2lueFJlc3BvbnNlEm0KFExpc3RSZXdyaXRlVGVtcGxhdGVzEikucnVzdHBhbmVsLnYxLkxpc3RSZXdyaXRlVGVtcGxhdGVzUmVxdWVzdBoqLnJ1c3RwYW5lbC52MS5MaXN0UmV3cml0ZVRlbXBsYXRlc1Jlc3BvbnNlEnAKFVJlbmRlclJld3JpdGVUZW1wbGF0ZRIqLnJ1c3RwYW5lbC52MS5SZW5kZXJSZXdyaXRlVGVtcGxhdGVSZXF1ZXN0GisucnVzdHBhbmVsLnYxLlJlbmRlclJld3JpdGVUZW1wbGF0ZVJlc3BvbnNlEnAKFUxpc3RSZXZlcnNlUHJveHlSdWxlcxIqLnJ1c3RwYW5lbC52MS5MaXN0UmV2ZXJzZVByb3h5UnVsZXNSZXF1ZXN0GisucnVzdHBhbmVsLnYxLkxpc3RSZXZlcnNlUHJveHlSdWxlc1Jlc3BvbnNlEnMKFlVwc2VydFJldmVyc2VQcm94eVJ1bGUSKy5ydXN0cGFuZWwudjEuVXBzZXJ0UmV2ZXJzZVByb3h5UnVsZVJlcXVlc3QaLC5ydXN0cGFuZWwudjEuVXBzZXJ0UmV2ZXJzZVByb3h5UnVsZVJlc3BvbnNlEnMKFkRlbGV0ZVJldmVyc2VQcm94eVJ1bGUSKy5ydXN0cGFuZWwudjEuRGVsZXRlUmV2ZXJzZVByb3h5UnVsZVJlcXVlc3QaLC5ydXN0cGFuZWwudjEuRGVsZXRlUmV2ZXJzZVByb3h5UnVsZVJlc3BvbnNlYgZwcm90bzM", [file_rustpanel_v1_common]);
 
 /**
  * SiteBinding 描述站点的对外绑定(Phase C 新增)。
@@ -416,6 +416,51 @@ export const CreateSiteResponseSchema: GenMessage<CreateSiteResponse> = /*@__PUR
   messageDesc(file_rustpanel_v1_site, 8);
 
 /**
+ * DeleteSiteRequest 表示删除站点请求(按 name 精确匹配)。
+ *
+ * @generated from message rustpanel.v1.DeleteSiteRequest
+ */
+export type DeleteSiteRequest = Message<"rustpanel.v1.DeleteSiteRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.DeleteSiteRequest.
+ * Use `create(DeleteSiteRequestSchema)` to create a new message.
+ */
+export const DeleteSiteRequestSchema: GenMessage<DeleteSiteRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 9);
+
+/**
+ * DeleteSiteResponse 返回删除站点结果。
+ *
+ * @generated from message rustpanel.v1.DeleteSiteResponse
+ */
+export type DeleteSiteResponse = Message<"rustpanel.v1.DeleteSiteResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * 实际清理的副本路径,前端可展示用于审计
+   *
+   * @generated from field: repeated string cleaned_paths = 2;
+   */
+  cleanedPaths: string[];
+};
+
+/**
+ * Describes the message rustpanel.v1.DeleteSiteResponse.
+ * Use `create(DeleteSiteResponseSchema)` to create a new message.
+ */
+export const DeleteSiteResponseSchema: GenMessage<DeleteSiteResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_site, 10);
+
+/**
  * ReloadNginxRequest 表示 Nginx 配置测试和重载请求。
  *
  * @generated from message rustpanel.v1.ReloadNginxRequest
@@ -428,7 +473,7 @@ export type ReloadNginxRequest = Message<"rustpanel.v1.ReloadNginxRequest"> & {
  * Use `create(ReloadNginxRequestSchema)` to create a new message.
  */
 export const ReloadNginxRequestSchema: GenMessage<ReloadNginxRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 9);
+  messageDesc(file_rustpanel_v1_site, 11);
 
 /**
  * ReloadNginxResponse 返回 Nginx 重载结果。
@@ -452,7 +497,7 @@ export type ReloadNginxResponse = Message<"rustpanel.v1.ReloadNginxResponse"> & 
  * Use `create(ReloadNginxResponseSchema)` to create a new message.
  */
 export const ReloadNginxResponseSchema: GenMessage<ReloadNginxResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 10);
+  messageDesc(file_rustpanel_v1_site, 12);
 
 /**
  * ListRewriteTemplatesRequest 表示伪静态模板列表请求。
@@ -467,7 +512,7 @@ export type ListRewriteTemplatesRequest = Message<"rustpanel.v1.ListRewriteTempl
  * Use `create(ListRewriteTemplatesRequestSchema)` to create a new message.
  */
 export const ListRewriteTemplatesRequestSchema: GenMessage<ListRewriteTemplatesRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 11);
+  messageDesc(file_rustpanel_v1_site, 13);
 
 /**
  * ListRewriteTemplatesResponse 返回内置伪静态模板。
@@ -491,7 +536,7 @@ export type ListRewriteTemplatesResponse = Message<"rustpanel.v1.ListRewriteTemp
  * Use `create(ListRewriteTemplatesResponseSchema)` to create a new message.
  */
 export const ListRewriteTemplatesResponseSchema: GenMessage<ListRewriteTemplatesResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 12);
+  messageDesc(file_rustpanel_v1_site, 14);
 
 /**
  * RenderRewriteTemplateRequest 表示模板预览请求。
@@ -515,7 +560,7 @@ export type RenderRewriteTemplateRequest = Message<"rustpanel.v1.RenderRewriteTe
  * Use `create(RenderRewriteTemplateRequestSchema)` to create a new message.
  */
 export const RenderRewriteTemplateRequestSchema: GenMessage<RenderRewriteTemplateRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 13);
+  messageDesc(file_rustpanel_v1_site, 15);
 
 /**
  * RenderRewriteTemplateResponse 返回伪静态配置片段。
@@ -539,7 +584,7 @@ export type RenderRewriteTemplateResponse = Message<"rustpanel.v1.RenderRewriteT
  * Use `create(RenderRewriteTemplateResponseSchema)` to create a new message.
  */
 export const RenderRewriteTemplateResponseSchema: GenMessage<RenderRewriteTemplateResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 14);
+  messageDesc(file_rustpanel_v1_site, 16);
 
 /**
  * ListReverseProxyRulesRequest 表示反向代理规则列表请求。
@@ -554,7 +599,7 @@ export type ListReverseProxyRulesRequest = Message<"rustpanel.v1.ListReverseProx
  * Use `create(ListReverseProxyRulesRequestSchema)` to create a new message.
  */
 export const ListReverseProxyRulesRequestSchema: GenMessage<ListReverseProxyRulesRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 15);
+  messageDesc(file_rustpanel_v1_site, 17);
 
 /**
  * ListReverseProxyRulesResponse 返回反向代理规则。
@@ -578,7 +623,7 @@ export type ListReverseProxyRulesResponse = Message<"rustpanel.v1.ListReversePro
  * Use `create(ListReverseProxyRulesResponseSchema)` to create a new message.
  */
 export const ListReverseProxyRulesResponseSchema: GenMessage<ListReverseProxyRulesResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 16);
+  messageDesc(file_rustpanel_v1_site, 18);
 
 /**
  * UpsertReverseProxyRuleRequest 表示创建或更新反向代理规则请求。
@@ -597,7 +642,7 @@ export type UpsertReverseProxyRuleRequest = Message<"rustpanel.v1.UpsertReverseP
  * Use `create(UpsertReverseProxyRuleRequestSchema)` to create a new message.
  */
 export const UpsertReverseProxyRuleRequestSchema: GenMessage<UpsertReverseProxyRuleRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 17);
+  messageDesc(file_rustpanel_v1_site, 19);
 
 /**
  * UpsertReverseProxyRuleResponse 返回保存后的反向代理规则。
@@ -626,7 +671,7 @@ export type UpsertReverseProxyRuleResponse = Message<"rustpanel.v1.UpsertReverse
  * Use `create(UpsertReverseProxyRuleResponseSchema)` to create a new message.
  */
 export const UpsertReverseProxyRuleResponseSchema: GenMessage<UpsertReverseProxyRuleResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 18);
+  messageDesc(file_rustpanel_v1_site, 20);
 
 /**
  * DeleteReverseProxyRuleRequest 表示删除反向代理规则请求。
@@ -645,7 +690,7 @@ export type DeleteReverseProxyRuleRequest = Message<"rustpanel.v1.DeleteReverseP
  * Use `create(DeleteReverseProxyRuleRequestSchema)` to create a new message.
  */
 export const DeleteReverseProxyRuleRequestSchema: GenMessage<DeleteReverseProxyRuleRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 19);
+  messageDesc(file_rustpanel_v1_site, 21);
 
 /**
  * DeleteReverseProxyRuleResponse 返回删除结果。
@@ -664,7 +709,7 @@ export type DeleteReverseProxyRuleResponse = Message<"rustpanel.v1.DeleteReverse
  * Use `create(DeleteReverseProxyRuleResponseSchema)` to create a new message.
  */
 export const DeleteReverseProxyRuleResponseSchema: GenMessage<DeleteReverseProxyRuleResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_site, 20);
+  messageDesc(file_rustpanel_v1_site, 22);
 
 /**
  * SiteKind 描述站点的部署形态(Phase C)。
@@ -795,6 +840,14 @@ export const SiteService: GenService<{
     methodKind: "unary";
     input: typeof CreateSiteRequestSchema;
     output: typeof CreateSiteResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SiteService.DeleteSite
+   */
+  deleteSite: {
+    methodKind: "unary";
+    input: typeof DeleteSiteRequestSchema;
+    output: typeof DeleteSiteResponseSchema;
   },
   /**
    * @generated from rpc rustpanel.v1.SiteService.ReloadNginx

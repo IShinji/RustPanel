@@ -3932,6 +3932,8 @@ function SitesSsl({ clients }: { clients: Clients }) {
   // === Sheet 抽屉状态 ===
   const [sheetMode, setSheetMode] = useState<SiteSheetMode>(null);
   const [selectedSite, setSelectedSite] = useState<SiteItem | null>(null);
+  // 删除确认 Dialog 的目标站点。null = 不显示。
+  const [siteToDelete, setSiteToDelete] = useState<SiteItem | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -4043,6 +4045,33 @@ function SitesSsl({ clients }: { clients: Clients }) {
     }
   };
 
+  const performDeleteSite = async () => {
+    if (!siteToDelete) return;
+    const target = siteToDelete;
+    setSiteToDelete(null);
+    try {
+      const response = await clients.site.deleteSite({ name: target.name });
+      const cleaned = response.cleanedPaths?.length ?? 0;
+      setMessage(
+        cleaned > 0
+          ? `${target.name} 已删除 · 清理 ${cleaned} 项`
+          : `${target.name} 已删除`
+      );
+      // 释放预留的 NAT 端口预算(本来就是 owner=site:<name> reserve 的)
+      const port = target.binding?.natPort;
+      if (port && port > 0) {
+        await clients.capability.releasePort({ port }).catch(() => undefined);
+      }
+      // 抽屉里如果是这个站点就关掉
+      if (selectedSite?.name === target.name) {
+        closeSheet();
+      }
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
   return (
     <section className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-4 flex-wrap">
@@ -4112,16 +4141,29 @@ function SitesSsl({ clients }: { clients: Clients }) {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <UIButton
-                        size="sm"
-                        variant="ghost"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openEdit(site);
-                        }}
-                      >
-                        编辑
-                      </UIButton>
+                      <div className="flex justify-end gap-1">
+                        <UIButton
+                          size="sm"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openEdit(site);
+                          }}
+                        >
+                          编辑
+                        </UIButton>
+                        <UIButton
+                          size="sm"
+                          variant="ghost"
+                          title="删除站点"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSiteToDelete(site);
+                          }}
+                        >
+                          <Trash2 className="size-3.5 text-destructive" />
+                        </UIButton>
+                      </div>
                     </TableCell>
                   </UITableRow>
                 ))}
@@ -4247,7 +4289,33 @@ function SitesSsl({ clients }: { clients: Clients }) {
         onChanged={() => void load()}
         onMessage={setMessage}
         onError={setError}
+        onRequestDelete={(site) => setSiteToDelete(site)}
       />
+
+      <Dialog
+        open={siteToDelete !== null}
+        onOpenChange={(open) => !open && setSiteToDelete(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除站点 "{siteToDelete?.name}"?</DialogTitle>
+            <DialogDescription>
+              会清理:nginx vhost / 元数据 sidecar / rpxy 站点片段 /
+              sws@实例(如果有)。config 模板与用户上传的网站文件 **不动**;
+              NAT 端口预算会自动释放,可重复使用。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <UIButton variant="outline" onClick={() => setSiteToDelete(null)}>
+              取消
+            </UIButton>
+            <UIButton variant="destructive" onClick={() => void performDeleteSite()}>
+              <Trash2 className="size-4" />
+              确认删除
+            </UIButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -4267,6 +4335,7 @@ type SiteSheetProps = {
   onChanged: () => void;
   onMessage: (message: string) => void;
   onError: (error: string) => void;
+  onRequestDelete?: (site: SiteItem) => void;
 };
 
 function SiteDetailSheet(props: SiteSheetProps) {
@@ -4319,6 +4388,16 @@ function SiteDetailSheet(props: SiteSheetProps) {
           </Tabs>
         </div>
         <SheetFooter>
+          {mode === "edit" && site && props.onRequestDelete && (
+            <UIButton
+              variant="destructive"
+              size="sm"
+              onClick={() => props.onRequestDelete!(site)}
+            >
+              <Trash2 className="size-3.5" />
+              删除站点
+            </UIButton>
+          )}
           <UIButton variant="outline" onClick={onClose}>
             关闭
           </UIButton>
