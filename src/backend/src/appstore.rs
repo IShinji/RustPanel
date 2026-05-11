@@ -349,9 +349,63 @@ pub(crate) fn slug_to_apt_package(slug: &str) -> &str {
         "postgres-tiny" => "postgresql",
         "sqlite" => "sqlite3",
         "wireguard" => "wireguard",
+        // nginx-mainline 走 nginx.org 官方源的 nginx 包(1.27+,内置
+        // http_v3_module),pre-install 钩子负责加源 + pinning
+        "nginx-mainline" => "nginx",
         // nginx-light / fail2ban / certbot 包名与 slug 一致
         other => other,
     }
+}
+
+/// nginx-mainline 的 pre-install 脚本:加 nginx.org GPG key + 官方 deb 源 +
+/// apt pin,保证后续 `apt-get install nginx` 装的是 nginx.org 的 1.27+,
+/// 而不是发行版自己 ship 的 1.22/1.24(没编译 http_v3_module)。
+/// **所有 deb 都是 nginx 团队预编译好的,客户端零编译。**
+const NGINX_MAINLINE_PREINSTALL: &str = r#"set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y curl gnupg2 ca-certificates lsb-release debian-archive-keyring
+install -d -m 0755 /usr/share/keyrings
+curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
+DISTRO=$(lsb_release -is | tr '[:upper:]' '[:lower:]')
+CODENAME=$(lsb_release -cs)
+echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/mainline/${DISTRO} ${CODENAME} nginx" > /etc/apt/sources.list.d/nginx.list
+cat > /etc/apt/preferences.d/99nginx <<'PIN'
+Package: *
+Pin: origin nginx.org
+Pin: release o=nginx
+Pin-Priority: 900
+PIN
+"#;
+
+/// slug → 安装前要跑的 shell 脚本(完整可执行 bash 片段)。返回 None
+/// 表示无前置步骤,直接走 apt-get install。
+pub(crate) fn slug_to_apt_pre_install(slug: &str) -> Option<&'static str> {
+    match slug {
+        "nginx-mainline" => Some(NGINX_MAINLINE_PREINSTALL),
+        _ => None,
+    }
+}
+
+/// 跑 pre-install 脚本(bash -c)。SKIP_EXECUTE 时干跑跳过。
+async fn run_pre_install(script: &str) -> Result<(), Status> {
+    if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
+        return Ok(());
+    }
+    let output = tokio::process::Command::new("bash")
+        .arg("-c")
+        .arg(script)
+        .env("DEBIAN_FRONTEND", "noninteractive")
+        .output()
+        .await
+        .map_err(io_status)?;
+    if !output.status.success() {
+        return Err(Status::unavailable(format!(
+            "apt pre-install script failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    Ok(())
 }
 
 async fn deploy_via_apt(
@@ -364,13 +418,25 @@ async fn deploy_via_apt(
         &request.app_name
     })?;
     let pkg = slug_to_apt_package(&template.slug).to_owned();
+    let pre_install = slug_to_apt_pre_install(&template.slug);
+    let pre_note = if pre_install.is_some() {
+        "\n前置: 已添加 nginx.org 官方 apt 源 + GPG key + pinning(预编译 deb,无本地编译)"
+    } else {
+        ""
+    };
     let summary = format!(
-        "apt 包: {pkg}\n安装命令: apt-get install -y {pkg}\n备注: 由 apt 控制启动 / 服务状态,RustPanel 不接管 systemd 单元。\n下一步: 若包提供服务(redis-server / postgresql / nginx),`systemctl status {pkg}` 查看运行状况。"
+        "apt 包: {pkg}\n安装命令: apt-get install -y {pkg}{pre_note}\n备注: 由 apt 控制启动 / 服务状态,RustPanel 不接管 systemd 单元。\n下一步: 若包提供服务(redis-server / postgresql / nginx),`systemctl status {pkg}` 查看运行状况。"
     );
 
     let state = if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
         "planned".to_owned()
     } else {
+        // 有 pre-install 脚本就先跑(添加 nginx.org apt 源 / GPG key / pinning),
+        // 然后再 apt-get install。两步分开:pre-install 失败时给出明确的
+        // "添加源失败" 而不是被 apt-get install 的 "Unable to locate package" 误导。
+        if let Some(script) = slug_to_apt_pre_install(&template.slug) {
+            run_pre_install(script).await?;
+        }
         execute_apt_install(&pkg).await?;
         "installed".to_owned()
     };
@@ -757,11 +823,22 @@ pub fn app_templates() -> Vec<AppTemplate> {
         // ====== 轻量 systemd-first(NAT VPS / OpenVZ 友好) ======
         native_template(
             "nginx-light",
-            "Nginx (apt)",
-            "通过 apt 安装 nginx-light,系统包形式运行,常驻 RAM ~5MB。",
+            "Nginx (apt 发行版默认)",
+            "通过 apt 安装 nginx-light(发行版默认源,Debian 12 / Ubuntu 24.04 大概率是 1.22 / 1.24,**没有 HTTP/3**)。常驻 RAM ~5MB。要 HTTP/3 请装 nginx-mainline。",
             AppCategory::WebServer,
             10,
             8,
+            5,
+            false,
+        )
+        .with_homepage("https://nginx.org/"),
+        native_template(
+            "nginx-mainline",
+            "Nginx mainline 1.27+(HTTP/3)",
+            "从 nginx.org **官方 apt 源**装最新 mainline(deb 由 nginx 团队预编译,客户端零本地编译)。带 --with-http_v3_module,vhost 启用 SSL 时 RustPanel 自动 emit `listen ... quic reuseport;` 让 HTTP/3 真正生效。安装会自动加 nginx.org GPG key + 源 + apt pinning。常驻 RAM ~5MB。",
+            AppCategory::WebServer,
+            10,
+            12,
             5,
             true,
         )
@@ -2238,8 +2315,26 @@ mod tests {
         assert_eq!(slug_to_apt_package("nginx-light"), "nginx-light");
         assert_eq!(slug_to_apt_package("fail2ban"), "fail2ban");
         assert_eq!(slug_to_apt_package("certbot"), "certbot");
+        // nginx-mainline → 包名 nginx(nginx.org 官方源里就叫这个)
+        assert_eq!(slug_to_apt_package("nginx-mainline"), "nginx");
         // 未知 slug 也兜底,executor 端的 apt-get 自己报"无此包"
         assert_eq!(slug_to_apt_package("nonexistent"), "nonexistent");
+    }
+
+    #[test]
+    fn nginx_mainline_has_apt_repo_pre_install_script() {
+        // nginx-mainline 必须配套 pre-install 脚本,否则只能装到发行版
+        // 老 nginx,装个 HTTP/3 寂寞。脚本里应当出现 nginx.org 官方源、
+        // GPG key 路径和 apt pinning。
+        let script = slug_to_apt_pre_install("nginx-mainline").expect("脚本必须有");
+        assert!(script.contains("nginx.org"));
+        assert!(script.contains("nginx_signing.key"));
+        assert!(script.contains("nginx-archive-keyring.gpg"));
+        assert!(script.contains("/etc/apt/sources.list.d/nginx.list"));
+        assert!(script.contains("/etc/apt/preferences.d/99nginx"));
+        // 其它 slug 不应有 pre-install
+        assert!(slug_to_apt_pre_install("nginx-light").is_none());
+        assert!(slug_to_apt_pre_install("redis-tuned").is_none());
     }
 
     #[test]
