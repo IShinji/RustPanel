@@ -1,4 +1,8 @@
-use std::{env, path::PathBuf, sync::Arc};
+use std::{
+    env,
+    path::PathBuf,
+    sync::{Arc, OnceLock},
+};
 
 use serde::{Deserialize, Serialize};
 use tera::{Context, Tera};
@@ -997,16 +1001,24 @@ fn render_phase_c_site(
             //   - HTTP-01 ACME 验证必须能从 80 端口拉 challenge 文件
             //   - 没 SSL 时直接服务 HTTP
             //   - 有 SSL 时承担 http → https 重定向
-            // 然后,启用 SSL 时再叠加 443 ssl 监听。配套的 ssl_certificate
+            // 然后,启用 SSL 时再叠加 443 ssl/quic 监听。配套的 ssl_certificate
             // 文件由 ssl::bootstrap_self_signed_if_missing 在 create_site 阶段
             // 先用自签兜底,保证 nginx -t 不会因为找不到证书拒绝启动;
             // 真证书签发后会原地覆盖。
+            // HTTP/3:nginx 1.25+ 编译了 --with-http_v3_module 才支持 `quic`
+            // 这个 listen 参数;探测不到就只走 HTTP/2,避免老 nginx -t 报错。
             let mut lines = format!("    listen [{addr}]:80;\n", addr = b.ipv6_address);
             if tls != SiteTlsStrategy::None {
                 lines.push_str(&format!(
                     "    listen [{addr}]:443 ssl http2;\n",
                     addr = b.ipv6_address
                 ));
+                if nginx_supports_http3() {
+                    lines.push_str(&format!(
+                        "    listen [{addr}]:443 quic reuseport;\n",
+                        addr = b.ipv6_address
+                    ));
+                }
             }
             lines
         }
@@ -1047,14 +1059,23 @@ fn render_phase_c_site(
     // ssl_certificate 路径指向 ssl 模块实际写证书的位置(RUSTPANEL_CERT_ROOT,
     // 默认 /var/lib/rustpanel/acme/<domain>/),而不是 /etc/letsencrypt/live。
     // 之前的硬编码导致 ACME 签好的证书 nginx 根本读不到,反代 vhost 立即 500。
+    // 顺手:把 ssl_protocols 显式钉到 TLS 1.2/1.3(HTTP/3 强制 TLS 1.3);
+    // 若 nginx 支持 HTTP/3,在 vhost 加一条 Alt-Svc 头让现代浏览器自动
+    // 切到 h3。
     let tls_block = match tls {
         SiteTlsStrategy::LetsencryptDns01 | SiteTlsStrategy::Imported => {
             let (cert_path, key_path) = crate::ssl::acme_cert_paths(&primary);
-            format!(
-                "    ssl_certificate {};\n    ssl_certificate_key {};\n",
+            let mut block = format!(
+                "    ssl_certificate {};\n    ssl_certificate_key {};\n    ssl_protocols TLSv1.2 TLSv1.3;\n",
                 cert_path.display(),
                 key_path.display(),
-            )
+            );
+            if nginx_supports_http3() {
+                block.push_str(
+                    "    add_header Alt-Svc 'h3=\":443\"; ma=86400' always;\n    add_header X-Quic-Status $http3 always;\n",
+                );
+            }
+            block
         }
         _ => String::new(),
     };
@@ -1202,6 +1223,41 @@ fn safe_name(name: &str) -> Result<String, Status> {
     } else {
         Ok(safe)
     }
+}
+
+/// 探测本机 nginx 是否编译了 HTTP/3(QUIC)模块。结果缓存进 OnceLock,
+/// 进程生命周期内只跑一次 `nginx -V`。env `RUSTPANEL_SITE_HTTP3` 可强制:
+///   - "off" / "0" / "false"  → 始终关
+///   - "on"  / "1" / "true"   → 始终开(即使没有模块,emit 出去 nginx 会拒)
+///   - 其它 / 未设置          → 自动探测
+fn nginx_supports_http3() -> bool {
+    static CACHE: OnceLock<bool> = OnceLock::new();
+    *CACHE.get_or_init(|| {
+        if let Ok(value) = env::var("RUSTPANEL_SITE_HTTP3") {
+            let lower = value.to_ascii_lowercase();
+            match lower.as_str() {
+                "off" | "0" | "false" | "no" => return false,
+                "on" | "1" | "true" | "yes" => return true,
+                _ => {}
+            }
+        }
+        // nginx -V 把所有编译参数打到 stderr;mainline 1.25+ 默认含
+        // --with-http_v3_module。距离 stable 还远的 1.22/1.24 没这个
+        // 模块,emit `quic` 会让 nginx -t 直接拒绝。
+        std::process::Command::new("nginx")
+            .arg("-V")
+            .output()
+            .ok()
+            .map(|output| {
+                let combined = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                combined.contains("--with-http_v3_module")
+            })
+            .unwrap_or(false)
+    })
 }
 
 fn nginx_sites_dir() -> PathBuf {
