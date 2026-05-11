@@ -5336,6 +5336,16 @@ function SslPanel({
     privateKeyPem: ""
   });
   const [pendingChallenge, setPendingChallenge] = useState<RequestCertificateResponse | null>(null);
+  // 默认 HTTP-01:一次点击就完成,后端把 challenge 文件写到站点 webroot,
+  // LE 从公网 80 端口拉。NAT VPS 上 80 通常进得来(CF 橙云 / IPv6 公网),
+  // 大多数情况就够。如果用户明确知道 80 不可达(纯 IPv4 NAT 无端口转发
+  // 或 CF 灰云直连 IPv4),手动切 DNS-01。
+  // Static 类站点才有 webroot 给 HTTP-01 用;反代 / RustBinary 类站点没
+  // webroot,自动 fall back DNS-01。
+  const supportsHttp01 = (site.root?.trim().length ?? 0) > 0;
+  const [challengeMode, setChallengeMode] = useState<"http01" | "dns01">(
+    supportsHttp01 ? "http01" : "dns01"
+  );
   const cert = certificates.find((c) => c.domain === primaryDomain);
 
   const requestSsl = async () => {
@@ -5349,23 +5359,23 @@ function SslPanel({
       return;
     }
     try {
-      // 显式 DNS-01:NAT VPS 上 80 端口拿不到,HTTP-01 走不通;并且
-      // 不传 challenge_type 后端会 fall through 到一个**自签**回退路径,
-      // "一键成功"但浏览器不信任 —— 等于骗用户。这里硬走 DNS-01。
       const response = await clients.ssl.requestCertificate({
         domain: primaryDomain,
         email: acmeEmail,
-        challengeType: AcmeChallengeType.DNS_01
+        challengeType:
+          challengeMode === "http01"
+            ? AcmeChallengeType.HTTP_01
+            : AcmeChallengeType.DNS_01
       });
       if (response.dnsRecordName || response.dnsRecordValue) {
-        // 第一次调用:ACME 返回 TXT 挑战,要用户去 DNS 服务商添加
+        // DNS-01 第一次调用:ACME 返回 TXT 挑战
         setPendingChallenge(response);
         onMessage(
           response.status?.message ??
             "请按下方提示添加 TXT 记录,DNS 生效后再点一次申请完成签发"
         );
       } else if (response.certificate) {
-        // 第二次调用(TXT 生效后):真正拿到证书
+        // 拿到证书(HTTP-01 一步到位,或 DNS-01 第二次调用)
         setPendingChallenge(null);
         onMessage(`${response.certificate.domain} 已签发`);
       } else {
@@ -5444,10 +5454,42 @@ function SslPanel({
       )}
 
       <div className="space-y-2">
-        <div className="text-sm font-medium">自动签发(Let's Encrypt DNS-01)</div>
-        <div className="text-xs text-muted-foreground">
-          <strong>两步</strong>:第一次点 → 后端给出 TXT 记录 → 到你的 DNS 服务商加上 →
-          DNS 生效后(可用 `dig TXT _acme-challenge.&lt;域名&gt;` 验证)再点一次完成签发。
+        <div className="text-sm font-medium">自动签发(Let&apos;s Encrypt)</div>
+        <div className="flex flex-col gap-1.5">
+          <label className="flex items-start gap-2 text-xs cursor-pointer">
+            <input
+              type="radio"
+              className="mt-0.5"
+              checked={challengeMode === "http01"}
+              disabled={!supportsHttp01}
+              onChange={() => setChallengeMode("http01")}
+            />
+            <div>
+              <div className="font-medium">
+                HTTP-01(推荐 · 一键完成,不用碰 DNS)
+                {!supportsHttp01 && (
+                  <span className="ml-1 text-muted-foreground">— 当前站点无 webroot,不可用</span>
+                )}
+              </div>
+              <div className="text-muted-foreground">
+                面板把验证文件写到站点目录的 <code>.well-known/acme-challenge/</code>,LE 从 80 端口直接拉。前提:80 公网能进来(CF 橙云 / IPv6 直连都满足)。
+              </div>
+            </div>
+          </label>
+          <label className="flex items-start gap-2 text-xs cursor-pointer">
+            <input
+              type="radio"
+              className="mt-0.5"
+              checked={challengeMode === "dns01"}
+              onChange={() => setChallengeMode("dns01")}
+            />
+            <div>
+              <div className="font-medium">DNS-01(两步,要加 TXT 记录)</div>
+              <div className="text-muted-foreground">
+                适用于 80 端口不通的环境,或需要签 <code>*.example.com</code> 通配证书。
+              </div>
+            </div>
+          </label>
         </div>
         <UIButton
           size="sm"
@@ -5458,7 +5500,9 @@ function SslPanel({
           {primaryDomain
             ? pendingChallenge
               ? `已添加 TXT,继续签发 ${primaryDomain}`
-              : `开始申请 ${primaryDomain}`
+              : challengeMode === "http01"
+                ? `一键申请 ${primaryDomain}`
+                : `开始申请 ${primaryDomain}(DNS-01)`
             : "需先在'基础'Tab 绑定域名"}
         </UIButton>
         {pendingChallenge && (pendingChallenge.dnsRecordName || pendingChallenge.dnsRecordValue) && (

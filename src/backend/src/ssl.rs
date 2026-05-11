@@ -152,18 +152,33 @@ impl SslService for SslServiceImpl {
         }
 
         // 显式 HTTP-01:走真实 instant-acme 状态机,面板自动把 token 写
-        // 到 webroot 里。前提是 nginx 已经在 80 端口监听该域名 + webroot
-        // /.well-known/acme-challenge/ 可达。NAT VPS 80 端口不暴露的情况
-        // 下,validation 会卡在 pending → 24 次 5 秒轮询后报 Timeout,
-        // 用户该转用 DNS-01。
-        prepare_challenge_root().await?;
+        // HTTP-01 要把 challenge token 文件放到 LE 能从 80 端口拉到的地方。
+        // 之前 backend 写到 /var/www/rustpanel-acme/.well-known/acme-challenge/,
+        // 但 rpxy/nginx 默认都反代 / 路径到站点本身的 SWS upstream,根本
+        // 不知道有这个目录 → LE 拉 404 → 验证失败。改成:**直接写到该
+        // 域名对应站点的 webroot 下**,SWS / nginx 静态服务自然就给到。
+        //
+        // 找不到对应站点 webroot(纯反代站、域名跟任何站点都不绑)→
+        // fallback 到老的 challenge_root 路径,prepare_challenge_root
+        // 至少能让面板自己的 RustPanel-managed 反代规则把它代理出去
+        // (未来 commit 加上 .well-known/acme-challenge/ 的全局反代时
+        // 那块会兜底)。
+        let webroot = match crate::site::find_site_webroot_by_domain(&request.domain).await {
+            Some(site_root) => site_root,
+            None => {
+                prepare_challenge_root().await?;
+                challenge_root()
+            }
+        };
         send_progress(
             &sender,
             &request.domain,
             CertificateState::Pending,
-            "http-01: ACME 创建 order,等待服务器拉取 challenge 文件",
+            &format!(
+                "http-01: 把 challenge 文件写到 {} 等 ACME 服务器拉取",
+                webroot.display()
+            ),
         );
-        let webroot = challenge_root();
         let cert = crate::acme::request_http01_blocking(&request.domain, &request.email, &webroot)
             .await
             .map_err(|e| Status::internal(format!("acme http-01: {e}")))?;

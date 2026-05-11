@@ -531,6 +531,31 @@ impl SiteService for SiteServiceImpl {
     }
 }
 
+/// 给 ssl 模块用:按域名查站点的 webroot。HTTP-01 challenge 要把 token
+/// 文件写到 site 的 root 下,LE 才能通过 rpxy/nginx 反代拉到。
+///
+/// 返回 None 表示找不到该域名对应的站点,或者站点没设 root(典型纯反代站)。
+pub(crate) async fn find_site_webroot_by_domain(domain: &str) -> Option<std::path::PathBuf> {
+    let store = SiteStore::from_env();
+    let sites = list_site_configs(&store).await.ok()?;
+    let needle = domain.trim().to_ascii_lowercase();
+    for site in sites {
+        let matched = site
+            .domains
+            .iter()
+            .any(|d| d.trim().eq_ignore_ascii_case(&needle));
+        if !matched {
+            continue;
+        }
+        let root = site.root.trim();
+        if root.is_empty() {
+            continue;
+        }
+        return Some(std::path::PathBuf::from(root));
+    }
+    None
+}
+
 async fn list_site_configs(store: &SiteStore) -> Result<Vec<SiteItem>, Status> {
     let mut sites = Vec::new();
     sites.extend(store.load_builtin_sites().await?);
