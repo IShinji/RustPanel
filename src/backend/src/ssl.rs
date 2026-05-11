@@ -50,10 +50,21 @@ impl SslService for SslServiceImpl {
 
         let challenge_type =
             AcmeChallengeType::try_from(request.challenge_type).unwrap_or_default();
+        // 安全默认:UNSPECIFIED 一律按 DNS-01 处理。
+        // 原因:此前 challenge_type 不指定时会 fall through 到 HTTP-01 路径,
+        //   而 HTTP-01 在 NAT VPS 上根本拿不到 80 端口 → 退到 issue_certificate
+        //   的**自签证书回退** → UI 显示"一键成功",但浏览器红色不信任,
+        //   等于骗用户。这里把"未指定"等价于 DNS-01,避免误导。
+        // 真要走 HTTP-01 必须显式传 AcmeChallengeType::Http01。
+        let effective_challenge = if challenge_type == AcmeChallengeType::Unspecified {
+            AcmeChallengeType::Dns01
+        } else {
+            challenge_type
+        };
         // NAT VPS 上 80 端口通常拿不到,DNS-01 是唯一可行的挑战方式。
         // P8-04-5:走真实 instant-acme 状态机,第一次返回真 TXT,第二次完成
         // 验证拿到证书。manual 模式默认走 staging,生产需要 RUSTPANEL_ACME_PRODUCTION=1。
-        if challenge_type == AcmeChallengeType::Dns01 {
+        if effective_challenge == AcmeChallengeType::Dns01 {
             let provider = if request.dns_provider.trim().is_empty() {
                 "manual"
             } else {
@@ -118,11 +129,14 @@ impl SslService for SslServiceImpl {
             )));
         }
 
+        // 显式 HTTP-01 路径 —— 当前 issue_certificate 是**自签证书回退**,
+        // 不是真的走 ACME。诚实地告诉调用方这是个自签:浏览器不会信任,
+        // 仅适用于内部测试 / 本地开发。生产请用 DNS-01。
         send_progress(
             &sender,
             &request.domain,
             CertificateState::Pending,
-            "http-01 challenge prepared",
+            "http-01 fallback: 本地自签证书(浏览器不信任,生产请改用 DNS-01)",
         );
 
         let certificate = issue_certificate(&request.domain).await?;
@@ -130,12 +144,14 @@ impl SslService for SslServiceImpl {
             &sender,
             &request.domain,
             CertificateState::Issued,
-            "certificate stored",
+            "self-signed certificate written",
         );
         let _ = reload_nginx().await;
 
         Ok(GrpcResponse::new(RequestCertificateResponse {
-            status: Some(ok_response("certificate issued")),
+            status: Some(ok_response(
+                "已写入本地自签证书(浏览器不信任 · 仅供内部测试),生产请使用 DNS-01",
+            )),
             certificate: Some(certificate),
             dns_record_name: String::new(),
             dns_record_value: String::new(),

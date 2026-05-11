@@ -106,7 +106,11 @@ import {
   SiteKind,
   SiteTlsStrategy
 } from "./gen/rustpanel/v1/site_pb";
-import { AcmeChallengeType, CertificateItem } from "./gen/rustpanel/v1/ssl_pb";
+import {
+  AcmeChallengeType,
+  CertificateItem,
+  RequestCertificateResponse
+} from "./gen/rustpanel/v1/ssl_pb";
 import { RuntimeModule } from "./gen/rustpanel/v1/system_pb";
 import { WorkloadItem, WorkloadState } from "./gen/rustpanel/v1/workload_pb";
 import { Badge } from "./components/ui/badge";
@@ -4890,6 +4894,7 @@ function SslPanel({
     certificatePem: "",
     privateKeyPem: ""
   });
+  const [pendingChallenge, setPendingChallenge] = useState<RequestCertificateResponse | null>(null);
   const cert = certificates.find((c) => c.domain === primaryDomain);
 
   const requestSsl = async () => {
@@ -4898,15 +4903,28 @@ function SslPanel({
       return;
     }
     try {
+      // 显式 DNS-01:NAT VPS 上 80 端口拿不到,HTTP-01 走不通;并且
+      // 不传 challenge_type 后端会 fall through 到一个**自签**回退路径,
+      // "一键成功"但浏览器不信任 —— 等于骗用户。这里硬走 DNS-01。
       const response = await clients.ssl.requestCertificate({
         domain: primaryDomain,
-        email: "admin@example.com"
+        email: "admin@example.com",
+        challengeType: AcmeChallengeType.DNS_01
       });
-      onMessage(
-        response.certificate
-          ? `${response.certificate.domain} 已签发`
-          : response.status?.message ?? "请按提示添加 TXT 记录后再点一次申请"
-      );
+      if (response.dnsRecordName || response.dnsRecordValue) {
+        // 第一次调用:ACME 返回 TXT 挑战,要用户去 DNS 服务商添加
+        setPendingChallenge(response);
+        onMessage(
+          response.status?.message ??
+            "请按下方提示添加 TXT 记录,DNS 生效后再点一次申请完成签发"
+        );
+      } else if (response.certificate) {
+        // 第二次调用(TXT 生效后):真正拿到证书
+        setPendingChallenge(null);
+        onMessage(`${response.certificate.domain} 已签发`);
+      } else {
+        onMessage(response.status?.message ?? "申请已提交,请按提示继续");
+      }
       onChanged();
     } catch (err) {
       onError(safeError(err));
@@ -4956,7 +4974,8 @@ function SslPanel({
       <div className="space-y-2">
         <div className="text-sm font-medium">自动签发(Let's Encrypt DNS-01)</div>
         <div className="text-xs text-muted-foreground">
-          首次点击返回需添加的 TXT 记录;添加后再点一次完成签发。
+          <strong>两步</strong>:第一次点 → 后端给出 TXT 记录 → 到你的 DNS 服务商加上 →
+          DNS 生效后(可用 `dig TXT _acme-challenge.&lt;域名&gt;` 验证)再点一次完成签发。
         </div>
         <UIButton
           size="sm"
@@ -4964,8 +4983,28 @@ function SslPanel({
           disabled={!primaryDomain}
         >
           <ShieldCheck className="size-3.5" />
-          {primaryDomain ? `一键申请 ${primaryDomain}` : "需先在'基础'Tab 绑定域名"}
+          {primaryDomain
+            ? pendingChallenge
+              ? `已添加 TXT,继续签发 ${primaryDomain}`
+              : `开始申请 ${primaryDomain}`
+            : "需先在'基础'Tab 绑定域名"}
         </UIButton>
+        {pendingChallenge && (pendingChallenge.dnsRecordName || pendingChallenge.dnsRecordValue) && (
+          <div className="rounded border border-info/30 bg-info/5 p-3 text-xs space-y-2">
+            <div className="font-medium">需要在 DNS 服务商添加这条 TXT 记录:</div>
+            <div className="grid gap-1 sm:grid-cols-[80px_1fr]">
+              <span className="text-muted-foreground">记录类型</span>
+              <span className="font-mono">TXT</span>
+              <span className="text-muted-foreground">主机记录</span>
+              <span className="font-mono break-all">{pendingChallenge.dnsRecordName || "(待返回)"}</span>
+              <span className="text-muted-foreground">记录值</span>
+              <span className="font-mono break-all">{pendingChallenge.dnsRecordValue || "(待返回)"}</span>
+            </div>
+            <div className="text-muted-foreground">
+              加完后等几分钟 DNS 全球生效,再点上面按钮完成签发。
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
