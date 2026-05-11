@@ -246,15 +246,14 @@ async fn deploy_via_binary(
     } else {
         &request.app_name
     })?;
-    let version = resolve_binary_version(&plan, &request.version).await?;
-    let asset_name = expand_asset_pattern(plan.asset_pattern, &version);
-    let summary = render_install_plan_summary(&plan, &version, &asset_name);
+    let resolved = resolve_release_asset(&plan, &request.version).await?;
+    let summary = render_install_plan_summary(&plan, &resolved.version, &resolved.asset_name);
     let unit_path = systemd_unit_dir().join(format!("{}.service", template.slug));
 
     let state = if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
         "planned".to_owned()
     } else {
-        execute_binary_install(&template.slug, &plan, &version, &asset_name).await?;
+        execute_binary_install(&template.slug, &plan, &resolved).await?;
         "installed".to_owned()
     };
 
@@ -262,7 +261,7 @@ async fn deploy_via_binary(
     let app = InstalledApp {
         app_name: app_name.clone(),
         slug: template.slug.clone(),
-        version,
+        version: resolved.version,
         image: String::new(),
         // 复用 compose_path 字段保存这次安装的 systemd unit 路径,
         // 后续 uninstall / update 能从元数据里直接拿到。
@@ -319,17 +318,16 @@ async fn update_via_binary(
             template.slug
         ))
     })?;
-    let new_version = resolve_binary_version(&plan, requested_version).await?;
-    let asset_name = expand_asset_pattern(plan.asset_pattern, &new_version);
-    let summary = render_install_plan_summary(&plan, &new_version, &asset_name);
+    let resolved = resolve_release_asset(&plan, requested_version).await?;
+    let summary = render_install_plan_summary(&plan, &resolved.version, &resolved.asset_name);
 
     if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
-        execute_binary_install(&template.slug, &plan, &new_version, &asset_name).await?;
+        execute_binary_install(&template.slug, &plan, &resolved).await?;
         // install_atomic 已经走 rename,服务在 restart 时拿到新二进制
         systemctl(&["restart", &format!("{}.service", template.slug)]).await?;
     }
 
-    app.version = new_version;
+    app.version = resolved.version;
     app.state = "updated".to_owned();
     app.updated_at_seconds = current_timestamp();
     save_installed_app(&app).await?;
@@ -1691,12 +1689,6 @@ fn expand_asset_pattern(pattern: &str, version: &str) -> String {
     pattern.replace("{version}", version)
 }
 
-/// 构造 release 下载 URL。GitHub 的 release tag 通常以 v 开头
-/// (`v0.10.0`),所以这里我们用 tag 而不是 bare version。
-fn asset_download_url(repo: &str, tag: &str, asset: &str) -> String {
-    format!("https://github.com/{repo}/releases/download/{tag}/{asset}")
-}
-
 /// 给前端 / 用户的"装这个包会做什么"摘要 —— 用纯文本而不是 JSON,
 /// 复用 DeployAppResponse.compose_yaml 字段返回,前端直接显示。
 fn render_install_plan_summary(plan: &BinaryInstallPlan, version: &str, asset: &str) -> String {
@@ -1721,27 +1713,127 @@ fn render_install_plan_summary(plan: &BinaryInstallPlan, version: &str, asset: &
     )
 }
 
-/// 解析二进制版本:
-/// - 用户传 "" 或 "latest" → 调 GitHub API 取最新 release.tag_name
-/// - 用户传具体版本(如 "0.10.0" 或 "v0.10.0")→ 直接用
+/// 信息包:从 GitHub Releases API 解析出来的"一次安装要用的"原料。
+/// - version: 去掉前导 v 的 bare 版本(供 binary_path_in_archive 占位用)
+/// - asset_name: release 里那个 asset 的文件名(用于落盘文件名)
+/// - asset_url: GitHub 给的 browser_download_url(直接 curl 下载,
+///   不再用 owner/repo/tag/name 拼了)
+#[derive(Debug, Clone)]
+struct ResolvedAsset {
+    version: String,
+    asset_name: String,
+    asset_url: String,
+}
+
+/// 解析 GitHub Release + 匹配 asset。**子串匹配版**:plan.asset_pattern
+/// 现在是 asset 文件名里必须出现的子串(典型:"x86_64-unknown-linux-musl.tar.gz"),
+/// 不是 strict 文件名格式。这样上游怎么改命名(加 v 前缀 / 改连字符 /
+/// 加日期戳)都还能找到对的 asset,不再因为猜错 URL 而 404。
 ///
-/// 返回 bare 版本(去掉前导 v),供 expand_asset_pattern 用。
-async fn resolve_binary_version(
+/// - requested 空 / "latest" → 拉 /releases/latest
+/// - requested 具体版本     → 拉 /releases/tags/<v?version>
+async fn resolve_release_asset(
     plan: &BinaryInstallPlan,
     requested: &str,
-) -> Result<String, Status> {
+) -> Result<ResolvedAsset, Status> {
     let trimmed = requested.trim();
-    if !trimmed.is_empty() && trimmed != "latest" {
-        return Ok(trimmed.trim_start_matches('v').to_owned());
-    }
     if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
-        // 干跑模式无网络,固定回填一个占位 tag,让 plan summary 仍可渲染
-        return Ok("latest".to_owned());
+        // 干跑无网络,回填占位让 plan summary / metadata 持久化能跑通
+        let version = if trimmed.is_empty() || trimmed == "latest" {
+            "latest".to_owned()
+        } else {
+            trimmed.trim_start_matches('v').to_owned()
+        };
+        return Ok(ResolvedAsset {
+            version,
+            asset_name: plan.asset_pattern.to_owned(),
+            asset_url: format!("https://example.invalid/{}", plan.asset_pattern),
+        });
     }
-    let api_url = format!(
-        "https://api.github.com/repos/{}/releases/latest",
-        plan.upstream_repo
-    );
+    // 不同上游对 tag 是否带 v 有不同习惯(rpxy 是 0.11.3 不带 v,
+    // 多数其它 Rust 项目是 v0.11.3)。"latest" 不受影响 —— 它直接
+    // 命中 /releases/latest 这个特殊端点。
+    // 指定版本时,先按用户传入的形式查;404 时换 v 前缀再试一次。
+    let parsed = if trimmed.is_empty() || trimmed == "latest" {
+        let api_url = format!(
+            "https://api.github.com/repos/{}/releases/latest",
+            plan.upstream_repo
+        );
+        fetch_release_json(&api_url).await?
+    } else {
+        // 第一次:用户原样
+        let primary = format!(
+            "https://api.github.com/repos/{}/releases/tags/{}",
+            plan.upstream_repo, trimmed
+        );
+        match fetch_release_json(&primary).await {
+            Ok(parsed) => parsed,
+            Err(_) => {
+                // 第二次:加 / 删 v 前缀重试
+                let alt_tag = if trimmed.starts_with('v') {
+                    trimmed.trim_start_matches('v').to_owned()
+                } else {
+                    format!("v{trimmed}")
+                };
+                let alt_url = format!(
+                    "https://api.github.com/repos/{}/releases/tags/{}",
+                    plan.upstream_repo, alt_tag
+                );
+                fetch_release_json(&alt_url).await?
+            }
+        }
+    };
+    let tag = parsed
+        .get("tag_name")
+        .and_then(|tag| tag.as_str())
+        .ok_or_else(|| Status::internal("GitHub Releases API 响应缺 tag_name"))?;
+    let version = tag.trim_start_matches('v').to_owned();
+    let assets = parsed
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .ok_or_else(|| Status::internal("GitHub Releases API 响应缺 assets"))?;
+
+    let needle = plan.asset_pattern;
+    let candidate = assets.iter().find(|asset| {
+        asset
+            .get("name")
+            .and_then(|n| n.as_str())
+            .map(|name| name.contains(needle))
+            .unwrap_or(false)
+    });
+    let asset = candidate.ok_or_else(|| {
+        let all_names: Vec<&str> = assets
+            .iter()
+            .filter_map(|a| a.get("name").and_then(|n| n.as_str()))
+            .collect();
+        Status::not_found(sanitize_status_text(format!(
+            "{} release {} 里没有名字包含 \"{}\" 的 asset。实际 assets: [{}]",
+            plan.upstream_repo,
+            tag,
+            needle,
+            all_names.join(", ")
+        )))
+    })?;
+    let asset_name = asset
+        .get("name")
+        .and_then(|n| n.as_str())
+        .ok_or_else(|| Status::internal("asset 缺 name"))?
+        .to_owned();
+    let asset_url = asset
+        .get("browser_download_url")
+        .and_then(|u| u.as_str())
+        .ok_or_else(|| Status::internal("asset 缺 browser_download_url"))?
+        .to_owned();
+    Ok(ResolvedAsset {
+        version,
+        asset_name,
+        asset_url,
+    })
+}
+
+/// curl 拉 GitHub Release JSON,反序列化成 serde_json::Value。
+/// 失败 / HTTP 错误 / JSON 解析错都收敛成 Status,带 sanitize 防御。
+async fn fetch_release_json(api_url: &str) -> Result<serde_json::Value, Status> {
     let output = tokio::process::Command::new("curl")
         .args([
             "-fsSL",
@@ -1751,23 +1843,18 @@ async fn resolve_binary_version(
             "User-Agent: rustpanel-appstore",
             "--retry",
             "3",
-            &api_url,
+            api_url,
         ])
         .output()
         .await
         .map_err(io_status)?;
     if !output.status.success() {
         return Err(Status::unavailable(sanitize_status_text(format!(
-            "GitHub Releases API 拉取失败: {}",
+            "GitHub Releases API 拉取失败 ({api_url}): {}",
             String::from_utf8_lossy(&output.stderr)
         ))));
     }
-    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(io_status)?;
-    let tag = parsed
-        .get("tag_name")
-        .and_then(|tag| tag.as_str())
-        .ok_or_else(|| Status::internal("GitHub Releases API 响应缺 tag_name"))?;
-    Ok(tag.trim_start_matches('v').to_owned())
+    serde_json::from_slice(&output.stdout).map_err(io_status)
 }
 
 /// 走 curl 下载 asset 到 dest;父目录会自动建好。
@@ -1919,11 +2006,12 @@ async fn systemctl(args: &[&str]) -> Result<(), Status> {
 
 /// 全流程:下载 → 解压 → 安装二进制 → 写 unit → 写配置 → enable+start。
 /// 调用前确保 RUSTPANEL_APPSTORE_SKIP_EXECUTE 未设置。
+/// 现在 asset_url 由 resolve_release_asset 从 GitHub API 直接拿,**不再**
+/// 拼 owner/repo/tag/name —— 上游 release 命名改也不影响。
 async fn execute_binary_install(
     slug: &str,
     plan: &BinaryInstallPlan,
-    version: &str,
-    asset_name: &str,
+    resolved: &ResolvedAsset,
 ) -> Result<(), Status> {
     let work_root = appstore_root().join(slug);
     let cache_dir = work_root.join("cache");
@@ -1935,16 +2023,15 @@ async fn execute_binary_install(
         .await
         .map_err(io_status)?;
 
-    let archive_path = cache_dir.join(asset_name);
-    let tag = format!("v{version}");
-    let download_url = asset_download_url(plan.upstream_repo, &tag, asset_name);
-    download_asset(&download_url, &archive_path).await?;
+    let archive_path = cache_dir.join(&resolved.asset_name);
+    download_asset(&resolved.asset_url, &archive_path).await?;
 
     let extract_root = extract_archive(&archive_path, &work_dir).await?;
     let binary_src = if plan.binary_path_in_archive.is_empty() {
         extract_root
     } else {
-        let rel = expand_asset_pattern(plan.binary_path_in_archive, version);
+        // binary_path_in_archive 里可能含 {version} 占位(典型 SWS)。
+        let rel = expand_asset_pattern(plan.binary_path_in_archive, &resolved.version);
         // 不论 extract_root 是目录(tar.gz 解出来的根)还是文件(.gz / 裸二进制),
         // 都按相对路径在 work_dir 里找。
         if extract_root.is_dir() {
@@ -2007,10 +2094,14 @@ struct ComposeService {
 ///
 /// 字段语义
 /// - `upstream_repo`: owner/repo,executor 拼 GitHub Releases API
-/// - `asset_pattern`: release asset 文件名模板,`{version}` 由 executor
-///   替换为 GitHub 上拿到的 tag(去掉前缀 v)
+/// - `asset_pattern`: release asset 名的**子串**匹配模式,executor
+///   通过 GitHub API 列出 assets,挑名字包含此子串的那一个。
+///   **不再用 {version} 占位拼 URL** —— 上游 release 命名一变就 404,
+///   API 列出的 browser_download_url 是真实路径,最稳。
 /// - `binary_path_in_archive`: 归档内二进制的相对路径;空串表示归档
-///   本身就是裸二进制(部分项目用单文件 .gz)
+///   本身就是裸二进制(部分项目用单文件 .gz)。**这一栏**保留
+///   {version} 占位,因为有些 tar.gz 解开后的根目录里带版本号
+///   (例如 SWS 的 static-web-server-v2.32.0-...musl/static-web-server)
 /// - `install_to`: 二进制最终路径
 /// - `config_path`: 配置文件最终路径
 /// - `systemd_unit` / `config_template`: RustPanel 提供的胶水,
@@ -2042,7 +2133,8 @@ pub(crate) fn phase_g_install_plan(slug: &str) -> Option<BinaryInstallPlan> {
     Some(match slug {
         "rpxy" => BinaryInstallPlan {
             upstream_repo: "junkurihara/rust-rpxy",
-            asset_pattern: "rpxy-{version}-x86_64-unknown-linux-musl.tar.gz",
+            // 用子串匹配 release 里 linux-musl tarball,不再猜确切文件名
+            asset_pattern: "x86_64-unknown-linux-musl.tar.gz",
             binary_path_in_archive: "rpxy",
             install_to: "/usr/local/bin/rpxy",
             config_path: "/etc/rpxy/config.toml",
@@ -2052,7 +2144,7 @@ pub(crate) fn phase_g_install_plan(slug: &str) -> Option<BinaryInstallPlan> {
         },
         "static-web-server" => BinaryInstallPlan {
             upstream_repo: "static-web-server/static-web-server",
-            asset_pattern: "static-web-server-v{version}-x86_64-unknown-linux-musl.tar.gz",
+            asset_pattern: "x86_64-unknown-linux-musl.tar.gz",
             binary_path_in_archive: "static-web-server-v{version}-x86_64-unknown-linux-musl/static-web-server",
             install_to: "/usr/local/bin/static-web-server",
             config_path: "/etc/static-web-server/config.toml",
@@ -2063,7 +2155,7 @@ pub(crate) fn phase_g_install_plan(slug: &str) -> Option<BinaryInstallPlan> {
         "leaf" => BinaryInstallPlan {
             upstream_repo: "eycorsican/leaf",
             // leaf 的 release asset 是单文件 .gz,不是 tar.gz
-            asset_pattern: "leaf-{version}-x86_64-unknown-linux-gnu.gz",
+            asset_pattern: "x86_64-unknown-linux-gnu.gz",
             binary_path_in_archive: "",
             install_to: "/usr/local/bin/leaf",
             config_path: "/etc/leaf/config.conf",
@@ -2073,7 +2165,7 @@ pub(crate) fn phase_g_install_plan(slug: &str) -> Option<BinaryInstallPlan> {
         },
         "vsmtp" => BinaryInstallPlan {
             upstream_repo: "viridIT/vSMTP",
-            asset_pattern: "vsmtp-{version}-x86_64-unknown-linux-musl.tar.gz",
+            asset_pattern: "x86_64-unknown-linux-musl.tar.gz",
             binary_path_in_archive: "vsmtp",
             install_to: "/usr/local/bin/vsmtp",
             config_path: "/etc/vsmtp/vsmtp.toml",
@@ -2084,7 +2176,7 @@ pub(crate) fn phase_g_install_plan(slug: &str) -> Option<BinaryInstallPlan> {
         "tuic" => BinaryInstallPlan {
             upstream_repo: "EAimTY/tuic",
             // TUIC 发布裸二进制(无归档)
-            asset_pattern: "tuic-server-{version}-x86_64-unknown-linux-musl",
+            asset_pattern: "x86_64-unknown-linux-musl",
             binary_path_in_archive: "",
             install_to: "/usr/local/bin/tuic-server",
             config_path: "/etc/tuic/config.json",
@@ -2544,36 +2636,15 @@ mod tests {
     }
 
     #[test]
-    fn expand_asset_pattern_substitutes_version_and_handles_v_prefix() {
-        // bare {version} 替换
-        assert_eq!(
-            expand_asset_pattern("rpxy-{version}-x86_64-linux.tar.gz", "0.10.0"),
-            "rpxy-0.10.0-x86_64-linux.tar.gz"
-        );
-        // pattern 自己写了 v 前缀:不再重复加,版本数字直接进去
-        assert_eq!(
-            expand_asset_pattern("sws-v{version}-musl.tar.gz", "2.32.0"),
-            "sws-v2.32.0-musl.tar.gz"
-        );
-        // binary_path_in_archive 也能复用同一替换器
+    fn expand_asset_pattern_substitutes_version() {
+        // {version} 替换;主要给 binary_path_in_archive 用(典型 SWS 的
+        // tar.gz 解出来根目录带版本号)
         assert_eq!(
             expand_asset_pattern("sws-v{version}-musl/sws", "2.32.0"),
             "sws-v2.32.0-musl/sws"
         );
         // 没占位时原样返回
         assert_eq!(expand_asset_pattern("tuic-server", "0.0.1"), "tuic-server");
-    }
-
-    #[test]
-    fn asset_download_url_matches_github_release_layout() {
-        assert_eq!(
-            asset_download_url(
-                "junkurihara/rust-rpxy",
-                "v0.10.0",
-                "rpxy-0.10.0-x86_64-unknown-linux-musl.tar.gz",
-            ),
-            "https://github.com/junkurihara/rust-rpxy/releases/download/v0.10.0/rpxy-0.10.0-x86_64-unknown-linux-musl.tar.gz",
-        );
     }
 
     #[test]
@@ -2601,9 +2672,16 @@ mod tests {
                 !plan.upstream_repo.is_empty(),
                 "{slug} plan must set upstream_repo"
             );
+            // asset_pattern 现在是**子串匹配模式**(由 resolve_release_asset
+            // 在 release.assets 里搜),不再 strict 拼 URL,所以**不**应该
+            // 含 {version} 占位 —— 让上游怎么改 release 命名都还能匹中。
             assert!(
-                plan.asset_pattern.contains("{version}"),
-                "{slug} asset_pattern must contain {{version}} placeholder"
+                !plan.asset_pattern.contains("{version}"),
+                "{slug} asset_pattern 不再用 {{version}} 占位拼 URL,应当是 release asset 名的子串(如 x86_64-unknown-linux-musl.tar.gz)"
+            );
+            assert!(
+                !plan.asset_pattern.is_empty(),
+                "{slug} asset_pattern 不能为空"
             );
             assert!(
                 plan.install_to.starts_with('/'),
