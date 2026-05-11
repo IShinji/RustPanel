@@ -112,6 +112,23 @@ impl SiteService for SiteServiceImpl {
         }
 
         crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
+
+        // nginx 缺就自动从 nginx.org 装 mainline(预编译 deb)。失败不
+        // 致命:vhost 文件还是会写,用户事后自己 apt 装也行;但若装了的话
+        // 会立刻拿到带 --with-http_v3_module 的 1.27+,HTTP/3 自动生效。
+        match crate::appstore::ensure_nginx_installed().await {
+            Ok(true) => tracing::info!(
+                target = "site.bootstrap",
+                "nginx 不存在,已自动装 nginx-mainline"
+            ),
+            Ok(false) => {}
+            Err(error) => tracing::warn!(
+                target = "site.bootstrap",
+                error = %error,
+                "auto-install nginx-mainline failed (non-fatal; user can install manually)"
+            ),
+        }
+
         // Phase C:如果传了 kind/binding,渲染 v6/NAT 端口感知的 vhost,
         // 同时调用 capability 预留对应端口/v6 地址,避免冲突。
         let kind = SiteKind::try_from(request.kind).unwrap_or(SiteKind::Unspecified);

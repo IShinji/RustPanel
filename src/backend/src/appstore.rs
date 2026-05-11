@@ -387,6 +387,35 @@ pub(crate) fn slug_to_apt_pre_install(slug: &str) -> Option<&'static str> {
     }
 }
 
+/// 检查 nginx 二进制是否在 $PATH 里。create_site 用来决定要不要自动
+/// 装 nginx-mainline。command -v 命中即认作存在 —— 不区分版本。
+pub(crate) async fn is_nginx_installed() -> bool {
+    tokio::process::Command::new("sh")
+        .args(["-c", "command -v nginx"])
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// 缺 nginx 时自动装 nginx-mainline(nginx.org 官方预编译 deb)。
+/// 已装则什么也不做。返回 true 表示本次走过安装,false 表示已经装好。
+/// SKIP_EXECUTE 干跑跳过实际安装,直接返回 false 当作"已装"。
+pub(crate) async fn ensure_nginx_installed() -> Result<bool, Status> {
+    if is_nginx_installed().await {
+        return Ok(false);
+    }
+    if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
+        return Ok(false);
+    }
+    // 先加 nginx.org 源 + GPG key + pinning,然后 apt-get install nginx
+    if let Some(script) = slug_to_apt_pre_install("nginx-mainline") {
+        run_pre_install(script).await?;
+    }
+    execute_apt_install("nginx").await?;
+    Ok(true)
+}
+
 /// 跑 pre-install 脚本(bash -c)。SKIP_EXECUTE 时干跑跳过。
 async fn run_pre_install(script: &str) -> Result<(), Status> {
     if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {

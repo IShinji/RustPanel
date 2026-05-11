@@ -3939,6 +3939,13 @@ function SitesSsl({ clients }: { clients: Clients }) {
   // 删除确认 Dialog 的目标站点 / 证书。null = 不显示。
   const [siteToDelete, setSiteToDelete] = useState<SiteItem | null>(null);
   const [certToRevoke, setCertToRevoke] = useState<CertificateItem | null>(null);
+  // 创建站点选 DNS-01 时,自动发起 ACME 拿到的 TXT 挑战;非空就在
+  // 主页面顶部渲染一块大横条引导用户加 DNS。
+  const [pendingAcme, setPendingAcme] = useState<{
+    domain: string;
+    recordName: string;
+    recordValue: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -4119,6 +4126,37 @@ function SitesSsl({ clients }: { clients: Clients }) {
       {message && !error && (
         <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
           {message}
+        </div>
+      )}
+      {pendingAcme && (
+        <div className="rounded-md border border-info/40 bg-info/5 px-4 py-3 text-sm space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="font-medium">
+              🔐 {pendingAcme.domain} · 已自动发起 Let's Encrypt 申请
+            </div>
+            <UIButton
+              size="sm"
+              variant="ghost"
+              onClick={() => setPendingAcme(null)}
+              title="关闭这条提示"
+            >
+              ×
+            </UIButton>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            到你的 DNS 服务商添加这条 TXT 记录,**生效后**到该站点的 SSL Tab 再点一次"已添加 TXT,继续签发"完成签发。
+          </div>
+          <div className="grid gap-1 sm:grid-cols-[80px_1fr] text-xs">
+            <span className="text-muted-foreground">记录类型</span>
+            <span className="font-mono">TXT</span>
+            <span className="text-muted-foreground">主机记录</span>
+            <span className="font-mono break-all">{pendingAcme.recordName || "(待返回)"}</span>
+            <span className="text-muted-foreground">记录值</span>
+            <span className="font-mono break-all">{pendingAcme.recordValue || "(待返回)"}</span>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            可用 <span className="font-mono">dig TXT _acme-challenge.{pendingAcme.domain}</span> 验证 DNS 全球生效。
+          </div>
         </div>
       )}
 
@@ -4319,6 +4357,9 @@ function SitesSsl({ clients }: { clients: Clients }) {
         onError={setError}
         onRequestDelete={(site) => setSiteToDelete(site)}
         onRequestRevokeCert={(cert) => setCertToRevoke(cert)}
+        onAcmeChallenge={(domain, recordName, recordValue) =>
+          setPendingAcme({ domain, recordName, recordValue })
+        }
       />
 
       <Dialog
@@ -4393,6 +4434,9 @@ type SiteSheetProps = {
   onError: (error: string) => void;
   onRequestDelete?: (site: SiteItem) => void;
   onRequestRevokeCert?: (cert: CertificateItem) => void;
+  // 新建站点 + DNS-01 时:SmartSiteForm 自动发起 ACME,拿到 TXT 后
+  // 把记录推到顶部 banner 让用户尽快去 DNS 服务商添加。
+  onAcmeChallenge?: (domain: string, recordName: string, recordValue: string) => void;
 };
 
 function SiteDetailSheet(props: SiteSheetProps) {
@@ -4475,7 +4519,8 @@ function SmartSiteForm({
   onChanged,
   onMessage,
   onError,
-  onClose
+  onClose,
+  onAcmeChallenge
 }: SiteSheetProps) {
   // 智能表单合并了 Phase C 高级版 + 经典向导 —— 字段始终是同一套,
   // "绑定方式 / NAT 端口 / IPv6 地址"按 capabilities 揭示。
@@ -4661,6 +4706,34 @@ function SmartSiteForm({
       }
       if (response.site) {
         onMessage(`${response.site.name} 已创建`);
+      }
+      // 选了 DNS-01 自动签发:立即发起 ACME 拿 TXT,通过 onAcmeChallenge
+      // 推到主页面顶部 banner。即使失败也只 log,不阻塞站点创建已经
+      // 跑通的事实。
+      if (tls === "dns01" && onAcmeChallenge) {
+        const primaryDomain = domain
+          .split(/[\s,]+/)
+          .map((value) => value.trim())
+          .filter(Boolean)[0];
+        if (primaryDomain) {
+          try {
+            const acmeResp = await clients.ssl.requestCertificate({
+              domain: primaryDomain,
+              email: "admin@example.com",
+              challengeType: AcmeChallengeType.DNS_01
+            });
+            if (acmeResp.dnsRecordName || acmeResp.dnsRecordValue) {
+              onAcmeChallenge(
+                primaryDomain,
+                acmeResp.dnsRecordName,
+                acmeResp.dnsRecordValue
+              );
+            }
+          } catch (acmeErr) {
+            console.warn("auto ACME request failed:", acmeErr);
+            // 不报错给用户 —— 站点创建已成功,SSL 可以稍后在抽屉里手动触发
+          }
+        }
       }
       onChanged();
       onClose();
