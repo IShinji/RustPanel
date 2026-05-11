@@ -3869,6 +3869,27 @@ function siteKindLabel(kind: number): string {
   }
 }
 
+// 与后端 site.rs::safe_name 对齐的 slug 规则:小写 / 数字 / 连字符,
+// 其他字符全部替换成 '-';首尾连字符清掉。供前端"根据站点名自动派生
+// 根目录"和"撞库检查"复用。
+function safeName(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function defaultRootFor(name: string): string {
+  const safe = safeName(name);
+  return safe ? `/var/www/${safe}` : "";
+}
+
+function defaultBinaryPathFor(name: string): string {
+  const safe = safeName(name);
+  return safe ? `/usr/local/bin/${safe}-server` : "";
+}
+
 // 站点类型在 SmartSiteForm 里以"卡片"形式让用户选,每张卡都有
 // 图标 / 一句话用途 / 举例。比之前裸 Select 的"nginx serve root"这
 // 种术语对小白友好得多。
@@ -4214,6 +4235,7 @@ function SitesSsl({ clients }: { clients: Clients }) {
       <SiteDetailSheet
         mode={sheetMode}
         site={selectedSite}
+        sites={sites}
         capabilities={capabilities}
         reservedPorts={reservedPorts}
         ipv6Pool={ipv6Pool}
@@ -4233,6 +4255,7 @@ function SitesSsl({ clients }: { clients: Clients }) {
 type SiteSheetProps = {
   mode: SiteSheetMode;
   site: SiteItem | null;
+  sites: SiteItem[];
   capabilities: Capabilities | null;
   reservedPorts: ReservedPort[];
   ipv6Pool: Ipv6Address[];
@@ -4308,6 +4331,7 @@ function SiteDetailSheet(props: SiteSheetProps) {
 function SmartSiteForm({
   mode,
   site,
+  sites,
   capabilities,
   reservedPorts,
   ipv6Pool,
@@ -4328,9 +4352,14 @@ function SmartSiteForm({
     if (site.kind === SiteKind.REVERSE_PROXY) return "reverse-proxy";
     return "static";
   });
-  const [root, setRoot] = useState(site?.root ?? "/var/www/html");
+  // 用户没手动改 root 之前,跟着 name 自动派生为 /var/www/<safe-name>;
+  // 一旦用户在 root 框里敲过任何字符,rootTouched 翻 true,不再追。
+  // 编辑模式直接展示后端给的 root,默认视作"已 touched"。
+  const [root, setRoot] = useState(site?.root ?? "");
+  const [rootTouched, setRootTouched] = useState(Boolean(site?.root));
   const [proxyTarget, setProxyTarget] = useState(site?.proxyTarget ?? "");
-  const [binaryPath, setBinaryPath] = useState("/usr/local/bin/site-server");
+  const [binaryPath, setBinaryPath] = useState("");
+  const [binaryPathTouched, setBinaryPathTouched] = useState(false);
   const [bindKind, setBindKind] = useState<"nat-port" | "ipv6">(() =>
     ipv6Pool.length > 0 ? "ipv6" : "nat-port"
   );
@@ -4343,6 +4372,40 @@ function SmartSiteForm({
     return site.sslEnabled ? "dns01" : "none";
   });
 
+  // name 变化时,如果用户没手动改 root / binaryPath,自动派生新值。
+  // 同时只在新建模式下生效;编辑模式既已 disabled,也不需要再追。
+  useEffect(() => {
+    if (isEdit) return;
+    if (!rootTouched) setRoot(defaultRootFor(name));
+    if (!binaryPathTouched) setBinaryPath(defaultBinaryPathFor(name));
+  }, [name, rootTouched, binaryPathTouched, isEdit]);
+
+  // 撞库实时提示:name / root / 域名任意一项与现有站点冲突就在按钮上方给警告。
+  // 提交时再做一次硬校验阻断;预览只是提早告诉用户。
+  const otherSites = isEdit ? sites.filter((item) => item.name !== site?.name) : sites;
+  const nameConflict = useMemo(() => {
+    const safe = safeName(name);
+    if (!safe) return null;
+    return otherSites.find((item) => safeName(item.name) === safe) ?? null;
+  }, [name, otherSites]);
+  const rootConflict = useMemo(() => {
+    if (kind !== "static" || !root) return null;
+    return otherSites.find((item) => item.root === root) ?? null;
+  }, [kind, root, otherSites]);
+  const domainConflict = useMemo(() => {
+    const wants = domain
+      .split(/[\s,]+/)
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+    if (!wants.length) return null;
+    for (const other of otherSites) {
+      const have = other.domains.map((d) => d.toLowerCase());
+      const collide = wants.find((value) => have.includes(value));
+      if (collide) return { domain: collide, site: other };
+    }
+    return null;
+  }, [domain, otherSites]);
+
   // NAT VPS 总是有 NAT 端口预算,所以绑定段一直显示;有 IPv6 池时多
   // 出"IPv6 直连"那一项。capabilities 字段不直接给端口数,具体可用端口
   // 由 listReservedPorts 反查。
@@ -4352,6 +4415,27 @@ function SmartSiteForm({
   const submit = async () => {
     if (isEdit) {
       onError("当前后端无 UpdateSite RPC,暂不支持编辑已有站点。删了重建可绕过。");
+      return;
+    }
+    // 硬校验:撞名 / 撞 root / 撞域名一律拒
+    if (!safeName(name)) {
+      onError("站点名不能为空,且需含字母 / 数字 / 连字符");
+      return;
+    }
+    if (nameConflict) {
+      onError(`站点名 "${name}" 已存在,请换一个`);
+      return;
+    }
+    if (rootConflict) {
+      onError(
+        `根目录 "${root}" 已被站点 "${rootConflict.name}" 使用 — 改个站点名让它自动派生新路径`
+      );
+      return;
+    }
+    if (domainConflict) {
+      onError(
+        `域名 "${domainConflict.domain}" 已被站点 "${domainConflict.site.name}" 占用`
+      );
       return;
     }
     const protoKind =
@@ -4471,13 +4555,18 @@ function SmartSiteForm({
             <UILabel htmlFor="site-root">网站根目录</UILabel>
             <UIInput
               id="site-root"
-              placeholder="/var/www/html"
+              placeholder={defaultRootFor(name) || "/var/www/<填好站点名后自动生成>"}
               value={root}
               disabled={isEdit}
-              onChange={(event) => setRoot(event.target.value)}
+              onChange={(event) => {
+                setRootTouched(true);
+                setRoot(event.target.value);
+              }}
             />
             <span className="text-xs text-muted-foreground">
-              放 index.html 的目录;nginx 会直接把里头的文件喂给浏览器。
+              {rootTouched
+                ? "已自定义。放 index.html 的目录;nginx 会直接把里头的文件喂给浏览器。"
+                : `跟着站点名自动派生 ${defaultRootFor(name) || "(待站点名输入)"};可手动覆盖。`}
             </span>
           </div>
         )}
@@ -4486,10 +4575,13 @@ function SmartSiteForm({
             <UILabel htmlFor="site-bin">Rust 程序的二进制路径</UILabel>
             <UIInput
               id="site-bin"
-              placeholder="/usr/local/bin/my-server"
+              placeholder={defaultBinaryPathFor(name) || "/usr/local/bin/<填好站点名后自动生成>"}
               value={binaryPath}
               disabled={isEdit}
-              onChange={(event) => setBinaryPath(event.target.value)}
+              onChange={(event) => {
+                setBinaryPathTouched(true);
+                setBinaryPath(event.target.value);
+              }}
             />
             <span className="text-xs text-muted-foreground">
               你 `cargo build --release` 出来的可执行文件路径。面板会自动写
@@ -4600,6 +4692,23 @@ function SmartSiteForm({
           </span>
         </div>
       </div>
+      {!isEdit && (nameConflict || rootConflict || domainConflict) && (
+        <div className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning space-y-0.5">
+          {nameConflict && (
+            <div>· 站点名 "{name}" 已被使用 — 改一个</div>
+          )}
+          {rootConflict && (
+            <div>
+              · 根目录 "{root}" 已被站点 "{rootConflict.name}" 占用 — 改站点名能自动派生新路径
+            </div>
+          )}
+          {domainConflict && (
+            <div>
+              · 域名 "{domainConflict.domain}" 已被站点 "{domainConflict.site.name}" 占用
+            </div>
+          )}
+        </div>
+      )}
       <div className="flex justify-end gap-2">
         <UIButton onClick={() => void submit()} disabled={isEdit}>
           <Save className="size-4" />
