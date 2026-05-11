@@ -38,6 +38,13 @@ message Capabilities {
   string docker_block_reason = 14;
   // 探测时间戳(Unix 秒)
   uint64 probed_at_seconds = 15;
+  // 推荐 ACME challenge 类型:"http01" 或 "dns01"。
+  // NAT VPS / OpenVZ / 公网 80 进不来的环境 → "dns01"。
+  // 普通公网 IP + 80 监听就绪 → "http01"。
+  // 前端默认用这个值,无需让用户选;高级用户可在 SSL Tab 手动 override。
+  string recommended_acme_challenge = 16;
+  // 推荐理由(给用户看的一行话,如"检测到 OpenVZ NAT VPS,公网 80 通常拿不到")
+  string acme_challenge_reason = 17;
 }
 
 message GetCapabilitiesRequest {}

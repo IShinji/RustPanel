@@ -5336,16 +5336,48 @@ function SslPanel({
     privateKeyPem: ""
   });
   const [pendingChallenge, setPendingChallenge] = useState<RequestCertificateResponse | null>(null);
-  // 默认 HTTP-01:一次点击就完成,后端把 challenge 文件写到站点 webroot,
-  // LE 从公网 80 端口拉。NAT VPS 上 80 通常进得来(CF 橙云 / IPv6 公网),
-  // 大多数情况就够。如果用户明确知道 80 不可达(纯 IPv4 NAT 无端口转发
-  // 或 CF 灰云直连 IPv4),手动切 DNS-01。
-  // Static 类站点才有 webroot 给 HTTP-01 用;反代 / RustBinary 类站点没
-  // webroot,自动 fall back DNS-01。
+  // ACME challenge mode 由 capability 推荐 + 站点能力共同决定,**不让用户选**:
+  // - 后端 probe_capabilities 判 OpenVZ / NAT / 公网 IP 给出 recommended
+  // - 静态站(有 webroot)且推荐 HTTP-01 → HTTP-01
+  // - 反代 / RustBinary 站没 webroot → 强制 DNS-01
+  // 用户想 override 走"高级 · 手动切换"展开 radio。
   const supportsHttp01 = (site.root?.trim().length ?? 0) > 0;
-  const [challengeMode, setChallengeMode] = useState<"http01" | "dns01">(
-    supportsHttp01 ? "http01" : "dns01"
-  );
+  const [recommended, setRecommended] = useState<{
+    mode: "http01" | "dns01";
+    reason: string;
+  }>({ mode: "dns01", reason: "正在探测主机环境..." });
+  const [challengeMode, setChallengeMode] = useState<"http01" | "dns01">("dns01");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // 把推荐值映射成实际可用值:不支持 webroot 时强制 DNS-01
+  const effectiveDefault = (mode: "http01" | "dns01") =>
+    mode === "http01" && !supportsHttp01 ? "dns01" : mode;
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const resp = await clients.capability.getCapabilities({});
+        if (cancelled) return;
+        const raw = resp.capabilities?.recommendedAcmeChallenge?.trim().toLowerCase();
+        const mode: "http01" | "dns01" = raw === "http01" ? "http01" : "dns01";
+        const reason =
+          resp.capabilities?.acmeChallengeReason?.trim() ||
+          (mode === "http01" ? "公网环境,推荐 HTTP-01 一键完成。" : "受限环境,推荐 DNS-01 更稳。");
+        const eff = effectiveDefault(mode);
+        setRecommended({ mode, reason });
+        setChallengeMode(eff);
+      } catch {
+        // capability 拿不到不致命,保持 dns01 fallback
+        setRecommended({
+          mode: "dns01",
+          reason: "环境探测失败,默认走 DNS-01(更通用)。"
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // supportsHttp01 是 site.root 的纯函数,不会乱重跑
+  }, [clients, supportsHttp01]);
   // DNS-01 自动轮询状态:加完 TXT 后前端 10 秒一次问 1.1.1.1 DoH,看到
   // 期望值就**自动**再调一次 requestCertificate 完成签发,用户不用手动
   // 再点。"checking"/"propagated"/"failed" 描述实时状态。
@@ -5544,41 +5576,19 @@ function SslPanel({
 
       <div className="space-y-2">
         <div className="text-sm font-medium">自动签发(Let&apos;s Encrypt)</div>
-        <div className="flex flex-col gap-1.5">
-          <label className="flex items-start gap-2 text-xs cursor-pointer">
-            <input
-              type="radio"
-              className="mt-0.5"
-              checked={challengeMode === "http01"}
-              disabled={!supportsHttp01}
-              onChange={() => setChallengeMode("http01")}
-            />
-            <div>
-              <div className="font-medium">
-                HTTP-01(推荐 · 一键完成,不用碰 DNS)
-                {!supportsHttp01 && (
-                  <span className="ml-1 text-muted-foreground">— 当前站点无 webroot,不可用</span>
-                )}
-              </div>
-              <div className="text-muted-foreground">
-                面板把验证文件写到站点目录的 <code>.well-known/acme-challenge/</code>,LE 从 80 端口直接拉。前提:80 公网能进来(CF 橙云 / IPv6 直连都满足)。
-              </div>
+        <div className="rounded border border-info/30 bg-info/5 p-3 text-xs space-y-1">
+          <div>
+            <span className="font-medium">面板替你选了:</span>
+            {challengeMode === "http01"
+              ? " HTTP-01(一键完成,无需手动加 DNS)"
+              : " DNS-01(两步签发,你加 TXT 后面板自动完成)"}
+          </div>
+          <div className="text-muted-foreground">{recommended.reason}</div>
+          {!supportsHttp01 && recommended.mode === "http01" && (
+            <div className="text-muted-foreground">
+              当前站点无 webroot(纯反代 / 二进制站),HTTP-01 无法落文件,已自动切到 DNS-01。
             </div>
-          </label>
-          <label className="flex items-start gap-2 text-xs cursor-pointer">
-            <input
-              type="radio"
-              className="mt-0.5"
-              checked={challengeMode === "dns01"}
-              onChange={() => setChallengeMode("dns01")}
-            />
-            <div>
-              <div className="font-medium">DNS-01(两步,要加 TXT 记录)</div>
-              <div className="text-muted-foreground">
-                适用于 80 端口不通的环境,或需要签 <code>*.example.com</code> 通配证书。
-              </div>
-            </div>
-          </label>
+          )}
         </div>
         <UIButton
           size="sm"
@@ -5588,12 +5598,57 @@ function SslPanel({
           <ShieldCheck className="size-3.5" />
           {primaryDomain
             ? pendingChallenge
-              ? `已添加 TXT,继续签发 ${primaryDomain}`
+              ? `已加 TXT,继续签发 ${primaryDomain}`
               : challengeMode === "http01"
                 ? `一键申请 ${primaryDomain}`
-                : `开始申请 ${primaryDomain}(DNS-01)`
+                : `开始申请 ${primaryDomain}`
             : "需先在'基础'Tab 绑定域名"}
         </UIButton>
+        <button
+          type="button"
+          className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline self-start"
+          onClick={() => setAdvancedOpen((v) => !v)}
+        >
+          {advancedOpen ? "收起高级选项" : "高级 · 我要自己选 challenge 类型"}
+        </button>
+        {advancedOpen && (
+          <div className="flex flex-col gap-1.5 rounded border border-border bg-muted/30 p-3 text-xs">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="radio"
+                className="mt-0.5"
+                checked={challengeMode === "http01"}
+                disabled={!supportsHttp01}
+                onChange={() => setChallengeMode("http01")}
+              />
+              <div>
+                <div className="font-medium">
+                  HTTP-01
+                  {!supportsHttp01 && (
+                    <span className="ml-1 text-muted-foreground">— 当前站点无 webroot</span>
+                  )}
+                </div>
+                <div className="text-muted-foreground">
+                  把 token 文件写到 <code>.well-known/acme-challenge/</code>,LE 从 80 拉。要求公网 80 可达。
+                </div>
+              </div>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="radio"
+                className="mt-0.5"
+                checked={challengeMode === "dns01"}
+                onChange={() => setChallengeMode("dns01")}
+              />
+              <div>
+                <div className="font-medium">DNS-01</div>
+                <div className="text-muted-foreground">
+                  你加 TXT,面板自动轮询 1.1.1.1 等到生效后完成签发。通配证书也只能走这条。
+                </div>
+              </div>
+            </label>
+          </div>
+        )}
         {pendingChallenge && (pendingChallenge.dnsRecordName || pendingChallenge.dnsRecordValue) && (
           <div className="rounded border border-info/30 bg-info/5 p-3 text-xs space-y-2">
             <div className="font-medium">需要在 DNS 服务商添加这条 TXT 记录:</div>

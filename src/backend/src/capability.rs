@@ -446,6 +446,28 @@ fn probe_capabilities() -> Capabilities {
         docker_block_reason = "OpenVZ 上 user_namespaces 已禁用".to_owned();
     }
 
+    // 推荐 ACME challenge:
+    // - OpenVZ NAT VPS:80 端口通常没在 NAT mapping 里,HTTP-01 进不来 → DNS-01
+    // - 其它环境:大概率有公网 80,HTTP-01 一键搞定;LE 真打不通的话用户
+    //   再手动切回 DNS-01。
+    // 这里宁可保守(默认 dns01)也不让用户面对一次 HTTP-01 失败的尴尬。
+    let (recommended_acme_challenge, acme_challenge_reason) = if is_openvz {
+        (
+            "dns01".to_owned(),
+            "OpenVZ NAT VPS · 公网 80 通常没在转发表里,HTTP-01 走不通,DNS-01 更稳。".to_owned(),
+        )
+    } else if is_container {
+        (
+            "dns01".to_owned(),
+            "容器环境 · 入站 80 不一定暴露,先走 DNS-01 保稳。".to_owned(),
+        )
+    } else {
+        (
+            "http01".to_owned(),
+            "公网 IP 主机 · HTTP-01 一键完成,不用碰 DNS。".to_owned(),
+        )
+    };
+
     Capabilities {
         is_openvz,
         is_container,
@@ -462,6 +484,8 @@ fn probe_capabilities() -> Capabilities {
         can_run_docker,
         docker_block_reason,
         probed_at_seconds: now_seconds(),
+        recommended_acme_challenge,
+        acme_challenge_reason,
     }
 }
 
