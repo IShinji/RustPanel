@@ -361,15 +361,20 @@ pub(crate) fn slug_to_apt_package(slug: &str) -> &str {
 /// apt pin,保证后续 `apt-get install nginx` 装的是 nginx.org 的 1.27+,
 /// 而不是发行版自己 ship 的 1.22/1.24(没编译 http_v3_module)。
 /// **所有 deb 都是 nginx 团队预编译好的,客户端零编译。**
+///
+/// 实现细节:用 `signed-by=*.asc` 形式(apt 1.4+ 支持 ASCII-armored
+/// keyring),**完全跳过 `gpg --dearmor` 这一步** —— 最小镜像 / OpenVZ
+/// 容器里 gpg 经常因为 gpg-agent fork 失败报 "Failed to fork";直接把
+/// .asc 文件丢到 /etc/apt/keyrings 让 apt 自己消费,无 gpg 依赖。
 const NGINX_MAINLINE_PREINSTALL: &str = r#"set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y curl gnupg2 ca-certificates lsb-release debian-archive-keyring
-install -d -m 0755 /usr/share/keyrings
-curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
+apt-get install -y curl ca-certificates lsb-release
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://nginx.org/keys/nginx_signing.key -o /etc/apt/keyrings/nginx-archive.asc
 DISTRO=$(lsb_release -is | tr '[:upper:]' '[:lower:]')
 CODENAME=$(lsb_release -cs)
-echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/mainline/${DISTRO} ${CODENAME} nginx" > /etc/apt/sources.list.d/nginx.list
+echo "deb [signed-by=/etc/apt/keyrings/nginx-archive.asc] http://nginx.org/packages/mainline/${DISTRO} ${CODENAME} nginx" > /etc/apt/sources.list.d/nginx.list
 cat > /etc/apt/preferences.d/99nginx <<'PIN'
 Package: *
 Pin: origin nginx.org
@@ -417,6 +422,7 @@ pub(crate) async fn ensure_nginx_installed() -> Result<bool, Status> {
 }
 
 /// 跑 pre-install 脚本(bash -c)。SKIP_EXECUTE 时干跑跳过。
+/// 失败时把 stdout / stderr 都塞到错误消息里,前端 banner 才能看清楚卡哪。
 async fn run_pre_install(script: &str) -> Result<(), Status> {
     if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
         return Ok(());
@@ -429,9 +435,19 @@ async fn run_pre_install(script: &str) -> Result<(), Status> {
         .await
         .map_err(io_status)?;
     if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // 大多数失败信息在 stderr,但偶尔 set -e 触发 bash 报错在 stdout
+        let detail = if !stderr.trim().is_empty() {
+            stderr.to_string()
+        } else if !stdout.trim().is_empty() {
+            stdout.to_string()
+        } else {
+            format!("exit code {:?}", output.status.code())
+        };
         return Err(Status::unavailable(format!(
             "apt pre-install script failed: {}",
-            String::from_utf8_lossy(&output.stderr)
+            detail.trim()
         )));
     }
     Ok(())
@@ -2354,13 +2370,20 @@ mod tests {
     fn nginx_mainline_has_apt_repo_pre_install_script() {
         // nginx-mainline 必须配套 pre-install 脚本,否则只能装到发行版
         // 老 nginx,装个 HTTP/3 寂寞。脚本里应当出现 nginx.org 官方源、
-        // GPG key 路径和 apt pinning。
+        // ASCII-armored key 路径(.asc 形式,无 gpg --dearmor)和 apt pinning。
         let script = slug_to_apt_pre_install("nginx-mainline").expect("脚本必须有");
         assert!(script.contains("nginx.org"));
         assert!(script.contains("nginx_signing.key"));
-        assert!(script.contains("nginx-archive-keyring.gpg"));
+        assert!(script.contains("/etc/apt/keyrings/nginx-archive.asc"));
         assert!(script.contains("/etc/apt/sources.list.d/nginx.list"));
         assert!(script.contains("/etc/apt/preferences.d/99nginx"));
+        // 最小镜像 / OpenVZ 上 gpg --dearmor 经常因 gpg-agent fork 失败,
+        // 这里硬保证脚本不依赖 gpg,免得回归。
+        assert!(
+            !script.contains("gpg --dearmor"),
+            "脚本不应再依赖 gpg --dearmor"
+        );
+        assert!(!script.contains("gnupg"), "脚本不应再 apt install gnupg*");
         // 其它 slug 不应有 pre-install
         assert!(slug_to_apt_pre_install("nginx-light").is_none());
         assert!(slug_to_apt_pre_install("redis-tuned").is_none());
