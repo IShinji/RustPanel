@@ -5346,7 +5346,96 @@ function SslPanel({
   const [challengeMode, setChallengeMode] = useState<"http01" | "dns01">(
     supportsHttp01 ? "http01" : "dns01"
   );
+  // DNS-01 自动轮询状态:加完 TXT 后前端 10 秒一次问 1.1.1.1 DoH,看到
+  // 期望值就**自动**再调一次 requestCertificate 完成签发,用户不用手动
+  // 再点。"checking"/"propagated"/"failed" 描述实时状态。
+  const [autoPollState, setAutoPollState] = useState<
+    "idle" | "checking" | "propagated" | "failed"
+  >("idle");
   const cert = certificates.find((c) => c.domain === primaryDomain);
+
+  // DNS-01 自动轮询副作用:pendingChallenge 一出现就启动 10 秒 / 次的
+  // DoH 查询(走 Cloudflare 1.1.1.1,绕开本机系统 resolver 的缓存),
+  // 看到期望 TXT 值就**自动调一次 requestCertificate** 完成签发。
+  // 用户不用再手动点第二次。
+  // 5 分钟还没看到就停轮询(typical DNS propagation 1-2 min,5 min 没到
+  // 大概率 TXT 没写对 / proxy 没关 / 域名解析有问题)。
+  useEffect(() => {
+    if (!pendingChallenge?.dnsRecordName || !pendingChallenge?.dnsRecordValue) {
+      setAutoPollState("idle");
+      return;
+    }
+    if (!primaryDomain) return;
+
+    let cancelled = false;
+    let attempts = 0;
+    setAutoPollState("checking");
+
+    const checkOnce = async () => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const url = `https://1.1.1.1/dns-query?name=${encodeURIComponent(
+          pendingChallenge.dnsRecordName
+        )}&type=TXT`;
+        const resp = await fetch(url, {
+          headers: { accept: "application/dns-json" }
+        });
+        const data: { Answer?: Array<{ data?: string }> } = await resp.json();
+        const txts = (data.Answer ?? [])
+          .map((a) => (a.data ?? "").replace(/^"|"$/g, ""));
+        const seen = txts.includes(pendingChallenge.dnsRecordValue);
+        if (cancelled) return;
+        if (seen) {
+          setAutoPollState("propagated");
+          // TXT 已传播,自动再发一次申请走完 finalize 流程
+          try {
+            const acmeEmail = await ensureAcmeEmail();
+            if (!acmeEmail || cancelled) return;
+            const finalResp = await clients.ssl.requestCertificate({
+              domain: primaryDomain,
+              email: acmeEmail,
+              challengeType: AcmeChallengeType.DNS_01
+            });
+            if (cancelled) return;
+            if (finalResp.certificate) {
+              setPendingChallenge(null);
+              setAutoPollState("idle");
+              onMessage(`${primaryDomain} 已签发(自动完成)`);
+              onChanged();
+            } else if (finalResp.dnsRecordName) {
+              // 后端还说要 TXT?说明上一份 pending 已过期,新生成了一份
+              setPendingChallenge(finalResp);
+              setAutoPollState("checking");
+              attempts = 0;
+            }
+          } catch (err) {
+            if (!cancelled) {
+              setAutoPollState("failed");
+              onError(safeError(err));
+            }
+          }
+          return;
+        }
+        if (attempts >= 30) {
+          // 30 次 × 10s = 5 分钟,放弃,让用户检查 DNS 配置
+          setAutoPollState("failed");
+        }
+      } catch {
+        // DoH 网络错误不致命,继续重试
+        if (attempts >= 30) setAutoPollState("failed");
+      }
+    };
+
+    void checkOnce();
+    const interval = window.setInterval(() => {
+      void checkOnce();
+    }, 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [pendingChallenge, primaryDomain, clients, onChanged, onMessage, onError]);
 
   const requestSsl = async () => {
     if (!primaryDomain) {
@@ -5516,9 +5605,22 @@ function SslPanel({
               <span className="text-muted-foreground">记录值</span>
               <span className="font-mono break-all">{pendingChallenge.dnsRecordValue || "(待返回)"}</span>
             </div>
-            <div className="text-muted-foreground">
-              加完后等几分钟 DNS 全球生效,再点上面按钮完成签发。
-            </div>
+            {autoPollState === "checking" && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" />
+                加完 TXT 留这页开着 —— 面板每 10 秒查一次 1.1.1.1,看到就自动签发。
+              </div>
+            )}
+            {autoPollState === "propagated" && (
+              <div className="text-success">
+                ✓ TXT 已传播,正在自动完成签发……
+              </div>
+            )}
+            {autoPollState === "failed" && (
+              <div className="text-destructive">
+                ✗ 5 分钟内还没在 1.1.1.1 看到 TXT 生效。检查:DNS 记录加了么?CF 那条 TXT 是不是被开了橙云代理(必须灰云 DNS only)?加完手动点上方按钮重试。
+              </div>
+            )}
           </div>
         )}
       </div>
