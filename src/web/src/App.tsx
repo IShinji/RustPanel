@@ -3931,6 +3931,8 @@ function SitesSsl({ clients }: { clients: Clients }) {
   const [reservedPorts, setReservedPorts] = useState<ReservedPort[]>([]);
   const [ipv6Pool, setIpv6Pool] = useState<Ipv6Address[]>([]);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [budget, setSiteBudget] = useState<ResourceBudget | null>(null);
+  const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
   // === 反馈 ===
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -3950,24 +3952,33 @@ function SitesSsl({ clients }: { clients: Clients }) {
 
   const load = useCallback(async () => {
     try {
-      const [siteRes, certRes, tplRes, proxyRes, portsRes, v6Res] = await Promise.all([
-        clients.site.listSites({}),
-        clients.ssl.listCertificates({}),
-        clients.site.listRewriteTemplates({}),
-        clients.site.listReverseProxyRules({}),
-        clients.capability
-          .listReservedPorts({})
-          .catch(() => ({ ports: [] as ReservedPort[] })),
-        clients.capability
-          .listIpv6Addresses({})
-          .catch(() => ({ addresses: [] as Ipv6Address[], prefixes: [] as string[] }))
-      ]);
+      const [siteRes, certRes, tplRes, proxyRes, portsRes, v6Res, budgetRes, installedRes] =
+        await Promise.all([
+          clients.site.listSites({}),
+          clients.ssl.listCertificates({}),
+          clients.site.listRewriteTemplates({}),
+          clients.site.listReverseProxyRules({}),
+          clients.capability
+            .listReservedPorts({})
+            .catch(() => ({ ports: [] as ReservedPort[] })),
+          clients.capability
+            .listIpv6Addresses({})
+            .catch(() => ({ addresses: [] as Ipv6Address[], prefixes: [] as string[] })),
+          clients.capability
+            .getResourceBudget({})
+            .catch(() => ({ budget: null as ResourceBudget | null })),
+          clients.appStore
+            .listInstalledApps({})
+            .catch(() => ({ apps: [] as InstalledApp[] }))
+        ]);
       setSites(siteRes.sites);
       setCertificates(certRes.certificates);
       setRewriteTemplates(tplRes.templates);
       setProxyRules(proxyRes.rules);
       setReservedPorts(portsRes.ports);
       setIpv6Pool(v6Res.addresses);
+      setSiteBudget(budgetRes.budget ?? null);
+      setInstalledApps(installedRes.apps);
       setError("");
     } catch (err) {
       setError(safeError(err));
@@ -4351,6 +4362,8 @@ function SitesSsl({ clients }: { clients: Clients }) {
         site={selectedSite}
         sites={sites}
         capabilities={capabilities}
+        budget={budget}
+        installedApps={installedApps}
         reservedPorts={reservedPorts}
         ipv6Pool={ipv6Pool}
         certificates={certificates}
@@ -4428,6 +4441,8 @@ type SiteSheetProps = {
   site: SiteItem | null;
   sites: SiteItem[];
   capabilities: Capabilities | null;
+  budget: ResourceBudget | null;
+  installedApps: InstalledApp[];
   reservedPorts: ReservedPort[];
   ipv6Pool: Ipv6Address[];
   certificates: CertificateItem[];
@@ -4444,6 +4459,49 @@ type SiteSheetProps = {
   // 把记录推到顶部 banner 让用户尽快去 DNS 服务商添加。
   onAcmeChallenge?: (domain: string, recordName: string, recordValue: string) => void;
 };
+
+// 网站引擎选项:小白可选,后端按选择装 + 配置 vhost
+type SiteEngineChoice = "nginx" | "rpxy";
+
+type EngineRecommendation = {
+  choice: SiteEngineChoice;
+  reason: string;
+};
+
+/// 根据主机能力 + 已安装包推荐 backend。
+/// - 已装 nginx-mainline 或 rpxy 之一:用已装的
+/// - OpenVZ 或 RAM < 256MB:推 rpxy(单文件 Rust,绕开 apt fork 上限)
+/// - 否则:推 nginx-mainline(C 写的,单进程多站省 RAM)
+function recommendEngine(
+  capabilities: Capabilities | null,
+  budget: ResourceBudget | null,
+  installedApps: InstalledApp[]
+): EngineRecommendation {
+  const installedSlugs = new Set(installedApps.map((app) => app.slug));
+  if (installedSlugs.has("nginx-mainline") || installedSlugs.has("nginx-light")) {
+    return { choice: "nginx", reason: "已检测到 nginx 安装,直接复用" };
+  }
+  if (installedSlugs.has("rpxy")) {
+    return { choice: "rpxy", reason: "已检测到 rpxy 安装,直接复用" };
+  }
+  if (capabilities?.isOpenvz) {
+    return {
+      choice: "rpxy",
+      reason: "本机是 OpenVZ 容器,apt 装 nginx 经常撞 fork 上限;rpxy 是单文件二进制,直接下载即用"
+    };
+  }
+  const totalRamMb = budget?.memory ? Number(budget.memory.totalBytes / 1024n / 1024n) : 0;
+  if (totalRamMb > 0 && totalRamMb < 256) {
+    return {
+      choice: "rpxy",
+      reason: `本机仅 ${totalRamMb} MB RAM,apt-get install 内存峰值可能撞天花板;rpxy 单文件 ~15MB`
+    };
+  }
+  return {
+    choice: "nginx",
+    reason: "环境充裕,nginx mainline 是稳妥默认(C / 单进程多站,生态成熟)"
+  };
+}
 
 function SiteDetailSheet(props: SiteSheetProps) {
   const { mode, site, onClose } = props;
@@ -4519,6 +4577,8 @@ function SmartSiteForm({
   site,
   sites,
   capabilities,
+  budget,
+  installedApps,
   reservedPorts,
   ipv6Pool,
   clients,
@@ -4637,6 +4697,25 @@ function SmartSiteForm({
   const [submitting, setSubmitting] = useState(false);
   const [submitStep, setSubmitStep] = useState("");
 
+  // 引擎推荐 + 用户选择。useMemo 避免每渲染重算;但选择改了的话保持用户选择。
+  const recommendation = useMemo(
+    () => recommendEngine(capabilities, budget, installedApps),
+    [capabilities, budget, installedApps]
+  );
+  const [engineChoice, setEngineChoice] = useState<SiteEngineChoice>(
+    recommendation.choice
+  );
+  // 推荐变了(数据刚拉到)且用户没动过选择,跟着推荐走
+  const [engineUserTouched, setEngineUserTouched] = useState(false);
+  useEffect(() => {
+    if (!engineUserTouched) setEngineChoice(recommendation.choice);
+  }, [recommendation.choice, engineUserTouched]);
+
+  const installedSlugs = useMemo(
+    () => new Set(installedApps.map((app) => app.slug)),
+    [installedApps]
+  );
+
   const submit = async () => {
     if (isEdit) {
       onError("当前后端无 UpdateSite RPC,暂不支持编辑已有站点。删了重建可绕过。");
@@ -4689,8 +4768,32 @@ function SmartSiteForm({
       ipv6Address: bindKind === "ipv6" ? ipv6Address : ""
     };
     setSubmitting(true);
-    setSubmitStep("装 nginx(若缺) + 写 vhost + bootstrap 自签证书...");
     try {
+      // 用户选 rpxy:先确保 rpxy(以及静态站需要的 SWS)已经装上,
+      // 后端 createSite 看到 engine=rpxy 就会跳过 nginx 自动安装。
+      if (engineChoice === "rpxy") {
+        if (!installedSlugs.has("rpxy")) {
+          setSubmitStep("从 GitHub 下载 rpxy 二进制,起 systemd 服务...");
+          await clients.appStore.deployApp({
+            slug: "rpxy",
+            appName: "rpxy",
+            version: "latest"
+          });
+        }
+        if (kind === "static" && !installedSlugs.has("static-web-server")) {
+          setSubmitStep("从 GitHub 下载 static-web-server,静态站的反代上游...");
+          await clients.appStore.deployApp({
+            slug: "static-web-server",
+            appName: "static-web-server",
+            version: "latest"
+          });
+        }
+      }
+      setSubmitStep(
+        engineChoice === "rpxy"
+          ? "写 rpxy 站点片段 + vhost + bootstrap 自签证书..."
+          : "装 nginx(若缺) + 写 vhost + bootstrap 自签证书..."
+      );
       const response = await clients.site.createSite({
         name,
         domains: domain
@@ -4700,7 +4803,7 @@ function SmartSiteForm({
         root,
         proxyTarget,
         sslEnabled: protoTls !== SiteTlsStrategy.NONE,
-        engine: "nginx",
+        engine: engineChoice,
         listenAddr: "",
         kind: protoKind,
         binding,
@@ -4788,6 +4891,80 @@ function SmartSiteForm({
             onChange={(event) => setDomain(event.target.value)}
           />
         </div>
+        {!isEdit && (
+          <div className="grid gap-1.5 md:col-span-2">
+            <UILabel>网站引擎(后端服务)</UILabel>
+            <div className="rounded border border-info/30 bg-info/5 px-3 py-2 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">推荐:</span>{" "}
+              {recommendation.choice === "nginx" ? "nginx-mainline" : "rpxy + SWS"} —— {recommendation.reason}
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              {(
+                [
+                  {
+                    value: "nginx" as const,
+                    icon: Server,
+                    label: "nginx mainline",
+                    description: "C 写的成熟反代,单进程多站省 RAM,生态最大",
+                    note: installedSlugs.has("nginx-mainline")
+                      ? "✓ 已装"
+                      : installedSlugs.has("nginx-light")
+                        ? "✓ 已装(发行版 nginx-light)"
+                        : "未装 · 创建时会自动 apt 装 nginx.org 官方源(128MB OpenVZ 可能装不下)"
+                  },
+                  {
+                    value: "rpxy" as const,
+                    icon: ArrowLeftRight,
+                    label: "rpxy + SWS",
+                    description: "Rust 写的单文件反代,HTTP/3 原生,完全绕开 apt → 小机器友好",
+                    note: installedSlugs.has("rpxy")
+                      ? "✓ rpxy 已装" + (installedSlugs.has("static-web-server") ? " · SWS 已装" : " · 静态站会自动装 SWS")
+                      : "未装 · 创建时会自动下 GitHub 二进制(静态站再加 SWS)"
+                  }
+                ] as Array<{
+                  value: SiteEngineChoice;
+                  icon: typeof Server;
+                  label: string;
+                  description: string;
+                  note: string;
+                }>
+              ).map((option) => {
+                const Icon = option.icon;
+                const selected = engineChoice === option.value;
+                const isRecommended = recommendation.choice === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => {
+                      setEngineChoice(option.value);
+                      setEngineUserTouched(true);
+                    }}
+                    className={cn(
+                      "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition",
+                      selected
+                        ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                        : "border-border hover:border-primary/40 hover:bg-accent/30"
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Icon className="size-4 text-primary" />
+                      <span className="font-medium text-sm">{option.label}</span>
+                      {isRecommended && <Badge variant="info">推荐</Badge>}
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {option.description}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground/80">
+                      {option.note}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-1.5 md:col-span-2">
           <UILabel>站点类型</UILabel>
           <div className="grid gap-2 md:grid-cols-3">

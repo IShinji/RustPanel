@@ -28,6 +28,8 @@ const DEFAULT_SITE_STATE_ROOT: &str = "/tmp/rustpanel/site";
 const SITE_ENGINE_ENV: &str = "RUSTPANEL_SITE_ENGINE";
 const SITE_ENGINE_BUILTIN: &str = "builtin";
 const SITE_ENGINE_NGINX: &str = "nginx";
+// rpxy(单文件 Rust 反代):适合内存 / fork 紧的 OpenVZ,完全绕开 apt
+const SITE_ENGINE_RPXY: &str = "rpxy";
 const NGINX_TEMPLATE: &str = r#"server {
     listen 80;
     server_name {{ domains | join(sep=" ") }};
@@ -113,33 +115,42 @@ impl SiteService for SiteServiceImpl {
 
         crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
 
-        // nginx 缺就自动从 nginx.org 装 mainline(预编译 deb)。失败不
-        // 致命:vhost 文件还是会写,用户事后自己 apt 装也行;但若装了的话
-        // 会立刻拿到带 --with-http_v3_module 的 1.27+,HTTP/3 自动生效。
-        // 把"装了" / "没装上"的结果先存着,最后塞进 CreateSiteResponse.status.message
-        // 让前端 banner 直接显示,不再只在后端日志里 warn 用户根本看不到。
+        // 按 engine 决定要不要自动装 nginx:
+        //   - engine == nginx → 尝试 nginx-mainline 自动装(老逻辑)
+        //   - engine == rpxy  → 跳过 nginx,假设用户从软件商店装了 rpxy
+        //                       (前端在用户选 rpxy 后会先 deployApp,然后才
+        //                       发 createSite,所以 rpxy 这时应该已经在 PATH)
+        // 失败不致命:vhost 文件还是会写,用户事后自己手动装也能 reload 即生效。
         let mut bootstrap_notes: Vec<String> = Vec::new();
-        match crate::appstore::ensure_nginx_installed().await {
-            Ok(true) => {
-                tracing::info!(
-                    target = "site.bootstrap",
-                    "nginx 不存在,已自动装 nginx-mainline"
-                );
-                bootstrap_notes
-                    .push("已自动安装 nginx-mainline(nginx.org 官方源,带 HTTP/3)".to_owned());
+        if engine == SITE_ENGINE_NGINX {
+            match crate::appstore::ensure_nginx_installed().await {
+                Ok(true) => {
+                    tracing::info!(
+                        target = "site.bootstrap",
+                        "nginx 不存在,已自动装 nginx-mainline"
+                    );
+                    bootstrap_notes
+                        .push("已自动安装 nginx-mainline(nginx.org 官方源,带 HTTP/3)".to_owned());
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        target = "site.bootstrap",
+                        error = %error,
+                        "auto-install nginx-mainline failed (non-fatal; user can install manually)"
+                    );
+                    bootstrap_notes.push(format!(
+                        "⚠️ nginx 自动安装失败:{}(站点配置已写到 nginx 配置目录,等你手动装好 nginx 后 reload 即生效;128MB OpenVZ 上推荐换 rpxy 引擎)",
+                        error.message()
+                    ));
+                }
             }
-            Ok(false) => {}
-            Err(error) => {
-                tracing::warn!(
-                    target = "site.bootstrap",
-                    error = %error,
-                    "auto-install nginx-mainline failed (non-fatal; user can install manually)"
-                );
-                bootstrap_notes.push(format!(
-                    "⚠️ nginx 自动安装失败:{}(站点配置已写到 nginx 配置目录,等你手动装好 nginx 后 reload 即生效)",
-                    error.message()
-                ));
-            }
+        } else if engine == SITE_ENGINE_RPXY {
+            tracing::info!(
+                target = "site.bootstrap",
+                "engine=rpxy,跳过 nginx 自动安装;rpxy 由用户在软件商店装"
+            );
+            bootstrap_notes.push("引擎: rpxy(已跳过 nginx 自动安装)".to_owned());
         }
 
         // Phase C:如果传了 kind/binding,渲染 v6/NAT 端口感知的 vhost,
@@ -1239,6 +1250,7 @@ fn site_engine(request_engine: &str) -> String {
     };
     match value.trim().to_ascii_lowercase().as_str() {
         SITE_ENGINE_BUILTIN => SITE_ENGINE_BUILTIN.to_owned(),
+        SITE_ENGINE_RPXY => SITE_ENGINE_RPXY.to_owned(),
         _ => SITE_ENGINE_NGINX.to_owned(),
     }
 }
