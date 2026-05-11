@@ -41,6 +41,8 @@ pub enum AcmeError {
     Order(OrderStatus),
     #[error("no DNS-01 challenge for {0}")]
     NoDns01Challenge(String),
+    #[error("no HTTP-01 challenge for {0}")]
+    NoHttp01Challenge(String),
     #[error("authorization timeout for {0}")]
     Timeout(String),
 }
@@ -276,6 +278,118 @@ async fn finalize_order(state: PendingOrder) -> Result<RequestOutcome, AcmeError
         certificate_pem: cert_chain_pem,
         private_key_pem: state.cert_keypair_pem,
     }))
+}
+
+/// HTTP-01 单次阻塞签发 —— 与 DNS-01 不同,HTTP-01 不需要两步交互:
+/// 面板自己把 token 写到 webroot/.well-known/acme-challenge/<token>,
+/// 同步等 ACME 服务器拉取 + 验证 + finalize 拿证书。前提是:
+/// 1. nginx 已经在 80 端口监听该域名(create_site 已经写了 vhost 配置)
+/// 2. nginx vhost 的 location ^~ /.well-known/acme-challenge/ 指向 webroot
+/// 3. 公网到 VPS 的 80 端口可达 —— NAT VPS 默认不满足,需用 DNS-01
+pub async fn request_http01_blocking(
+    domain: &str,
+    email: &str,
+    webroot: &Path,
+) -> Result<IssuedCertificate, AcmeError> {
+    let new_account = NewAccount {
+        contact: &[&format!("mailto:{email}")],
+        terms_of_service_agreed: true,
+        only_return_existing: false,
+    };
+    let (account, _credentials) = Account::create(&new_account, directory_url(), None).await?;
+
+    let identifier = Identifier::Dns(domain.to_owned());
+    let mut order = account
+        .new_order(&NewOrder {
+            identifiers: &[identifier],
+        })
+        .await?;
+
+    let authorizations = order.authorizations().await?;
+    let auth = authorizations
+        .first()
+        .ok_or_else(|| AcmeError::NoHttp01Challenge(domain.to_owned()))?;
+    let challenge = auth
+        .challenges
+        .iter()
+        .find(|c| c.r#type == ChallengeType::Http01)
+        .ok_or_else(|| AcmeError::NoHttp01Challenge(domain.to_owned()))?;
+
+    let key_authorization = order.key_authorization(challenge);
+    let token = challenge.token.clone();
+    let body = key_authorization.as_str().to_owned();
+
+    // 写 challenge 文件到 webroot/.well-known/acme-challenge/<token>
+    let acme_dir = webroot.join(".well-known/acme-challenge");
+    tokio::fs::create_dir_all(&acme_dir).await?;
+    let challenge_path = acme_dir.join(&token);
+    tokio::fs::write(&challenge_path, body.as_bytes()).await?;
+
+    // 实际的 ACME 状态机部分用闭包包起来,即使中途出错也把 challenge 文件清掉
+    let result = async {
+        order.set_challenge_ready(&challenge.url).await?;
+
+        // 轮询 authorization:每 5 秒一次,最多 24 次(2 分钟)
+        let mut tries = 0u32;
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            let authorizations = order.authorizations().await?;
+            let status = authorizations
+                .first()
+                .map(|a| a.status)
+                .unwrap_or(AuthorizationStatus::Pending);
+            match status {
+                AuthorizationStatus::Valid => break,
+                AuthorizationStatus::Invalid
+                | AuthorizationStatus::Revoked
+                | AuthorizationStatus::Expired => {
+                    return Err(AcmeError::Authorization(status));
+                }
+                _ => {
+                    tries += 1;
+                    if tries >= 24 {
+                        return Err(AcmeError::Timeout(domain.to_owned()));
+                    }
+                }
+            }
+        }
+
+        // CSR
+        let mut params = CertificateParams::new(vec![domain.to_owned()])?;
+        params.distinguished_name = DistinguishedName::new();
+        let cert_keypair = KeyPair::generate()?;
+        let cert_keypair_pem = cert_keypair.serialize_pem();
+        let csr = params.serialize_request(&cert_keypair)?;
+        order.finalize(csr.der()).await?;
+
+        // 拿证书链
+        let mut tries = 0u32;
+        let cert_chain_pem = loop {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            if let Some(chain) = order.certificate().await? {
+                break chain;
+            }
+            let status = order.state().status;
+            if matches!(status, OrderStatus::Invalid) {
+                return Err(AcmeError::Order(status));
+            }
+            tries += 1;
+            if tries >= 20 {
+                return Err(AcmeError::Timeout(domain.to_owned()));
+            }
+        };
+
+        Ok(IssuedCertificate {
+            certificate_pem: cert_chain_pem,
+            private_key_pem: cert_keypair_pem,
+        })
+    }
+    .await;
+
+    // 不论成功还是失败,都尝试删 challenge 文件;失败也只是文件残留,不致命
+    let _ = tokio::fs::remove_file(&challenge_path).await;
+
+    result
 }
 
 /// 把签发好的证书 PEM 写到标准 letsencrypt 路径,供 ssl.rs 后续 reload nginx 读。

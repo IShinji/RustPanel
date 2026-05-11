@@ -121,6 +121,23 @@ impl SiteService for SiteServiceImpl {
         } else {
             render_site_config(&request)?
         };
+
+        // 启用 SSL 但还没签真证书时,先在 ssl_certificate 路径写一份自签
+        // 兜底,这样 nginx -t / reload 立刻通过;后续 ACME 完成会覆盖。
+        // 多域名时按 primary domain 来,与 render_phase_c_site 里 tls_block
+        // 的 ssl_certificate 路径对齐。
+        if (request.ssl_enabled || tls != SiteTlsStrategy::None) && !request.domains.is_empty() {
+            let primary = &request.domains[0];
+            if let Err(error) = crate::ssl::bootstrap_self_signed_if_missing(primary).await {
+                tracing::warn!(
+                    target = "site.ssl-bootstrap",
+                    domain = %primary,
+                    error = %error,
+                    "snakeoil bootstrap failed; nginx -t may reject vhost until real cert is issued"
+                );
+            }
+        }
+
         let config_path =
             nginx_sites_dir().join(format!("rustpanel-{}.conf", safe_name(&request.name)?));
         if let Some(parent) = config_path.parent() {
@@ -976,20 +993,22 @@ fn render_phase_c_site(
             format!("    listen {p};\n    listen [::]:{p};\n")
         }
         (SiteBindKind::Ipv6Address, Some(b)) if !b.ipv6_address.is_empty() => {
-            let port = if tls != SiteTlsStrategy::None {
-                443
-            } else {
-                80
-            };
-            format!(
-                "    listen [{addr}]:{port}{ssl};\n",
-                addr = b.ipv6_address,
-                ssl = if tls != SiteTlsStrategy::None {
-                    " ssl http2"
-                } else {
-                    ""
-                }
-            )
+            // **总是**监听 80 端口:
+            //   - HTTP-01 ACME 验证必须能从 80 端口拉 challenge 文件
+            //   - 没 SSL 时直接服务 HTTP
+            //   - 有 SSL 时承担 http → https 重定向
+            // 然后,启用 SSL 时再叠加 443 ssl 监听。配套的 ssl_certificate
+            // 文件由 ssl::bootstrap_self_signed_if_missing 在 create_site 阶段
+            // 先用自签兜底,保证 nginx -t 不会因为找不到证书拒绝启动;
+            // 真证书签发后会原地覆盖。
+            let mut lines = format!("    listen [{addr}]:80;\n", addr = b.ipv6_address);
+            if tls != SiteTlsStrategy::None {
+                lines.push_str(&format!(
+                    "    listen [{addr}]:443 ssl http2;\n",
+                    addr = b.ipv6_address
+                ));
+            }
+            lines
         }
         _ => "    listen 80;\n    listen [::]:80;\n".to_owned(),
     };
@@ -1025,10 +1044,16 @@ fn render_phase_c_site(
         _ => unreachable!("render_phase_c_site only handles Phase C kinds"),
     };
 
+    // ssl_certificate 路径指向 ssl 模块实际写证书的位置(RUSTPANEL_CERT_ROOT,
+    // 默认 /var/lib/rustpanel/acme/<domain>/),而不是 /etc/letsencrypt/live。
+    // 之前的硬编码导致 ACME 签好的证书 nginx 根本读不到,反代 vhost 立即 500。
     let tls_block = match tls {
         SiteTlsStrategy::LetsencryptDns01 | SiteTlsStrategy::Imported => {
+            let (cert_path, key_path) = crate::ssl::acme_cert_paths(&primary);
             format!(
-                "    ssl_certificate /etc/letsencrypt/live/{primary}/fullchain.pem;\n    ssl_certificate_key /etc/letsencrypt/live/{primary}/privkey.pem;\n"
+                "    ssl_certificate {};\n    ssl_certificate_key {};\n",
+                cert_path.display(),
+                key_path.display(),
             )
         }
         _ => String::new(),

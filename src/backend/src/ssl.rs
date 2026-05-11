@@ -129,30 +129,38 @@ impl SslService for SslServiceImpl {
             )));
         }
 
-        // 显式 HTTP-01 路径 —— 当前 issue_certificate 是**自签证书回退**,
-        // 不是真的走 ACME。诚实地告诉调用方这是个自签:浏览器不会信任,
-        // 仅适用于内部测试 / 本地开发。生产请用 DNS-01。
+        // 显式 HTTP-01:走真实 instant-acme 状态机,面板自动把 token 写
+        // 到 webroot 里。前提是 nginx 已经在 80 端口监听该域名 + webroot
+        // /.well-known/acme-challenge/ 可达。NAT VPS 80 端口不暴露的情况
+        // 下,validation 会卡在 pending → 24 次 5 秒轮询后报 Timeout,
+        // 用户该转用 DNS-01。
+        prepare_challenge_root().await?;
         send_progress(
             &sender,
             &request.domain,
             CertificateState::Pending,
-            "http-01 fallback: 本地自签证书(浏览器不信任,生产请改用 DNS-01)",
+            "http-01: ACME 创建 order,等待服务器拉取 challenge 文件",
         );
-
-        let certificate = issue_certificate(&request.domain).await?;
+        let webroot = challenge_root();
+        let cert = crate::acme::request_http01_blocking(&request.domain, &request.email, &webroot)
+            .await
+            .map_err(|e| Status::internal(format!("acme http-01: {e}")))?;
+        let (cert_path, key_path) =
+            crate::acme::install_certificate(&request.domain, &cert, &cert_root())
+                .await
+                .map_err(|e| Status::internal(format!("acme install: {e}")))?;
+        let _ = (cert_path, key_path);
         send_progress(
             &sender,
             &request.domain,
             CertificateState::Issued,
-            "self-signed certificate written",
+            "certificate stored via ACME (http-01)",
         );
         let _ = reload_nginx().await;
-
+        let item = certificate_item(&request.domain, CertificateState::Issued).await?;
         Ok(GrpcResponse::new(RequestCertificateResponse {
-            status: Some(ok_response(
-                "已写入本地自签证书(浏览器不信任 · 仅供内部测试),生产请使用 DNS-01",
-            )),
-            certificate: Some(certificate),
+            status: Some(ok_response("certificate issued via http-01")),
+            certificate: Some(item),
             dns_record_name: String::new(),
             dns_record_value: String::new(),
         }))
@@ -534,6 +542,22 @@ fn domain_cert_dir(domain: &str) -> PathBuf {
 pub(crate) fn acme_cert_paths(domain: &str) -> (PathBuf, PathBuf) {
     let dir = domain_cert_dir(domain);
     (dir.join("fullchain.pem"), dir.join("privkey.pem"))
+}
+
+/// 创建站点时启用 SSL,但真证书还没签的"bootstrap snakeoil"机制:
+/// 在 acme_cert_paths 对应的位置写一份**自签证书**,让 nginx -t 不致
+/// 因为找不到 ssl_certificate 文件而拒绝启动。后续 ACME(DNS-01 / HTTP-01)
+/// 签发成功会原地覆盖,nginx reload 后浏览器就拿到真证书。
+/// 已存在时直接返回,不覆盖已签的真证书。
+pub(crate) async fn bootstrap_self_signed_if_missing(domain: &str) -> Result<(), Status> {
+    let (cert_path, key_path) = acme_cert_paths(domain);
+    if tokio::fs::try_exists(&cert_path).await.unwrap_or(false) {
+        return Ok(());
+    }
+    if let Some(parent) = cert_path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+    create_self_signed_certificate(domain, &cert_path, &key_path).await
 }
 
 fn current_timestamp() -> u64 {
