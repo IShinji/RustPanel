@@ -133,7 +133,7 @@ impl SslService for SslServiceImpl {
                             CertificateState::Issued,
                             "certificate stored via ACME",
                         );
-                        let _ = reload_nginx().await;
+                        let _ = reload_active_proxy().await;
                         let item =
                             certificate_item(&request.domain, CertificateState::Issued).await?;
                         return Ok(GrpcResponse::new(RequestCertificateResponse {
@@ -179,7 +179,7 @@ impl SslService for SslServiceImpl {
             CertificateState::Issued,
             "certificate stored via ACME (http-01)",
         );
-        let _ = reload_nginx().await;
+        let _ = reload_active_proxy().await;
         let item = certificate_item(&request.domain, CertificateState::Issued).await?;
         Ok(GrpcResponse::new(RequestCertificateResponse {
             status: Some(ok_response("certificate issued via http-01")),
@@ -252,7 +252,7 @@ impl SslService for SslServiceImpl {
         }
         clear_bootstrap_marker(&request.domain).await;
         let certificate = certificate_item(&request.domain, CertificateState::Issued).await?;
-        let _ = reload_nginx().await;
+        let _ = reload_active_proxy().await;
 
         Ok(GrpcResponse::new(ImportCertificateResponse {
             status: Some(ok_response("certificate imported")),
@@ -298,10 +298,7 @@ impl SslService for SslServiceImpl {
                     .map_err(|e| Status::internal(format!("acme install: {e}")))?;
                 clear_bootstrap_marker(&domain).await;
                 let item = certificate_item(&domain, CertificateState::Issued).await?;
-                let reload_output = reload_nginx()
-                    .await
-                    .map(|_| "nginx reloaded".to_owned())
-                    .unwrap_or_else(|error| error.message().to_owned());
+                let reload_output = reload_active_proxy().await;
                 Ok(GrpcResponse::new(RenewCertificateResponse {
                     status: Some(ok_response("certificate renewed via DNS-01")),
                     certificate: Some(item),
@@ -536,19 +533,73 @@ async fn create_self_signed_certificate(
     Ok(())
 }
 
-async fn reload_nginx() -> Result<(), Status> {
-    let output = tokio::process::Command::new("nginx")
-        .arg("-s")
-        .arg("reload")
-        .output()
+/// 重新加载**实际跑着的**反代后端,让它读到新签的 cert。
+///
+/// 用户可能装 nginx,也可能装 rpxy(NAT VPS 上更常见,因为 nginx
+/// apt install 在 128MB OpenVZ 上 fork 上限直接炸)。这个函数试一遍
+/// 两个:
+/// - nginx 二进制不存在 → silently 跳过(NotFound 不算错)
+/// - rpxy 没在跑(`systemctl is-active` 失败)→ 跳过
+/// - 都没跑 → 返一条 "no proxy backend active" 的可读消息(不算 error)
+///
+/// 之前只调 `nginx -s reload`,rpxy-only 用户的真 LE 续签成功后看到的
+/// 是 ENOENT "No such file or directory (os error 2)" —— 看起来像签发
+/// 失败,实际上证书已经在盘上,只是没人 reload。
+async fn reload_active_proxy() -> String {
+    let mut tried = Vec::new();
+    let nginx_available = tokio::fs::try_exists("/usr/sbin/nginx")
         .await
-        .map_err(io_status)?;
-    if output.status.success() {
-        Ok(())
+        .unwrap_or(false)
+        || tokio::fs::try_exists("/usr/local/sbin/nginx")
+            .await
+            .unwrap_or(false)
+        || tokio::fs::try_exists("/usr/local/bin/nginx")
+            .await
+            .unwrap_or(false);
+    if nginx_available {
+        let out = tokio::process::Command::new("nginx")
+            .arg("-s")
+            .arg("reload")
+            .output()
+            .await;
+        match out {
+            Ok(o) if o.status.success() => tried.push("nginx reloaded".to_owned()),
+            Ok(o) => tried.push(format!(
+                "nginx reload failed: {}",
+                String::from_utf8_lossy(&o.stderr).trim()
+            )),
+            Err(e) => tried.push(format!("nginx reload spawn failed: {e}")),
+        }
+    }
+    // rpxy:用 systemctl reload(unit 自身定义了什么是 reload;rpxy 0.11
+    // 有 --config-watch 也行,但 reload 走 SIGHUP 更可靠)。先 is-active
+    // 避免对 inactive unit reload 留个无用错误。
+    let rpxy_active = tokio::process::Command::new("systemctl")
+        .args(["is-active", "--quiet", "rpxy.service"])
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if rpxy_active {
+        let out = tokio::process::Command::new("systemctl")
+            .args(["reload-or-restart", "rpxy.service"])
+            .output()
+            .await;
+        match out {
+            Ok(o) if o.status.success() => tried.push("rpxy reloaded".to_owned()),
+            Ok(o) => tried.push(format!(
+                "rpxy reload failed: {}",
+                String::from_utf8_lossy(&o.stderr).trim()
+            )),
+            Err(e) => tried.push(format!("rpxy reload spawn failed: {e}")),
+        }
+    }
+    if tried.is_empty() {
+        "no proxy backend active to reload (cert is on disk; \
+         start nginx or rpxy manually)"
+            .to_owned()
     } else {
-        Err(Status::internal(
-            String::from_utf8_lossy(&output.stderr).to_string(),
-        ))
+        tried.join("; ")
     }
 }
 
