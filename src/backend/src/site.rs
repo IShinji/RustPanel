@@ -116,17 +116,30 @@ impl SiteService for SiteServiceImpl {
         // nginx 缺就自动从 nginx.org 装 mainline(预编译 deb)。失败不
         // 致命:vhost 文件还是会写,用户事后自己 apt 装也行;但若装了的话
         // 会立刻拿到带 --with-http_v3_module 的 1.27+,HTTP/3 自动生效。
+        // 把"装了" / "没装上"的结果先存着,最后塞进 CreateSiteResponse.status.message
+        // 让前端 banner 直接显示,不再只在后端日志里 warn 用户根本看不到。
+        let mut bootstrap_notes: Vec<String> = Vec::new();
         match crate::appstore::ensure_nginx_installed().await {
-            Ok(true) => tracing::info!(
-                target = "site.bootstrap",
-                "nginx 不存在,已自动装 nginx-mainline"
-            ),
+            Ok(true) => {
+                tracing::info!(
+                    target = "site.bootstrap",
+                    "nginx 不存在,已自动装 nginx-mainline"
+                );
+                bootstrap_notes
+                    .push("已自动安装 nginx-mainline(nginx.org 官方源,带 HTTP/3)".to_owned());
+            }
             Ok(false) => {}
-            Err(error) => tracing::warn!(
-                target = "site.bootstrap",
-                error = %error,
-                "auto-install nginx-mainline failed (non-fatal; user can install manually)"
-            ),
+            Err(error) => {
+                tracing::warn!(
+                    target = "site.bootstrap",
+                    error = %error,
+                    "auto-install nginx-mainline failed (non-fatal; user can install manually)"
+                );
+                bootstrap_notes.push(format!(
+                    "⚠️ nginx 自动安装失败:{}(站点配置已写到 nginx 配置目录,等你手动装好 nginx 后 reload 即生效)",
+                    error.message()
+                ));
+            }
         }
 
         // Phase C:如果传了 kind/binding,渲染 v6/NAT 端口感知的 vhost,
@@ -260,8 +273,17 @@ impl SiteService for SiteServiceImpl {
             }
         }
 
+        // 站点创建成功的同时,如果 bootstrap 阶段产生了 notes(nginx 自动
+        // 安装结果之类),把它合进 status.message —— 前端 message banner
+        // 就能直接展示,无需走 logs。
+        let status_message = if bootstrap_notes.is_empty() {
+            "站点已创建".to_owned()
+        } else {
+            format!("站点已创建 · {}", bootstrap_notes.join(" · "))
+        };
+
         Ok(GrpcResponse::new(CreateSiteResponse {
-            status: Some(ok_response("site created")),
+            status: Some(ok_response(&status_message)),
             site: Some(site),
             rendered_config,
         }))

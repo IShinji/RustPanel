@@ -1621,7 +1621,7 @@ function NetworkPage({ clients }: { clients: Clients }) {
         </div>
       )}
       {message && !error && (
-        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success whitespace-pre-line">
           {message}
         </div>
       )}
@@ -3060,7 +3060,7 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
         </div>
       )}
       {message && !error && (
-        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success whitespace-pre-line">
           {message}
         </div>
       )}
@@ -3200,7 +3200,7 @@ function VsmtpAliasPage({ clients }: { clients: Clients }) {
         </div>
       )}
       {message && !error && (
-        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success whitespace-pre-line">
           {message}
         </div>
       )}
@@ -4041,7 +4041,12 @@ function SitesSsl({ clients }: { clients: Clients }) {
   const renewCertificate = async (certificate: CertificateItem) => {
     try {
       const response = await clients.ssl.renewCertificate({ domain: certificate.domain });
-      setMessage(response.output || `${certificate.domain} 已续签`);
+      // 续签现在走真实 DNS-01:第一次返回 TXT(放在 output 字段),
+      // 用户加 DNS 后再点一次完成。把 status.message + output 拼起来
+      // 多行展示,whitespace-pre-line 让换行渲染出来。
+      const head = response.status?.message ?? `${certificate.domain} 已续签`;
+      const detail = response.output;
+      setMessage(detail ? `${head}\n\n${detail}` : head);
       await load();
     } catch (err) {
       setError(safeError(err));
@@ -4125,7 +4130,7 @@ function SitesSsl({ clients }: { clients: Clients }) {
         </div>
       )}
       {message && !error && (
-        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success whitespace-pre-line">
           {message}
         </div>
       )}
@@ -4714,7 +4719,14 @@ function SmartSiteForm({
           .catch(() => undefined);
       }
       if (response.site) {
-        onMessage(`${response.site.name} 已创建`);
+        // status.message 现在带 bootstrap notes(nginx 装了 / 装失败的原因),
+        // 优先用它;没附加信息时退回简单的"已创建"。
+        const richMsg = response.status?.message;
+        onMessage(
+          richMsg && richMsg.length > 0
+            ? richMsg
+            : `${response.site.name} 已创建`
+        );
       }
       // 选了 DNS-01 自动签发:立即发起 ACME 拿 TXT,通过 onAcmeChallenge
       // 推到主页面顶部 banner。即使失败也只 log,不阻塞站点创建已经
@@ -5595,7 +5607,7 @@ function DatabasePanel({ clients }: { clients: Clients }) {
         </div>
       )}
       {message && !error && (
-        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success whitespace-pre-line">
           {message}
         </div>
       )}
@@ -6423,7 +6435,7 @@ function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout: () =>
         </div>
       )}
       {message && !error && (
-        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success whitespace-pre-line">
           {message}
         </div>
       )}

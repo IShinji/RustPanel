@@ -242,17 +242,37 @@ impl SslService for SslServiceImpl {
     ) -> Result<GrpcResponse<RenewCertificateResponse>, Status> {
         let domain = request.into_inner().domain;
         validate_domain(&domain)?;
-        let certificate = issue_certificate(&domain).await?;
-        let reload_output = reload_nginx()
+        // 之前直接调 issue_certificate 写自签覆盖,等于把用户的 Let's Encrypt
+        // 真证书踩成自签 —— **不是续签**。改成走真实 DNS-01 ACME:第一次
+        // 返回 TXT(用 output 字段透出),第二次完成。
+        // email 用占位 "admin@<domain>",ACME 接受任意符合 RFC 的邮箱。
+        let outcome = crate::acme::request_or_resume_dns01(&domain, &format!("admin@{domain}"))
             .await
-            .map(|_| "nginx reloaded".to_owned())
-            .unwrap_or_else(|error| error.message().to_owned());
-
-        Ok(GrpcResponse::new(RenewCertificateResponse {
-            status: Some(ok_response("certificate renewed")),
-            certificate: Some(certificate),
-            output: reload_output,
-        }))
+            .map_err(|e| Status::internal(format!("acme renew: {e}")))?;
+        match outcome {
+            crate::acme::RequestOutcome::Challenge(c) => {
+                Ok(GrpcResponse::new(RenewCertificateResponse {
+                    status: Some(ok_response("请把下方 TXT 加到 DNS 后再点一次续签完成签发")),
+                    certificate: None,
+                    output: format!("TXT 名称: {}\nTXT 值:  {}", c.record_name, c.record_value),
+                }))
+            }
+            crate::acme::RequestOutcome::Issued(cert) => {
+                crate::acme::install_certificate(&domain, &cert, &cert_root())
+                    .await
+                    .map_err(|e| Status::internal(format!("acme install: {e}")))?;
+                let item = certificate_item(&domain, CertificateState::Issued).await?;
+                let reload_output = reload_nginx()
+                    .await
+                    .map(|_| "nginx reloaded".to_owned())
+                    .unwrap_or_else(|error| error.message().to_owned());
+                Ok(GrpcResponse::new(RenewCertificateResponse {
+                    status: Some(ok_response("certificate renewed via DNS-01")),
+                    certificate: Some(item),
+                    output: reload_output,
+                }))
+            }
+        }
     }
 
     async fn watch_certificate_progress(
@@ -285,22 +305,6 @@ impl SslServiceImpl {
             .or_insert_with(|| broadcast::channel(SSL_CHANNEL_SIZE).0)
             .clone())
     }
-}
-
-async fn issue_certificate(domain: &str) -> Result<CertificateItem, Status> {
-    prepare_challenge_root().await?;
-    let cert_dir = domain_cert_dir(domain);
-    tokio::fs::create_dir_all(&cert_dir)
-        .await
-        .map_err(io_status)?;
-    let cert_path = cert_dir.join("fullchain.pem");
-    let key_path = cert_dir.join("privkey.pem");
-
-    if env::var("RUSTPANEL_SSL_DISABLE_SELF_SIGNED_FALLBACK").is_err() {
-        create_self_signed_certificate(domain, &cert_path, &key_path).await?;
-    }
-
-    certificate_item(domain, CertificateState::Issued).await
 }
 
 async fn list_certificates() -> Result<Vec<CertificateItem>, Status> {
@@ -396,31 +400,30 @@ async fn create_self_signed_certificate(
     cert_path: &PathBuf,
     key_path: &PathBuf,
 ) -> Result<(), Status> {
-    let output = tokio::process::Command::new("openssl")
-        .arg("req")
-        .arg("-x509")
-        .arg("-nodes")
-        .arg("-newkey")
-        .arg("rsa:2048")
-        .arg("-days")
-        .arg("90")
-        .arg("-subj")
-        .arg(format!("/CN={domain}"))
-        .arg("-keyout")
-        .arg(key_path)
-        .arg("-out")
-        .arg(cert_path)
-        .output()
+    // 之前走 `openssl req -x509 ...` CLI,在没装 openssl 的最小镜像上
+    // 直接 NotFound(os error 2)。换成纯 Rust 的 rcgen(已经在
+    // Cargo.toml 里,acme.rs 也用它做 CSR),零外部二进制依赖。
+    let mut params = rcgen::CertificateParams::new(vec![domain.to_owned()])
+        .map_err(|e| Status::internal(format!("rcgen params: {e}")))?;
+    params.distinguished_name = rcgen::DistinguishedName::new();
+    params
+        .distinguished_name
+        .push(rcgen::DnType::CommonName, domain);
+    let keypair =
+        rcgen::KeyPair::generate().map_err(|e| Status::internal(format!("rcgen key: {e}")))?;
+    let cert = params
+        .self_signed(&keypair)
+        .map_err(|e| Status::internal(format!("rcgen sign: {e}")))?;
+    if let Some(parent) = cert_path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+    tokio::fs::write(cert_path, cert.pem())
         .await
         .map_err(io_status)?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(Status::internal(
-            String::from_utf8_lossy(&output.stderr).to_string(),
-        ))
-    }
+    tokio::fs::write(key_path, keypair.serialize_pem())
+        .await
+        .map_err(io_status)?;
+    Ok(())
 }
 
 async fn reload_nginx() -> Result<(), Status> {
