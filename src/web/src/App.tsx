@@ -315,6 +315,43 @@ type SshKeyForm = {
 };
 
 const clients = createRpcClients();
+
+const ACME_EMAIL_STORAGE_KEY = "rustpanel.acme.contactEmail";
+
+/// 拿一个能用的 ACME 联系邮箱;没有就 prompt 一次然后持久化。
+/// 之前两处 auto-fire / SSL apply 都硬塞 "admin@example.com",Let's Encrypt
+/// 自 2024 起拒绝 `example.com` / `example.org` / `example.net` 域的 contact,
+/// 直接 invalidContact 报错。这里改成一次性 prompt + localStorage 缓存。
+/// 返回 null 表示用户取消;调用方应该中止当前操作而不是用兜底值。
+function ensureAcmeEmail(): string | null {
+  try {
+    const cached = window.localStorage.getItem(ACME_EMAIL_STORAGE_KEY);
+    if (cached && cached.includes("@") && !cached.endsWith("@example.com")) {
+      return cached;
+    }
+  } catch {
+    // localStorage 不可用(隐身模式 / 沙盒)就走 prompt 流程
+  }
+  const input = window.prompt(
+    "首次申请 SSL 证书需要一个真实邮箱(Let's Encrypt 用它做账户联系人,过期前会发邮件提醒)。\n以后不会再问,记在本地浏览器。",
+    ""
+  );
+  if (!input) {
+    return null;
+  }
+  const trimmed = input.trim();
+  if (!trimmed.includes("@") || trimmed.endsWith("@example.com")) {
+    window.alert("请填一个真实邮箱;example.com 域的邮箱会被 Let's Encrypt 拒掉。");
+    return null;
+  }
+  try {
+    window.localStorage.setItem(ACME_EMAIL_STORAGE_KEY, trimmed);
+  } catch {
+    // 写不进 localStorage 不致命,只是下次还会问一次
+  }
+  return trimmed;
+}
+
 const monitorRanges: Array<{ id: MonitorRange; label: string }> = [
   { id: "1h", label: "1h" },
   { id: "24h", label: "24h" },
@@ -4856,12 +4893,13 @@ function SmartSiteForm({
           .split(/[\s,]+/)
           .map((value) => value.trim())
           .filter(Boolean)[0];
-        if (primaryDomain) {
+        const acmeEmail = primaryDomain ? ensureAcmeEmail() : null;
+        if (primaryDomain && acmeEmail) {
           setSubmitStep("向 Let's Encrypt 发起 DNS-01 申请,拿 TXT 记录...");
           try {
             const acmeResp = await clients.ssl.requestCertificate({
               domain: primaryDomain,
-              email: "admin@example.com",
+              email: acmeEmail,
               challengeType: AcmeChallengeType.DNS_01
             });
             if (acmeResp.dnsRecordName || acmeResp.dnsRecordValue) {
@@ -5265,13 +5303,18 @@ function SslPanel({
       onError("本站点没有绑定域名,无法申请证书 — 在'基础'Tab 填上 domains 后再来");
       return;
     }
+    const acmeEmail = ensureAcmeEmail();
+    if (!acmeEmail) {
+      onError("申请已取消 —— 需要一个真实邮箱才能向 Let's Encrypt 注册账户");
+      return;
+    }
     try {
       // 显式 DNS-01:NAT VPS 上 80 端口拿不到,HTTP-01 走不通;并且
       // 不传 challenge_type 后端会 fall through 到一个**自签**回退路径,
       // "一键成功"但浏览器不信任 —— 等于骗用户。这里硬走 DNS-01。
       const response = await clients.ssl.requestCertificate({
         domain: primaryDomain,
-        email: "admin@example.com",
+        email: acmeEmail,
         challengeType: AcmeChallengeType.DNS_01
       });
       if (response.dnsRecordName || response.dnsRecordValue) {
