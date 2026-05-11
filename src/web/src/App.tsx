@@ -4264,6 +4264,7 @@ function SitesSsl({ clients }: { clients: Clients }) {
                   <TableHead>域名</TableHead>
                   <TableHead>类型</TableHead>
                   <TableHead>SSL</TableHead>
+                  <TableHead>占用</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </UITableRow>
               </TableHeader>
@@ -4283,6 +4284,9 @@ function SitesSsl({ clients }: { clients: Clients }) {
                       <Badge variant={site.sslEnabled ? "success" : "muted"}>
                         {site.sslEnabled ? "SSL" : "HTTP"}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {site.diskBytes > 0n ? formatBytes(site.diskBytes) : "—"}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
@@ -4599,6 +4603,9 @@ function SiteDetailSheet(props: SiteSheetProps) {
           <Tabs defaultValue="basic">
             <TabsList>
               <TabsTrigger value="basic">基础</TabsTrigger>
+              <TabsTrigger value="deploy" disabled={mode === "new"}>
+                部署
+              </TabsTrigger>
               <TabsTrigger value="ssl" disabled={mode === "new"}>
                 SSL
               </TabsTrigger>
@@ -4609,6 +4616,13 @@ function SiteDetailSheet(props: SiteSheetProps) {
             </TabsList>
             <TabsContent value="basic" className="pt-3">
               <SmartSiteForm {...props} />
+            </TabsContent>
+            <TabsContent value="deploy" className="pt-3">
+              {mode === "edit" && site ? (
+                <DeployPanel {...props} site={site} />
+              ) : (
+                <p className="text-sm text-muted-foreground">保存站点后可上传内容</p>
+              )}
             </TabsContent>
             <TabsContent value="ssl" className="pt-3">
               {mode === "edit" && site ? (
@@ -5727,6 +5741,252 @@ function SslPanel({
           导入
         </UIButton>
       </div>
+    </div>
+  );
+}
+
+/// DeployPanel:站点详情抽屉的"部署" Tab。
+/// 让用户拖一个 zip 进来,前端 POST 到 /api/site/deploy(multipart);后端
+/// 流式落到 tmp 文件 → 解压到 staging → 原子 swap webroot,留 .previous 备份。
+/// 进度走 XHR.upload.onprogress(fetch 不给上传进度)。
+function DeployPanel({
+  site,
+  clients,
+  onChanged,
+  onMessage,
+  onError
+}: SiteSheetProps & { site: SiteItem }) {
+  const [phase, setPhase] = useState<"idle" | "uploading" | "extracting" | "done">("idle");
+  const [progressPct, setProgressPct] = useState(0);
+  const [lastDeploy, setLastDeploy] = useState<{
+    deployedPath: string;
+    previousBackupPath: string;
+    bytesReceived: number;
+    filesExtracted: number;
+  } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [rolling, setRolling] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const supportsDeploy = (site.root?.trim().length ?? 0) > 0;
+  const previousBackupExists =
+    !!lastDeploy?.previousBackupPath ||
+    !!(site.previousBackupPath && site.previousBackupPath.length > 0);
+
+  const doUpload = (file: File) => {
+    if (!supportsDeploy) {
+      onError("此站点没有 webroot,无法上传内容(纯反代 / RustBinary 站走代码部署)");
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      onError("请上传 .zip 归档(后端只识别 zip;tar.gz 后续支持)");
+      return;
+    }
+    setPhase("uploading");
+    setProgressPct(0);
+    const form = new FormData();
+    form.append("archive", file);
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        setProgressPct(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    xhr.upload.onload = () => {
+      // 上传完进入"等后端解压"阶段
+      setPhase("extracting");
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText) as {
+            deployed_path: string;
+            previous_backup_path: string;
+            bytes_received: number;
+            files_extracted: number;
+          };
+          setLastDeploy({
+            deployedPath: data.deployed_path,
+            previousBackupPath: data.previous_backup_path,
+            bytesReceived: data.bytes_received,
+            filesExtracted: data.files_extracted
+          });
+          setPhase("done");
+          onMessage(
+            `部署完成 · ${data.files_extracted} 个文件 / ${formatBytes(BigInt(data.bytes_received))} → ${data.deployed_path}`
+          );
+          onChanged();
+        } catch {
+          onError(`部署成功但响应解析失败:${xhr.responseText.slice(0, 200)}`);
+          setPhase("idle");
+        }
+      } else {
+        let detail = xhr.responseText;
+        try {
+          const parsed = JSON.parse(xhr.responseText) as { error?: string };
+          if (parsed.error) detail = parsed.error;
+        } catch {
+          // 留 raw text
+        }
+        onError(`部署失败(HTTP ${xhr.status}):${detail.slice(0, 300)}`);
+        setPhase("idle");
+      }
+    };
+    xhr.onerror = () => {
+      onError("上传网络错误,检查面板是否还可访问");
+      setPhase("idle");
+    };
+    xhr.open(
+      "POST",
+      `/api/site/deploy?name=${encodeURIComponent(site.name)}`,
+      true
+    );
+    // multipart 的 Content-Type 浏览器自动加 boundary,不要手动设
+    const token = window.localStorage.getItem("rustpanel.auth.token");
+    if (token) xhr.setRequestHeader("authorization", `Bearer ${token}`);
+    xhr.send(form);
+  };
+
+  const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragOver(false);
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    doUpload(file);
+  };
+
+  const onPick = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    doUpload(file);
+    event.target.value = "";
+  };
+
+  const rollback = async () => {
+    setRolling(true);
+    try {
+      const resp = await clients.site.rollbackSite({ siteName: site.name });
+      onMessage(`已回滚 · ${resp.deployedPath}`);
+      setLastDeploy(null);
+      onChanged();
+    } catch (err) {
+      onError(safeError(err));
+    } finally {
+      setRolling(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {!supportsDeploy ? (
+        <div className="rounded border border-warning/30 bg-warning/5 p-3 text-sm">
+          此站点没有 webroot(<code>site.root</code> 为空),不能上传静态资源。
+          反向代理 / RustBinary 类站点请用代码部署路径(<code>git push</code> → 重启
+          systemd unit)。
+        </div>
+      ) : (
+        <>
+          <div className="text-sm text-muted-foreground">
+            把本地构建产物打成 <code>.zip</code> 拖进下方区域,面板会自动解压到
+            <code className="mx-1">{site.root}</code>。
+            旧内容保留一份作 <code>.previous</code> 备份,失误能一键回滚。
+          </div>
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
+              dragOver
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-primary/50 hover:bg-muted/30"
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              onChange={onPick}
+            />
+            <div className="text-sm font-medium">
+              {phase === "uploading"
+                ? `上传中 ${progressPct}%`
+                : phase === "extracting"
+                  ? "上传完成,服务器正在解压 + 切换..."
+                  : "点这里选 .zip,或者拖一个文件进来"}
+            </div>
+            {phase === "uploading" && (
+              <div className="mt-2 h-1.5 w-full rounded bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            )}
+            {phase === "extracting" && (
+              <div className="mt-2 flex justify-center">
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              </div>
+            )}
+          </div>
+
+          {lastDeploy && phase === "done" && (
+            <div className="rounded border border-success/30 bg-success/5 p-3 text-xs space-y-1">
+              <div className="font-medium">✓ 上次部署</div>
+              <div className="text-muted-foreground">
+                {lastDeploy.filesExtracted} 个文件 ·
+                {" "}
+                {formatBytes(BigInt(lastDeploy.bytesReceived))}
+                {" "}→{" "}
+                <code>{lastDeploy.deployedPath}</code>
+              </div>
+              {lastDeploy.previousBackupPath && (
+                <div className="text-muted-foreground">
+                  备份:<code>{lastDeploy.previousBackupPath}</code>
+                </div>
+              )}
+            </div>
+          )}
+
+          {previousBackupExists && (
+            <div className="flex items-center gap-3">
+              <UIButton
+                size="sm"
+                variant="outline"
+                onClick={() => void rollback()}
+                disabled={rolling || phase !== "idle" && phase !== "done"}
+              >
+                <RotateCw className="size-3.5" />
+                {rolling ? "回滚中..." : "回滚到上一版"}
+              </UIButton>
+              <span className="text-xs text-muted-foreground">
+                上一版备份存在;回滚后**当前版本会丢**,不能再回滚到再上一版。
+              </span>
+            </div>
+          )}
+
+          <div className="rounded border border-info/20 bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
+            <div className="font-medium text-foreground">怎么打 zip</div>
+            <div>
+              典型构建工具:Hugo 产出 <code>public/</code>,VitePress 产出
+              <code className="mx-1">.vitepress/dist/</code>,Vite/CRA 产出
+              <code className="mx-1">dist/</code>。
+            </div>
+            <div>
+              进到产物目录里再 <code>zip -r ../site.zip .</code>(注意末尾 <code>.</code>,
+              别把外层目录也打进去 —— 解出来根目录得直接是 <code>index.html</code>)。
+            </div>
+            <div>
+              Mac/Windows 也可以直接 "Compress" 那个产物目录,但解出来会带一层
+              外层 dir,先进去再压更干净。
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

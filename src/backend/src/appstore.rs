@@ -2638,6 +2638,8 @@ mod tests {
             tls_strategy: 0,
             systemd_unit: String::new(),
             internal_port: 0,
+            disk_bytes: 0,
+            previous_backup_path: String::new(),
         }
     }
 

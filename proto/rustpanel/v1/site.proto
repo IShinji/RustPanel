@@ -62,6 +62,12 @@ message SiteItem {
   string systemd_unit = 13;
   // RUST_BINARY 时本地监听端口(仅 nginx 反代用,不占 NAT 端口预算)
   uint32 internal_port = 14;
+  // root 目录当前占用字节数;list_sites 时按 60s TTL 缓存。
+  // Static 类站点才有意义;其它 kind / 未就绪时为 0。
+  uint64 disk_bytes = 15;
+  // 上一版部署的备份目录(<root>.previous)如果存在,这里填路径。
+  // 前端据此显示"回滚"按钮。无备份留空。
+  string previous_backup_path = 16;
 }
 
 // RewriteTemplate 描述内置伪静态模板。
@@ -201,6 +207,22 @@ message DeleteReverseProxyRuleResponse {
   Response status = 1;
 }
 
+// 站点 zip 部署走 HTTP POST /api/site/:name/deploy 多部分上传(gRPC-web
+// 不支持 client streaming,大文件用 axum multipart 更顺)。返回 JSON 的
+// DeploySiteResult。这里只留回滚 RPC,小请求小响应,适合 gRPC unary。
+
+// RollbackSiteRequest 把 <root>.previous 重新换回 <root>。
+// 备份不存在 → FAILED_PRECONDITION。回滚后 .previous 被覆盖,
+// 不能二次回滚到再上一版(只保留 1 层备份)。
+message RollbackSiteRequest {
+  string site_name = 1;
+}
+
+message RollbackSiteResponse {
+  Response status = 1;
+  string deployed_path = 2;
+}
+
 // SiteService 提供站点与反向代理配置能力。
 service SiteService {
   rpc ListSites(ListSitesRequest) returns (ListSitesResponse);
@@ -212,4 +234,6 @@ service SiteService {
   rpc ListReverseProxyRules(ListReverseProxyRulesRequest) returns (ListReverseProxyRulesResponse);
   rpc UpsertReverseProxyRule(UpsertReverseProxyRuleRequest) returns (UpsertReverseProxyRuleResponse);
   rpc DeleteReverseProxyRule(DeleteReverseProxyRuleRequest) returns (DeleteReverseProxyRuleResponse);
+  // 回滚到 .previous 备份(zip 上传走 HTTP /api/site/:name/deploy)
+  rpc RollbackSite(RollbackSiteRequest) returns (RollbackSiteResponse);
 }

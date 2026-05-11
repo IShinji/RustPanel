@@ -17,9 +17,9 @@ use crate::{
         DeleteSiteResponse, ListReverseProxyRulesRequest, ListReverseProxyRulesResponse,
         ListRewriteTemplatesRequest, ListRewriteTemplatesResponse, ListSitesRequest,
         ListSitesResponse, ReloadNginxRequest, ReloadNginxResponse, RenderRewriteTemplateRequest,
-        RenderRewriteTemplateResponse, ReverseProxyRule, RewriteTemplate, SiteBindKind,
-        SiteBinding, SiteItem, SiteKind, SiteTlsStrategy, UpsertReverseProxyRuleRequest,
-        UpsertReverseProxyRuleResponse, UpstreamTarget,
+        RenderRewriteTemplateResponse, ReverseProxyRule, RewriteTemplate, RollbackSiteRequest,
+        RollbackSiteResponse, SiteBindKind, SiteBinding, SiteItem, SiteKind, SiteTlsStrategy,
+        UpsertReverseProxyRuleRequest, UpsertReverseProxyRuleResponse, UpstreamTarget,
     },
 };
 
@@ -222,6 +222,8 @@ impl SiteService for SiteServiceImpl {
             tls_strategy: tls as i32,
             systemd_unit,
             internal_port,
+            disk_bytes: 0,
+            previous_backup_path: String::new(),
         };
 
         // 落 sidecar 元数据:list_site_configs 之后回到详情抽屉能拿到
@@ -529,6 +531,174 @@ impl SiteService for SiteServiceImpl {
             status: Some(ok_response("reverse proxy rule deleted")),
         }))
     }
+
+    async fn rollback_site(
+        &self,
+        request: Request<RollbackSiteRequest>,
+    ) -> Result<GrpcResponse<RollbackSiteResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
+        let site_name = request.into_inner().site_name;
+        let webroot = find_site_webroot_by_name(&site_name).await.ok_or_else(|| {
+            Status::not_found(format!("site `{site_name}` not found or has no webroot"))
+        })?;
+        rollback_site_webroot(&webroot).await?;
+        Ok(GrpcResponse::new(RollbackSiteResponse {
+            status: Some(ok_response("rolled back to previous deploy")),
+            deployed_path: webroot.to_string_lossy().into_owned(),
+        }))
+    }
+}
+
+/// 给 deploy 路径用:按站点 name 找 webroot。如果是 builtin 内置站点或
+/// 自定义无 root → None。
+pub(crate) async fn find_site_webroot_by_name(site_name: &str) -> Option<std::path::PathBuf> {
+    let store = SiteStore::from_env();
+    let sites = list_site_configs(&store).await.ok()?;
+    let needle = site_name.trim();
+    for site in sites {
+        if site.name != needle {
+            continue;
+        }
+        let root = site.root.trim();
+        if root.is_empty() {
+            return None;
+        }
+        return Some(std::path::PathBuf::from(root));
+    }
+    None
+}
+
+/// 部署后的备份路径约定:同级目录 <root>.previous。原子切换的副产品。
+pub(crate) fn previous_backup_path(webroot: &std::path::Path) -> PathBuf {
+    let parent = webroot.parent().unwrap_or(std::path::Path::new("/"));
+    let base = webroot
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "site".to_owned());
+    parent.join(format!("{base}.previous"))
+}
+
+/// 把 staging 目录原子切换成 webroot,并把当前 webroot 保留为 .previous。
+/// 流程:旧 webroot → .previous(替换原有 .previous);staging → webroot。
+/// 都用 fs::rename,理论上一行原子(同文件系统下)。
+pub(crate) async fn atomic_swap_into_webroot(
+    staging_dir: &std::path::Path,
+    webroot: &std::path::Path,
+) -> Result<PathBuf, Status> {
+    let backup = previous_backup_path(webroot);
+    // 先清掉上次的 .previous(只保留 1 层备份),容错:不存在 ok
+    if tokio::fs::try_exists(&backup).await.unwrap_or(false) {
+        tokio::fs::remove_dir_all(&backup)
+            .await
+            .map_err(io_status)?;
+    }
+    if tokio::fs::try_exists(webroot).await.unwrap_or(false) {
+        tokio::fs::rename(webroot, &backup)
+            .await
+            .map_err(io_status)?;
+    }
+    tokio::fs::rename(staging_dir, webroot)
+        .await
+        .map_err(io_status)?;
+    Ok(backup)
+}
+
+/// 把 .previous 翻回 webroot。当前 webroot 也会丢到一边(临时,翻完即删,
+/// 不再保留)—— 不然回滚就成"互换"了,占空间。
+pub(crate) async fn rollback_site_webroot(webroot: &std::path::Path) -> Result<(), Status> {
+    let backup = previous_backup_path(webroot);
+    if !tokio::fs::try_exists(&backup).await.unwrap_or(false) {
+        return Err(Status::failed_precondition(
+            "no previous backup to rollback to",
+        ));
+    }
+    // 临时把当前 webroot 移走;swap 完删掉。
+    let trash = webroot.with_extension(format!(
+        "rollback-trash-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    ));
+    if tokio::fs::try_exists(webroot).await.unwrap_or(false) {
+        tokio::fs::rename(webroot, &trash)
+            .await
+            .map_err(io_status)?;
+    }
+    tokio::fs::rename(&backup, webroot)
+        .await
+        .map_err(io_status)?;
+    // 删 trash;失败也不致命(用户磁盘多了点垃圾,下次部署的 .previous
+    // 清理会顺手清掉)。
+    let _ = tokio::fs::remove_dir_all(&trash).await;
+    Ok(())
+}
+
+/// 计算目录的总占用字节数。简单递归,big dirs 也别让我们卡死,加超时不做,
+/// 调用方负责缓存。失败返 None。
+pub(crate) async fn dir_size_bytes(root: &std::path::Path) -> Option<u64> {
+    let root = root.to_path_buf();
+    tokio::task::spawn_blocking(move || -> std::io::Result<u64> {
+        let mut total: u64 = 0;
+        for entry in walkdir::WalkDir::new(&root).follow_links(false) {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if entry.file_type().is_file() {
+                if let Ok(meta) = entry.metadata() {
+                    total = total.saturating_add(meta.len());
+                }
+            }
+        }
+        Ok(total)
+    })
+    .await
+    .ok()?
+    .ok()
+}
+
+/// 从 zip 流式解压到 dest_dir,**严格拒绝**绝对路径 / `..` / symlink。
+/// 调用方应该先 create_dir_all(dest_dir)。
+pub(crate) fn extract_zip_to_dir(
+    archive_path: &std::path::Path,
+    dest_dir: &std::path::Path,
+) -> Result<u32, Status> {
+    let file = std::fs::File::open(archive_path).map_err(io_status)?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|e| Status::invalid_argument(format!("not a valid zip: {e}")))?;
+    let mut count: u32 = 0;
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| Status::internal(format!("zip entry {i}: {e}")))?;
+        let Some(enclosed) = entry.enclosed_name() else {
+            // zip 里有 ../ 或绝对路径 → enclosed_name 返 None,跳过这条 entry
+            // 防 zip-slip 攻击
+            continue;
+        };
+        let out_path = dest_dir.join(enclosed);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path).map_err(io_status)?;
+            continue;
+        }
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent).map_err(io_status)?;
+        }
+        let mut out = std::fs::File::create(&out_path).map_err(io_status)?;
+        std::io::copy(&mut entry, &mut out).map_err(io_status)?;
+        count += 1;
+        // Unix 权限沿用(默认 0644 给文件;0755 给目录)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Some(mode) = entry.unix_mode() {
+                let perm = std::fs::Permissions::from_mode(mode);
+                let _ = std::fs::set_permissions(&out_path, perm);
+            }
+        }
+    }
+    Ok(count)
 }
 
 /// 给 ssl 模块用:按域名查站点的 webroot。HTTP-01 challenge 要把 token
@@ -561,6 +731,24 @@ async fn list_site_configs(store: &SiteStore) -> Result<Vec<SiteItem>, Status> {
     sites.extend(store.load_builtin_sites().await?);
     if !crate::runtime::from_env().is_enabled(crate::runtime::MODULE_SITES) {
         return Ok(sites);
+    }
+    // 给每个站点填充 disk_bytes + previous_backup_path:
+    // - 装饰式后处理而不是在每个分支里重复
+    // - disk_bytes 走 dir_size_bytes(spawn_blocking 的 walkdir),站点不多
+    //   时(典型 <10 站)成本可接受;真要规模化再加 TTL 缓存
+    async fn enrich(site: &mut SiteItem) {
+        let root = site.root.trim();
+        if root.is_empty() {
+            return;
+        }
+        let path = std::path::PathBuf::from(root);
+        if let Some(bytes) = dir_size_bytes(&path).await {
+            site.disk_bytes = bytes;
+        }
+        let backup = previous_backup_path(&path);
+        if tokio::fs::try_exists(&backup).await.unwrap_or(false) {
+            site.previous_backup_path = backup.to_string_lossy().into_owned();
+        }
     }
 
     let mut entries = match tokio::fs::read_dir(nginx_sites_dir()).await {
@@ -601,6 +789,10 @@ async fn list_site_configs(store: &SiteStore) -> Result<Vec<SiteItem>, Status> {
         }
     }
 
+    for site in sites.iter_mut() {
+        enrich(site).await;
+    }
+
     Ok(sites)
 }
 
@@ -622,6 +814,8 @@ fn legacy_site_stub(path: &std::path::Path, stem: String) -> SiteItem {
         tls_strategy: 0,
         systemd_unit: String::new(),
         internal_port: 0,
+        disk_bytes: 0,
+        previous_backup_path: String::new(),
     }
 }
 
@@ -706,6 +900,8 @@ impl SiteStore {
             tls_strategy: request.tls_strategy,
             systemd_unit: String::new(),
             internal_port: 0,
+            disk_bytes: 0,
+            previous_backup_path: String::new(),
         };
         sites.retain(|stored| stored.name != site.name);
         sites.push(site.clone());
@@ -831,6 +1027,10 @@ impl StoredSite {
             tls_strategy: self.tls_strategy,
             systemd_unit: self.systemd_unit,
             internal_port: self.internal_port,
+            // disk_bytes / previous_backup_path 由 list_site_configs::enrich
+            // 在返回前填充,sidecar JSON 不存这俩(状态而非配置)
+            disk_bytes: 0,
+            previous_backup_path: String::new(),
         }
     }
 }

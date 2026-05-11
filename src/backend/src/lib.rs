@@ -278,6 +278,7 @@ fn http_router_with_state(state: HttpState, authority: auth::JwtAuthority) -> Ro
         .route("/api/fs/upload", post(http_file_upload))
         .route("/api/fs/upload/chunk", post(http_file_upload_chunk))
         .route("/api/fs/download", get(http_file_download))
+        .route("/api/site/deploy", post(http_site_deploy))
         .route("/api/terminal/ws", get(http_terminal_ws))
         .layer(from_fn_with_state(
             Arc::new(authority),
@@ -702,6 +703,127 @@ async fn http_file_download(
         .map_err(HttpError::internal)?;
 
     Ok(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct DeploySiteQuery {
+    /// 站点名;后端 list_sites 查 root,把 zip 解压到该 root
+    name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct DeploySiteResult {
+    deployed_path: String,
+    previous_backup_path: String,
+    bytes_received: u64,
+    files_extracted: u32,
+}
+
+/// 上传 zip 到站点 webroot 并原子切换。流程:
+/// 1. 找站点 webroot (site.rs find_site_webroot_by_name)
+/// 2. 多部分接到的 archive 字段流式写到 /tmp 下临时 zip 文件
+/// 3. zip 解压到 <webroot>.staging-<timestamp> 目录
+/// 4. atomic_swap_into_webroot:旧 webroot → .previous,staging → webroot
+/// 5. 删 staging zip;返回 deployed_path / previous_backup_path / 字节数 /
+///    文件数
+///
+/// 失败任意一步:把 staging 目录 / temp zip 删干净,**不动 webroot**
+/// (用户上一份内容不丢)。
+async fn http_site_deploy(
+    Query(query): Query<DeploySiteQuery>,
+    mut multipart: Multipart,
+) -> Result<impl IntoResponse, HttpError> {
+    let site_name = query.name.trim().to_owned();
+    if site_name.is_empty() {
+        return Err(HttpError::bad_request("name is required"));
+    }
+    let webroot = site::find_site_webroot_by_name(&site_name)
+        .await
+        .ok_or_else(|| {
+            HttpError::bad_request(format!(
+                "site `{site_name}` not found or has no webroot configured"
+            ))
+        })?;
+
+    // 接收 zip 到临时文件(不能整个 buffer 进内存,128MB 容易爆)
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let tmp_zip = std::env::temp_dir().join(format!("rustpanel-deploy-{site_name}-{now}.zip"));
+    let mut bytes_received: u64 = 0;
+    {
+        let mut tmp_file = tokio::fs::File::create(&tmp_zip)
+            .await
+            .map_err(HttpError::internal)?;
+        let mut found_archive = false;
+        while let Some(mut field) = multipart
+            .next_field()
+            .await
+            .map_err(HttpError::bad_request)?
+        {
+            // 接受 "archive" / "file" / 任一 multipart field 中带文件名的
+            if field.file_name().is_none() && field.name() != Some("archive") {
+                continue;
+            }
+            found_archive = true;
+            while let Some(chunk) = field.chunk().await.map_err(HttpError::bad_request)? {
+                bytes_received = bytes_received.saturating_add(chunk.len() as u64);
+                tmp_file
+                    .write_all(&chunk)
+                    .await
+                    .map_err(HttpError::internal)?;
+            }
+            break; // 只处理第一个 archive 字段
+        }
+        if !found_archive {
+            let _ = tokio::fs::remove_file(&tmp_zip).await;
+            return Err(HttpError::bad_request("missing multipart field `archive`"));
+        }
+    }
+
+    // 解压到 staging 目录(跟 webroot 同父目录,跨设备 rename 才能原子)
+    let staging = webroot.with_extension(format!("staging-{now}"));
+    if let Err(err) = tokio::fs::create_dir_all(&staging).await {
+        let _ = tokio::fs::remove_file(&tmp_zip).await;
+        return Err(HttpError::internal(err));
+    }
+    let staging_for_extract = staging.clone();
+    let extract_result = tokio::task::spawn_blocking(move || {
+        site::extract_zip_to_dir(&tmp_zip, &staging_for_extract).map(|count| (count, tmp_zip))
+    })
+    .await
+    .map_err(|e| HttpError::internal(format!("extract task panic: {e}")))?;
+    let (files_extracted, tmp_zip_path) = match extract_result {
+        Ok(v) => v,
+        Err(status) => {
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+            return Err(HttpError::from_status(status));
+        }
+    };
+    let _ = tokio::fs::remove_file(&tmp_zip_path).await;
+
+    // 原子切换 webroot
+    let backup_path = match site::atomic_swap_into_webroot(&staging, &webroot).await {
+        Ok(p) => p,
+        Err(status) => {
+            // swap 失败 → staging 还在,删掉避免下次冲突
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+            return Err(HttpError::from_status(status));
+        }
+    };
+    let backup_str = if tokio::fs::try_exists(&backup_path).await.unwrap_or(false) {
+        backup_path.to_string_lossy().into_owned()
+    } else {
+        String::new()
+    };
+
+    Ok(Json(DeploySiteResult {
+        deployed_path: webroot.to_string_lossy().into_owned(),
+        previous_backup_path: backup_str,
+        bytes_received,
+        files_extracted,
+    }))
 }
 
 #[derive(Debug, Deserialize)]
