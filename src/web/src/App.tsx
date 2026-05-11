@@ -4771,22 +4771,39 @@ function SmartSiteForm({
     try {
       // 用户选 rpxy:先确保 rpxy(以及静态站需要的 SWS)已经装上,
       // 后端 createSite 看到 engine=rpxy 就会跳过 nginx 自动安装。
+      //
+      // **关键阻断点**:任一前置依赖装失败,直接 throw 一个带明确"站点
+      // 未创建"语境的错误,catch 收住后 onError + 跳过 createSite。
+      // 这一段如果硬走下去,后端会写出一份 vhost 但没人 serve,反而更
+      // 误导用户。
       if (engineChoice === "rpxy") {
         if (!installedSlugs.has("rpxy")) {
           setSubmitStep("从 GitHub 下载 rpxy 二进制,起 systemd 服务...");
-          await clients.appStore.deployApp({
-            slug: "rpxy",
-            appName: "rpxy",
-            version: "latest"
-          });
+          try {
+            await clients.appStore.deployApp({
+              slug: "rpxy",
+              appName: "rpxy",
+              version: "latest"
+            });
+          } catch (installErr) {
+            throw new Error(
+              `rpxy 二进制安装失败:${safeError(installErr)}\n站点未创建。请在软件商店 → rpxy 看具体报错,排掉后再来一次。`
+            );
+          }
         }
         if (kind === "static" && !installedSlugs.has("static-web-server")) {
           setSubmitStep("从 GitHub 下载 static-web-server,静态站的反代上游...");
-          await clients.appStore.deployApp({
-            slug: "static-web-server",
-            appName: "static-web-server",
-            version: "latest"
-          });
+          try {
+            await clients.appStore.deployApp({
+              slug: "static-web-server",
+              appName: "static-web-server",
+              version: "latest"
+            });
+          } catch (installErr) {
+            throw new Error(
+              `static-web-server 安装失败:${safeError(installErr)}\n静态站需要 SWS 作为 rpxy 的上游,**未装则反代到空端口**。站点未创建,请处理后重试或换 nginx 引擎。`
+            );
+          }
         }
       }
       setSubmitStep(
