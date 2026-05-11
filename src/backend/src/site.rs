@@ -492,13 +492,16 @@ async fn list_site_configs(store: &SiteStore) -> Result<Vec<SiteItem>, Status> {
                 continue;
             }
         };
-        // 优先用 sidecar JSON;没找到就 fallback 到 legacy stub
+        // 优先用 sidecar JSON;没找到就 fallback 到 legacy stub。
+        // legacy stub 的 name **必须**是 safe_name_part(去掉 rustpanel- 前缀
+        // 的纯名字),否则前端发回 delete 时会把整个文件 stem 当 name,
+        // 后端二次拼 `rustpanel-<那玩意>.conf` 找不到文件,删了个寂寞。
         if let Some(mut full) = store.load_nginx_site_metadata(&safe_name_part).await {
             // 万一两边对不上(sidecar 里旧 config_path),以磁盘当前文件为准
             full.config_path = path.to_string_lossy().to_string();
             sites.push(full);
         } else {
-            sites.push(legacy_site_stub(&path, stem));
+            sites.push(legacy_site_stub(&path, safe_name_part));
         }
     }
 
