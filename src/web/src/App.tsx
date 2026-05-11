@@ -4406,6 +4406,39 @@ function SmartSiteForm({
     return null;
   }, [domain, otherSites]);
 
+  // IPv6 共享是合法的(nginx SNI 路由),NAT 端口共享是非法的(一个端口
+  // 只能挂一个 listener)。下拉里给用户标出每个地址 / 端口的占用情况,
+  // 让"复用同一 v6 给多个域名"这件事看得见。
+  const ipv6UsageMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const other of otherSites) {
+      const addr = other.binding?.ipv6Address;
+      if (!addr) continue;
+      const list = map.get(addr) ?? [];
+      list.push(other.name);
+      map.set(addr, list);
+    }
+    return map;
+  }, [otherSites]);
+  const natPortUsageMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const other of otherSites) {
+      const port = other.binding?.natPort;
+      if (!port) continue;
+      map.set(port, other.name);
+    }
+    return map;
+  }, [otherSites]);
+  // NAT 端口冲突:与"另外某个站点"占了同一端口 → 拒。reservedPorts 那条
+  // 检查是"端口预算总池",这里专门拦的是站点之间撞车。
+  const natPortConflict = useMemo(() => {
+    if (bindKind !== "nat-port") return null;
+    const port = Number.parseInt(natPort, 10);
+    if (!port) return null;
+    const owner = natPortUsageMap.get(port);
+    return owner ? { port, owner } : null;
+  }, [bindKind, natPort, natPortUsageMap]);
+
   // NAT VPS 总是有 NAT 端口预算,所以绑定段一直显示;有 IPv6 池时多
   // 出"IPv6 直连"那一项。capabilities 字段不直接给端口数,具体可用端口
   // 由 listReservedPorts 反查。
@@ -4435,6 +4468,12 @@ function SmartSiteForm({
     if (domainConflict) {
       onError(
         `域名 "${domainConflict.domain}" 已被站点 "${domainConflict.site.name}" 占用`
+      );
+      return;
+    }
+    if (natPortConflict) {
+      onError(
+        `NAT 端口 ${natPortConflict.port} 已被站点 "${natPortConflict.owner}" 占用 — 一个端口只能挂一个监听`
       );
       return;
     }
@@ -4645,18 +4684,27 @@ function SmartSiteForm({
                         未检测到公网 IPv6
                       </SelectItem>
                     )}
-                    {ipv6Pool.map((addr) => (
-                      <SelectItem key={addr.address} value={addr.address}>
-                        {addr.address}/{addr.prefixLength} ({addr.interfaceName})
-                      </SelectItem>
-                    ))}
+                    {ipv6Pool.map((addr) => {
+                      const users = ipv6UsageMap.get(addr.address) ?? [];
+                      return (
+                        <SelectItem key={addr.address} value={addr.address}>
+                          {addr.address}/{addr.prefixLength} ({addr.interfaceName})
+                          {users.length > 0 && ` · 已用于 ${users.join(", ")}`}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
+                <span className="text-xs text-muted-foreground">
+                  {ipv6Address && (ipv6UsageMap.get(ipv6Address)?.length ?? 0) > 0
+                    ? `当前 IPv6 已用于 ${ipv6UsageMap.get(ipv6Address)!.join(", ")};可继续共享 — nginx 按域名(SNI)分发,只要本站域名不与已有站点重复就行。`
+                    : "同一 IPv6 可被多个站点共享 —— nginx 根据浏览器请求的域名(SNI)路由到对应项目,不占额外端口预算。"}
+                </span>
               </div>
             ) : (
               <div className="grid gap-1 md:col-span-2">
                 <UILabel htmlFor="site-natport">
-                  NAT 公网端口(已占:
+                  NAT 公网端口(预算池已占:
                   {reservedPorts.map((p) => p.port).join(", ") || "无"})
                 </UILabel>
                 <UIInput
@@ -4667,6 +4715,10 @@ function SmartSiteForm({
                   disabled={isEdit}
                   onChange={(event) => setNatPort(event.target.value)}
                 />
+                <span className="text-xs text-muted-foreground">
+                  一个端口只能挂一个监听,**不能多站共享** — 同一端口的两个
+                  站点必有一个起不来。需要多域名共享请用上方"IPv6 直连"。
+                </span>
               </div>
             )}
           </>
@@ -4692,7 +4744,7 @@ function SmartSiteForm({
           </span>
         </div>
       </div>
-      {!isEdit && (nameConflict || rootConflict || domainConflict) && (
+      {!isEdit && (nameConflict || rootConflict || domainConflict || natPortConflict) && (
         <div className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning space-y-0.5">
           {nameConflict && (
             <div>· 站点名 "{name}" 已被使用 — 改一个</div>
@@ -4705,6 +4757,11 @@ function SmartSiteForm({
           {domainConflict && (
             <div>
               · 域名 "{domainConflict.domain}" 已被站点 "{domainConflict.site.name}" 占用
+            </div>
+          )}
+          {natPortConflict && (
+            <div>
+              · NAT 端口 {natPortConflict.port} 已被站点 "{natPortConflict.owner}" 占用 — 一个端口只能挂一个监听
             </div>
           )}
         </div>
