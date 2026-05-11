@@ -20,6 +20,7 @@ import {
   FileText,
   ExternalLink,
   FileUp,
+  Loader2,
   Folder,
   FolderPlus,
   Globe,
@@ -4626,6 +4627,11 @@ function SmartSiteForm({
   void capabilities;
   const showBinding = true;
 
+  // 提交进度:后端要装 nginx + 申请 ACME,链路 10-60 秒,得把"正在干啥"
+  // 实时透出去,免得用户以为页面假死。submitStep 不为空就显示进度条。
+  const [submitting, setSubmitting] = useState(false);
+  const [submitStep, setSubmitStep] = useState("");
+
   const submit = async () => {
     if (isEdit) {
       onError("当前后端无 UpdateSite RPC,暂不支持编辑已有站点。删了重建可绕过。");
@@ -4677,6 +4683,8 @@ function SmartSiteForm({
         bindKind === "nat-port" ? Number.parseInt(natPort, 10) || 0 : 0,
       ipv6Address: bindKind === "ipv6" ? ipv6Address : ""
     };
+    setSubmitting(true);
+    setSubmitStep("装 nginx(若缺) + 写 vhost + bootstrap 自签证书...");
     try {
       const response = await clients.site.createSite({
         name,
@@ -4695,6 +4703,7 @@ function SmartSiteForm({
         binaryPath
       });
       if (binding.kind === SiteBindKind.NAT_PORT && binding.natPort > 0) {
+        setSubmitStep("登记 NAT 端口预算...");
         await clients.capability
           .reservePort({
             port: binding.natPort,
@@ -4716,6 +4725,7 @@ function SmartSiteForm({
           .map((value) => value.trim())
           .filter(Boolean)[0];
         if (primaryDomain) {
+          setSubmitStep("向 Let's Encrypt 发起 DNS-01 申请,拿 TXT 记录...");
           try {
             const acmeResp = await clients.ssl.requestCertificate({
               domain: primaryDomain,
@@ -4739,6 +4749,9 @@ function SmartSiteForm({
       onClose();
     } catch (err) {
       onError(safeError(err));
+    } finally {
+      setSubmitting(false);
+      setSubmitStep("");
     }
   };
 
@@ -4975,10 +4988,27 @@ function SmartSiteForm({
           )}
         </div>
       )}
+      {submitting && (
+        <div className="rounded border border-info/40 bg-info/5 px-3 py-2 text-xs flex items-center gap-2">
+          <Loader2 className="size-3.5 animate-spin shrink-0 text-info" />
+          <span className="text-muted-foreground break-all">
+            {submitStep || "处理中..."}
+          </span>
+        </div>
+      )}
       <div className="flex justify-end gap-2">
-        <UIButton onClick={() => void submit()} disabled={isEdit}>
-          <Save className="size-4" />
-          {isEdit ? "暂不支持编辑(UpdateSite RPC 待落地)" : "创建站点"}
+        <UIButton onClick={() => void submit()} disabled={isEdit || submitting}>
+          {submitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              正在创建...
+            </>
+          ) : (
+            <>
+              <Save className="size-4" />
+              {isEdit ? "暂不支持编辑(UpdateSite RPC 待落地)" : "创建站点"}
+            </>
+          )}
         </UIButton>
       </div>
       {isEdit && site && (
