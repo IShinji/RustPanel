@@ -13,14 +13,13 @@
 use std::{
     env,
     path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use instant_acme::{
     Account, AccountCredentials, AuthorizationStatus, ChallengeType, Identifier, LetsEncrypt,
-    NewAccount, NewOrder, OrderStatus,
+    NewAccount, NewOrder, OrderStatus, RetryPolicy,
 };
-use rcgen::{CertificateParams, DistinguishedName, KeyPair};
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_ACME_ROOT: &str = "/var/lib/rustpanel/acme";
@@ -80,10 +79,10 @@ struct PendingOrder {
     order_url: String,
     challenge_url: String,
     dns_record_value: String,
-    /// 第一次提交时已经为这次 issuance 生成的 cert keypair PEM。复用以保证 CSR 的
-    /// 私钥就是后续要写到 privkey.pem 的那把。
-    cert_keypair_pem: String,
     created_at_seconds: u64,
+    // 0.7 时代有 cert_keypair_pem 字段(start 时生成 keypair,resume 时复用);
+    // 0.8 起 Order::finalize() 自己生成 keypair,字段不再需要。从 0.7 升来的
+    // 旧 pending 文件 serde(default) 兜底,新字段没有就当 None。
 }
 
 fn now_seconds() -> u64 {
@@ -222,121 +221,110 @@ async fn start_order(domain: &str, email: &str) -> Result<RequestOutcome, AcmeEr
         terms_of_service_agreed: true,
         only_return_existing: false,
     };
-    let (account, credentials) = Account::create(&new_account, directory_url(), None).await?;
+    let (account, credentials) = Account::builder()?
+        .create(&new_account, directory_url().to_owned(), None)
+        .await?;
 
     let identifier = Identifier::Dns(domain.to_owned());
     let mut order = account
-        .new_order(&NewOrder {
-            identifiers: &[identifier],
-        })
+        .new_order(&NewOrder::new(std::slice::from_ref(&identifier)))
         .await?;
     let order_url = order.url().to_owned();
 
-    let authorizations = order.authorizations().await?;
-    let auth = authorizations
-        .first()
-        .ok_or_else(|| AcmeError::NoDns01Challenge(domain.to_owned()))?;
-    let challenge = auth
-        .challenges
-        .iter()
-        .find(|c| c.r#type == ChallengeType::Dns01)
-        .ok_or_else(|| AcmeError::NoDns01Challenge(domain.to_owned()))?;
-
-    let key_authorization = order.key_authorization(challenge);
-    let dns_value = key_authorization.dns_value();
-    let record_name = format!("_acme-challenge.{domain}");
-
-    // 提前生成证书 keypair,后续 finalize 时复用同一份私钥
-    let mut cert_params = CertificateParams::new(vec![domain.to_owned()])?;
-    cert_params.distinguished_name = DistinguishedName::new();
-    let cert_keypair = KeyPair::generate()?;
-    let cert_keypair_pem = cert_keypair.serialize_pem();
+    // 抓 DNS-01 challenge URL + value;authorizations 是个 streaming
+    // iterator,要在一个限定 scope 里跑完借用才能释放 &mut order。
+    let (challenge_url, dns_value) = {
+        let mut authzs = order.authorizations();
+        let Some(authz_result) = authzs.next().await else {
+            return Err(AcmeError::NoDns01Challenge(domain.to_owned()));
+        };
+        let mut authz = authz_result?;
+        let challenge = authz
+            .challenge(ChallengeType::Dns01)
+            .ok_or_else(|| AcmeError::NoDns01Challenge(domain.to_owned()))?;
+        // ChallengeHandle.url 是字段不是方法,直接读
+        let url = challenge.url.to_owned();
+        let value = challenge.key_authorization().dns_value();
+        (url, value)
+    };
 
     let credentials_json = serde_json::to_string(&credentials)?;
-
     let pending = PendingOrder {
         domain: domain.to_owned(),
         email: email.to_owned(),
         account_credentials: credentials_json,
         order_url,
-        challenge_url: challenge.url.clone(),
+        challenge_url,
         dns_record_value: dns_value.clone(),
-        cert_keypair_pem,
         created_at_seconds: now_seconds(),
     };
     write_pending(&pending).await?;
 
     Ok(RequestOutcome::Challenge(DnsChallengeNeeded {
-        record_name,
+        record_name: format!("_acme-challenge.{domain}"),
         record_value: dns_value,
     }))
 }
 
 async fn finalize_order(state: PendingOrder) -> Result<RequestOutcome, AcmeError> {
     let credentials: AccountCredentials = serde_json::from_str(&state.account_credentials)?;
-    let account = Account::from_credentials(credentials).await?;
+    let account = Account::builder()?.from_credentials(credentials).await?;
 
-    // 用保存的 order URL 恢复 Order
     let mut order = account.order(state.order_url.clone()).await?;
 
-    // 通知 ACME server 已经摆好挑战,触发它来验 DNS
-    order.set_challenge_ready(&state.challenge_url).await?;
-
-    // 轮询 authorization 状态:每 5 秒一次,最多 24 次(2 分钟)
-    let mut tries = 0u32;
-    loop {
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        let authorizations = order.authorizations().await?;
-        let status = authorizations
-            .first()
-            .map(|a| a.status)
-            .unwrap_or(AuthorizationStatus::Pending);
-        match status {
-            AuthorizationStatus::Valid => break,
-            AuthorizationStatus::Invalid
-            | AuthorizationStatus::Revoked
-            | AuthorizationStatus::Expired => {
-                return Err(AcmeError::Authorization(status));
-            }
-            _ => {
-                tries += 1;
-                if tries >= 24 {
-                    return Err(AcmeError::Timeout(state.domain));
+    // 通知 ACME server 已经摆好 TXT,让它来验。在 0.8 里 set_ready 挂在
+    // ChallengeHandle 上,只能通过迭代 authorizations 拿到 —— scope 里拿,
+    // 出 scope 释放 &mut order 才能继续 poll_ready / finalize。
+    //
+    // 如果 authz 已经 valid(用户在 panel 上没看到我们存的 TXT 已 propagate
+    // 之前就再点了一次),authz.challenge() 仍能返回 ChallengeHandle,
+    // set_ready 在 valid 状态下是 idempotent no-op,ACME server 不会再校验。
+    {
+        let mut authzs = order.authorizations();
+        let mut handled = false;
+        while let Some(result) = authzs.next().await {
+            let mut authz = result?;
+            // 业务态 short-circuit:authz 已经 invalid / expired / revoked,
+            // 这条 order 没救,留给上层去 delete_pending + 重发新 order。
+            match authz.status {
+                AuthorizationStatus::Invalid
+                | AuthorizationStatus::Revoked
+                | AuthorizationStatus::Expired => {
+                    return Err(AcmeError::Authorization(authz.status));
                 }
+                AuthorizationStatus::Valid => {
+                    handled = true;
+                    continue;
+                }
+                _ => {}
             }
+            if let Some(mut chal) = authz.challenge(ChallengeType::Dns01) {
+                chal.set_ready().await?;
+                handled = true;
+            }
+        }
+        if !handled {
+            return Err(AcmeError::NoDns01Challenge(state.domain.clone()));
         }
     }
 
-    // 用预先保存的 keypair 生成 CSR
-    let mut params = CertificateParams::new(vec![state.domain.clone()])?;
-    params.distinguished_name = DistinguishedName::new();
-    let keypair = KeyPair::from_pem(&state.cert_keypair_pem)?;
-    let csr = params.serialize_request(&keypair)?;
+    // 等 order 状态进 Ready(LE 验完 TXT)。RetryPolicy 默认指数退避,
+    // 内部 timeout 满了会返 Error::Timeout。
+    let status = order.poll_ready(&RetryPolicy::default()).await?;
+    if status != OrderStatus::Ready {
+        return Err(AcmeError::Order(status));
+    }
 
-    order.finalize(csr.der()).await?;
-
-    // 等 finalize 完成 → certificate 可下载
-    let mut tries = 0u32;
-    let cert_chain_pem = loop {
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        if let Some(chain) = order.certificate().await? {
-            break chain;
-        }
-        let status = order.state().status;
-        if matches!(status, OrderStatus::Invalid) {
-            return Err(AcmeError::Order(status));
-        }
-        tries += 1;
-        if tries >= 20 {
-            return Err(AcmeError::Timeout(state.domain.clone()));
-        }
-    };
+    // finalize 在 0.8 自己生成 keypair 并返回 PEM(rcgen feature 默认开)。
+    // 我们之前手动 CSR + 自己存 keypair_pem 那一套不再需要。
+    let private_key_pem = order.finalize().await?;
+    let cert_chain_pem = order.poll_certificate(&RetryPolicy::default()).await?;
 
     delete_pending(&state.domain).await?;
 
     Ok(RequestOutcome::Issued(IssuedCertificate {
         certificate_pem: cert_chain_pem,
-        private_key_pem: state.cert_keypair_pem,
+        private_key_pem,
     }))
 }
 
@@ -356,99 +344,70 @@ pub async fn request_http01_blocking(
         terms_of_service_agreed: true,
         only_return_existing: false,
     };
-    let (account, _credentials) = Account::create(&new_account, directory_url(), None).await?;
+    let (account, _credentials) = Account::builder()?
+        .create(&new_account, directory_url().to_owned(), None)
+        .await?;
 
     let identifier = Identifier::Dns(domain.to_owned());
     let mut order = account
-        .new_order(&NewOrder {
-            identifiers: &[identifier],
-        })
+        .new_order(&NewOrder::new(std::slice::from_ref(&identifier)))
         .await?;
 
-    let authorizations = order.authorizations().await?;
-    let auth = authorizations
-        .first()
-        .ok_or_else(|| AcmeError::NoHttp01Challenge(domain.to_owned()))?;
-    let challenge = auth
-        .challenges
-        .iter()
-        .find(|c| c.r#type == ChallengeType::Http01)
-        .ok_or_else(|| AcmeError::NoHttp01Challenge(domain.to_owned()))?;
+    // 拿 challenge token + key_authorization body,提前写到 webroot,
+    // 释放 &mut order 再 set_ready / poll_ready / finalize。
+    let (token, body) = {
+        let mut authzs = order.authorizations();
+        let Some(authz_result) = authzs.next().await else {
+            return Err(AcmeError::NoHttp01Challenge(domain.to_owned()));
+        };
+        let mut authz = authz_result?;
+        let challenge = authz
+            .challenge(ChallengeType::Http01)
+            .ok_or_else(|| AcmeError::NoHttp01Challenge(domain.to_owned()))?;
+        // HTTP-01 token 是 challenge URL 最后一段?用 key_authorization
+        // 拿到的 body 含 token.<base64>,但 ACME 要求文件名是 token 本身。
+        // 0.8 ChallengeHandle 没有直接暴露 token,但 KeyAuthorization::as_str
+        // 返回 "token.<thumbprint>",我们 split 第一段即 token。
+        let key_auth = challenge.key_authorization();
+        let body_str = key_auth.as_str().to_owned();
+        let tok = body_str.split('.').next().unwrap_or(&body_str).to_owned();
+        (tok, body_str)
+    };
 
-    let key_authorization = order.key_authorization(challenge);
-    let token = challenge.token.clone();
-    let body = key_authorization.as_str().to_owned();
-
-    // 写 challenge 文件到 webroot/.well-known/acme-challenge/<token>
     let acme_dir = webroot.join(".well-known/acme-challenge");
     tokio::fs::create_dir_all(&acme_dir).await?;
     let challenge_path = acme_dir.join(&token);
     tokio::fs::write(&challenge_path, body.as_bytes()).await?;
 
-    // 实际的 ACME 状态机部分用闭包包起来,即使中途出错也把 challenge 文件清掉
     let result = async {
-        order.set_challenge_ready(&challenge.url).await?;
-
-        // 轮询 authorization:每 5 秒一次,最多 24 次(2 分钟)
-        let mut tries = 0u32;
-        loop {
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            let authorizations = order.authorizations().await?;
-            let status = authorizations
-                .first()
-                .map(|a| a.status)
-                .unwrap_or(AuthorizationStatus::Pending);
-            match status {
-                AuthorizationStatus::Valid => break,
-                AuthorizationStatus::Invalid
-                | AuthorizationStatus::Revoked
-                | AuthorizationStatus::Expired => {
-                    return Err(AcmeError::Authorization(status));
-                }
-                _ => {
-                    tries += 1;
-                    if tries >= 24 {
-                        return Err(AcmeError::Timeout(domain.to_owned()));
-                    }
-                }
-            }
+        // 通知 LE:文件已就位。0.8 set_ready 在 ChallengeHandle 上,
+        // 又得通过 authorizations() 拿一次。
+        {
+            let mut authzs = order.authorizations();
+            let Some(authz_result) = authzs.next().await else {
+                return Err(AcmeError::NoHttp01Challenge(domain.to_owned()));
+            };
+            let mut authz = authz_result?;
+            let mut chal = authz
+                .challenge(ChallengeType::Http01)
+                .ok_or_else(|| AcmeError::NoHttp01Challenge(domain.to_owned()))?;
+            chal.set_ready().await?;
         }
 
-        // CSR
-        let mut params = CertificateParams::new(vec![domain.to_owned()])?;
-        params.distinguished_name = DistinguishedName::new();
-        let cert_keypair = KeyPair::generate()?;
-        let cert_keypair_pem = cert_keypair.serialize_pem();
-        let csr = params.serialize_request(&cert_keypair)?;
-        order.finalize(csr.der()).await?;
-
-        // 拿证书链
-        let mut tries = 0u32;
-        let cert_chain_pem = loop {
-            tokio::time::sleep(Duration::from_secs(3)).await;
-            if let Some(chain) = order.certificate().await? {
-                break chain;
-            }
-            let status = order.state().status;
-            if matches!(status, OrderStatus::Invalid) {
-                return Err(AcmeError::Order(status));
-            }
-            tries += 1;
-            if tries >= 20 {
-                return Err(AcmeError::Timeout(domain.to_owned()));
-            }
-        };
-
+        let status = order.poll_ready(&RetryPolicy::default()).await?;
+        if status != OrderStatus::Ready {
+            return Err(AcmeError::Order(status));
+        }
+        let private_key_pem = order.finalize().await?;
+        let cert_chain_pem = order.poll_certificate(&RetryPolicy::default()).await?;
         Ok(IssuedCertificate {
             certificate_pem: cert_chain_pem,
-            private_key_pem: cert_keypair_pem,
+            private_key_pem,
         })
     }
     .await;
 
-    // 不论成功还是失败,都尝试删 challenge 文件;失败也只是文件残留,不致命
     let _ = tokio::fs::remove_file(&challenge_path).await;
-
     result
 }
 
@@ -503,8 +462,6 @@ mod tests {
             order_url: "https://acme/order/1".into(),
             challenge_url: "https://acme/chall/1".into(),
             dns_record_value: "abc.def".into(),
-            cert_keypair_pem: "-----BEGIN PRIVATE KEY-----\nXXX\n-----END PRIVATE KEY-----\n"
-                .into(),
             created_at_seconds: 0,
         };
         write_pending(&order).await.unwrap();
