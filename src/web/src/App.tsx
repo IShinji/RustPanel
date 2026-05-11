@@ -5,6 +5,7 @@ import "@xterm/xterm/css/xterm.css";
 import {
   Activity,
   Archive,
+  ArrowLeftRight,
   ArrowDownToLine,
   ArrowUpFromLine,
   Ban,
@@ -3868,6 +3869,33 @@ function siteKindLabel(kind: number): string {
   }
 }
 
+// 站点类型在 SmartSiteForm 里以"卡片"形式让用户选,每张卡都有
+// 图标 / 一句话用途 / 举例。比之前裸 Select 的"nginx serve root"这
+// 种术语对小白友好得多。
+const SITE_KIND_OPTIONS = [
+  {
+    value: "static" as const,
+    icon: Folder,
+    label: "静态站",
+    description: "只有 HTML / CSS / JS / 图片这类文件,无后端进程",
+    useCase: "博客 / 文档站 / Hugo / Zola / React 编译产物"
+  },
+  {
+    value: "rust-binary" as const,
+    icon: Server,
+    label: "Rust 二进制",
+    description: "你写的程序,面板帮你启动并反代",
+    useCase: "自写的 API / Telegram bot / Web 服务后端"
+  },
+  {
+    value: "reverse-proxy" as const,
+    icon: ArrowLeftRight,
+    label: "反向代理",
+    description: "已经在跑的服务,只给它套上域名 / HTTPS",
+    useCase: "把 localhost:3000 暴露到公网域名"
+  }
+];
+
 function SitesSsl({ clients }: { clients: Clients }) {
   // === 数据 ===
   const [sites, setSites] = useState<SiteItem[]>([]);
@@ -4403,54 +4431,75 @@ function SmartSiteForm({
             onChange={(event) => setDomain(event.target.value)}
           />
         </div>
-        <div className="grid gap-1 md:col-span-2">
-          <UILabel>类型</UILabel>
-          <Select
-            value={kind}
-            onValueChange={(value) => setKind(value as typeof kind)}
-            disabled={isEdit}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="static">静态站(nginx serve root)</SelectItem>
-              <SelectItem value="rust-binary">
-                Rust 二进制(systemd + nginx 反代)
-              </SelectItem>
-              <SelectItem value="reverse-proxy">反向代理(转发 upstream)</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="grid gap-1.5 md:col-span-2">
+          <UILabel>站点类型</UILabel>
+          <div className="grid gap-2 md:grid-cols-3">
+            {SITE_KIND_OPTIONS.map((option) => {
+              const Icon = option.icon;
+              const selected = kind === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={isEdit}
+                  onClick={() => setKind(option.value)}
+                  className={cn(
+                    "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition",
+                    selected
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                      : "border-border hover:border-primary/40 hover:bg-accent/30",
+                    isEdit && "opacity-60 cursor-not-allowed"
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Icon className="size-4 text-primary" />
+                    <span className="font-medium text-sm">{option.label}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {option.description}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground/80">
+                    适合:{option.useCase}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
         {kind === "static" && (
           <div className="grid gap-1 md:col-span-2">
-            <UILabel htmlFor="site-root">静态根目录</UILabel>
+            <UILabel htmlFor="site-root">网站根目录</UILabel>
             <UIInput
               id="site-root"
+              placeholder="/var/www/html"
               value={root}
               disabled={isEdit}
               onChange={(event) => setRoot(event.target.value)}
             />
+            <span className="text-xs text-muted-foreground">
+              放 index.html 的目录;nginx 会直接把里头的文件喂给浏览器。
+            </span>
           </div>
         )}
         {kind === "rust-binary" && (
           <div className="grid gap-1 md:col-span-2">
-            <UILabel htmlFor="site-bin">Rust 可执行文件路径</UILabel>
+            <UILabel htmlFor="site-bin">Rust 程序的二进制路径</UILabel>
             <UIInput
               id="site-bin"
+              placeholder="/usr/local/bin/my-server"
               value={binaryPath}
               disabled={isEdit}
               onChange={(event) => setBinaryPath(event.target.value)}
             />
             <span className="text-xs text-muted-foreground">
-              面板将生成 systemd unit:rustpanel-site-{name || "<name>"}.service,
-              内部监听 127.0.0.1:9100+
+              你 `cargo build --release` 出来的可执行文件路径。面板会自动写
+              systemd 服务把它拉起来(internal 127.0.0.1:9100+),再让 nginx 反代给它。
             </span>
           </div>
         )}
         {kind === "reverse-proxy" && (
           <div className="grid gap-1 md:col-span-2">
-            <UILabel htmlFor="site-upstream">反代目标 URL</UILabel>
+            <UILabel htmlFor="site-upstream">目标服务地址</UILabel>
             <UIInput
               id="site-upstream"
               placeholder="http://127.0.0.1:3000"
@@ -4458,12 +4507,15 @@ function SmartSiteForm({
               disabled={isEdit}
               onChange={(event) => setProxyTarget(event.target.value)}
             />
+            <span className="text-xs text-muted-foreground">
+              已经在你机器上跑着的服务地址。把它"包装"成 https://你的域名 暴露出去。
+            </span>
           </div>
         )}
         {showBinding && (
           <>
             <div className="grid gap-1 md:col-span-2">
-              <UILabel>绑定方式</UILabel>
+              <UILabel>怎么对外</UILabel>
               <Select
                 value={bindKind}
                 onValueChange={(value) => setBindKind(value as typeof bindKind)}
@@ -4474,13 +4526,15 @@ function SmartSiteForm({
                 </SelectTrigger>
                 <SelectContent>
                   {ipv6Pool.length > 0 && (
-                    <SelectItem value="ipv6">IPv6 直连(不占 NAT 端口,推荐)</SelectItem>
+                    <SelectItem value="ipv6">用 IPv6 地址(推荐 · 不占端口)</SelectItem>
                   )}
-                  <SelectItem value="nat-port">
-                    NAT 端口(占 1/20 公网端口)
-                  </SelectItem>
+                  <SelectItem value="nat-port">用 NAT 端口(占一个公网端口)</SelectItem>
                 </SelectContent>
               </Select>
+              <span className="text-xs text-muted-foreground">
+                NAT VPS 总共 20 个公网端口预算;有 IPv6 公网地址就用 v6,
+                不占端口、不限数量。
+              </span>
             </div>
             {bindKind === "ipv6" ? (
               <div className="grid gap-1 md:col-span-2">
@@ -4526,7 +4580,7 @@ function SmartSiteForm({
           </>
         )}
         <div className="grid gap-1 md:col-span-2">
-          <UILabel>TLS 策略</UILabel>
+          <UILabel>HTTPS 证书</UILabel>
           <Select
             value={tls}
             onValueChange={(value) => setTls(value as typeof tls)}
@@ -4536,11 +4590,14 @@ function SmartSiteForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="dns01">Let's Encrypt DNS-01(NAT VPS 推荐)</SelectItem>
-              <SelectItem value="imported">已导入证书</SelectItem>
-              <SelectItem value="none">无 TLS</SelectItem>
+              <SelectItem value="dns01">自动申请免费证书(推荐 · Let's Encrypt)</SelectItem>
+              <SelectItem value="imported">我已有证书(到时手动粘贴 PEM)</SelectItem>
+              <SelectItem value="none">不启用 HTTPS</SelectItem>
             </SelectContent>
           </Select>
+          <span className="text-xs text-muted-foreground">
+            自动模式走 DNS-01 验证,无需 80/443 公网端口,适合 NAT VPS。
+          </span>
         </div>
       </div>
       <div className="flex justify-end gap-2">
