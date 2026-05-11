@@ -862,6 +862,10 @@ async fn assemble_rpxy_config() -> Result<(), Status> {
     full.push_str("# on the next site change; edit /etc/rpxy/sites.d/<name>.toml instead.\n");
     full.push_str("listen_port = 80\n");
     full.push_str("listen_port_tls = 443\n");
+    // NAT VPS 上公网入口几乎全在 IPv6(NAT IPv4 没有真公网口),
+    // rpxy 默认只绑 0.0.0.0,不开这条 CF 橙云反代回来直接 connection
+    // refused —— ss -tlnp 上看不到 [::]:443 那一行就是中招。
+    full.push_str("listen_ipv6 = true\n");
     full.push('\n');
     if fragments.is_empty() {
         // rpxy 至少要一个 [apps.<x>] 才不会报错。占位 app 反代回环到
@@ -2353,6 +2357,8 @@ const RPXY_CONFIG: &str = r#"# RustPanel auto-generated rpxy bootstrap config.
 # sites.d/*.toml 拼进来。手改这里没用。
 listen_port = 80
 listen_port_tls = 443
+# NAT VPS 公网入口在 IPv6,不开这条 rpxy 只绑 0.0.0.0 不能服务外部请求。
+listen_ipv6 = true
 
 # 占位 app:rpxy 不允许零 app,否则报 "Wrong application spec" 死循环。
 # 站点添加后 assemble_rpxy_config 会用真 app 块取代它。
