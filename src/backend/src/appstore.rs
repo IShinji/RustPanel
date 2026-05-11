@@ -722,8 +722,19 @@ pub(crate) fn site_to_rpxy_app_block(site: &SiteItem) -> Option<String> {
             }
             format!("127.0.0.1:{}", site.internal_port)
         }
-        // 纯静态站 / Unspecified:rpxy 自己不服务静态文件,需 sws 配合,
-        // 调用方应当走 static_site_to_sws_args 这条路径。
+        SiteKind::Static => {
+            // 静态站本身没有进程,但 RustPanel 在 create_site 时给它在
+            // 8200+ 段分配了 internal_port,装上 SWS 后会自动起一个
+            // sws@<name>.service 在那个端口服务文件(commit 9abbe5c)。
+            // rpxy 反代到 127.0.0.1:<port> 就完成"rpxy 前端 + SWS 后端"
+            // 的静态站方案。SWS 没装时片段写了也无副作用,装上即接管。
+            if site.internal_port == 0 {
+                return None;
+            }
+            format!("127.0.0.1:{}", site.internal_port)
+        }
+        // Unspecified:站点 kind 未设置(legacy / 异常)→ 不写片段,
+        // 避免 rpxy 配置脏污。
         _ => return None,
     };
     // ssl_enabled 时显式指向 RustPanel ssl 模块按域签下的证书,**不让 rpxy
@@ -2380,10 +2391,24 @@ mod tests {
     }
 
     #[test]
-    fn site_to_rpxy_app_block_skips_pure_static() {
-        // 纯静态站需要 sws 上游配合,rpxy 自己不服务文件 → None
+    fn site_to_rpxy_app_block_for_static_uses_sws_upstream_port() {
+        // Static 站点:internal_port 已分配(create_site 写了 8200+ 段)
+        // → rpxy 反代到 127.0.0.1:<port>,前提是用户装了 SWS,
+        //   会有 sws@<name>.service 监听该端口
         let mut site = make_site(SiteKind::Static, "docs", "docs.example.com");
         site.root = "/var/www/docs".to_owned();
+        site.internal_port = 8201;
+        let block = site_to_rpxy_app_block(&site).expect("static + 已分配 port 应该出片段");
+        assert!(block.contains("location = \"127.0.0.1:8201\""));
+    }
+
+    #[test]
+    fn site_to_rpxy_app_block_static_without_port_returns_none() {
+        // Static 但 internal_port = 0(legacy 站点 / 还没分配):
+        // 不要写片段,免得 rpxy 反代到 127.0.0.1:0 看着像 bug
+        let mut site = make_site(SiteKind::Static, "legacy", "legacy.example.com");
+        site.root = "/var/www/legacy".to_owned();
+        // internal_port 默认 0
         assert!(site_to_rpxy_app_block(&site).is_none());
     }
 
