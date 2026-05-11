@@ -3936,8 +3936,9 @@ function SitesSsl({ clients }: { clients: Clients }) {
   // === Sheet 抽屉状态 ===
   const [sheetMode, setSheetMode] = useState<SiteSheetMode>(null);
   const [selectedSite, setSelectedSite] = useState<SiteItem | null>(null);
-  // 删除确认 Dialog 的目标站点。null = 不显示。
+  // 删除确认 Dialog 的目标站点 / 证书。null = 不显示。
   const [siteToDelete, setSiteToDelete] = useState<SiteItem | null>(null);
+  const [certToRevoke, setCertToRevoke] = useState<CertificateItem | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -4043,6 +4044,19 @@ function SitesSsl({ clients }: { clients: Clients }) {
     try {
       await clients.site.deleteReverseProxyRule({ id: rule.id });
       setMessage(`${rule.name} 已删除`);
+      await load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const performRevokeCert = async () => {
+    if (!certToRevoke) return;
+    const target = certToRevoke;
+    setCertToRevoke(null);
+    try {
+      await clients.ssl.revokeCertificate({ domain: target.domain });
+      setMessage(`${target.domain} 证书已撤销 · 清除本地 fullchain.pem / privkey.pem`);
       await load();
     } catch (err) {
       setError(safeError(err));
@@ -4208,14 +4222,24 @@ function SitesSsl({ clients }: { clients: Clients }) {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <UIButton
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void renewCertificate(cert)}
-                      >
-                        <RotateCw className="size-3.5" />
-                        续签
-                      </UIButton>
+                      <div className="flex justify-end gap-1">
+                        <UIButton
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void renewCertificate(cert)}
+                        >
+                          <RotateCw className="size-3.5" />
+                          续签
+                        </UIButton>
+                        <UIButton
+                          size="sm"
+                          variant="ghost"
+                          title="撤销证书"
+                          onClick={() => setCertToRevoke(cert)}
+                        >
+                          <Trash2 className="size-3.5 text-destructive" />
+                        </UIButton>
+                      </div>
                     </TableCell>
                   </UITableRow>
                 ))}
@@ -4294,6 +4318,7 @@ function SitesSsl({ clients }: { clients: Clients }) {
         onMessage={setMessage}
         onError={setError}
         onRequestDelete={(site) => setSiteToDelete(site)}
+        onRequestRevokeCert={(cert) => setCertToRevoke(cert)}
       />
 
       <Dialog
@@ -4320,6 +4345,33 @@ function SitesSsl({ clients }: { clients: Clients }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={certToRevoke !== null}
+        onOpenChange={(open) => !open && setCertToRevoke(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>撤销证书 "{certToRevoke?.domain}"?</DialogTitle>
+            <DialogDescription>
+              清除本地 fullchain.pem / privkey.pem 文件。绑定该域名的 nginx
+              vhost 会立刻找不到证书,**网站 HTTPS 立即不可用**,直到你
+              重新申请或导入新证书。这一步不会通知 Let's Encrypt 真正
+              revoke(那需要 ACME revokeCert 请求,本面板暂未实现);
+              只是本地清空文件。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <UIButton variant="outline" onClick={() => setCertToRevoke(null)}>
+              取消
+            </UIButton>
+            <UIButton variant="destructive" onClick={() => void performRevokeCert()}>
+              <Trash2 className="size-4" />
+              确认撤销
+            </UIButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -4340,6 +4392,7 @@ type SiteSheetProps = {
   onMessage: (message: string) => void;
   onError: (error: string) => void;
   onRequestDelete?: (site: SiteItem) => void;
+  onRequestRevokeCert?: (cert: CertificateItem) => void;
 };
 
 function SiteDetailSheet(props: SiteSheetProps) {
@@ -4885,7 +4938,8 @@ function SslPanel({
   clients,
   onChanged,
   onMessage,
-  onError
+  onError,
+  onRequestRevokeCert
 }: SiteSheetProps & { site: SiteItem }) {
   const primaryDomain = site.domains[0] || "";
   const [importForm, setImportForm] = useState({
@@ -4960,10 +5014,22 @@ function SslPanel({
               剩余 {cert.daysUntilExpiry} 天 · 分组 {cert.group || "default"}
             </div>
           </div>
-          <UIButton size="sm" variant="outline" onClick={() => void renewCert()}>
-            <RotateCw className="size-3.5" />
-            续签
-          </UIButton>
+          <div className="flex gap-1">
+            <UIButton size="sm" variant="outline" onClick={() => void renewCert()}>
+              <RotateCw className="size-3.5" />
+              续签
+            </UIButton>
+            {onRequestRevokeCert && (
+              <UIButton
+                size="sm"
+                variant="ghost"
+                title="撤销证书"
+                onClick={() => onRequestRevokeCert(cert)}
+              >
+                <Trash2 className="size-3.5 text-destructive" />
+              </UIButton>
+            )}
+          </div>
         </div>
       ) : (
         <div className="rounded border border-warning/30 bg-warning/5 p-3 text-sm text-muted-foreground">
