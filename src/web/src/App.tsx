@@ -316,38 +316,51 @@ type SshKeyForm = {
 
 const clients = createRpcClients();
 
-const ACME_EMAIL_STORAGE_KEY = "rustpanel.acme.contactEmail";
+/// Let's Encrypt 自 2024 起拒绝这三个 RFC 2606 保留域的 contact email。
+/// 前后端都拦。
+const FORBIDDEN_ACME_DOMAINS = [
+  "@example.com",
+  "@example.org",
+  "@example.net"
+];
 
-/// 拿一个能用的 ACME 联系邮箱;没有就 prompt 一次然后持久化。
-/// 之前两处 auto-fire / SSL apply 都硬塞 "admin@example.com",Let's Encrypt
-/// 自 2024 起拒绝 `example.com` / `example.org` / `example.net` 域的 contact,
-/// 直接 invalidContact 报错。这里改成一次性 prompt + localStorage 缓存。
-/// 返回 null 表示用户取消;调用方应该中止当前操作而不是用兜底值。
-function ensureAcmeEmail(): string | null {
+function isForbiddenAcmeEmailDomain(email: string): boolean {
+  const lower = email.trim().toLowerCase();
+  return FORBIDDEN_ACME_DOMAINS.some((d) => lower.endsWith(d));
+}
+
+/// 拿面板级 ACME 联系邮箱。优先后端持久化,没设过就 prompt 一次然后
+/// **写回后端**(保存在 panel state,不存浏览器)。
+/// 返回 null 表示用户取消;调用方应该中止当前操作。
+async function ensureAcmeEmail(): Promise<string | null> {
   try {
-    const cached = window.localStorage.getItem(ACME_EMAIL_STORAGE_KEY);
-    if (cached && cached.includes("@") && !cached.endsWith("@example.com")) {
-      return cached;
+    const resp = await clients.ssl.getAcmeSettings({});
+    const stored = resp.settings?.contactEmail?.trim() ?? "";
+    if (stored && stored.includes("@") && !isForbiddenAcmeEmailDomain(stored)) {
+      return stored;
     }
   } catch {
-    // localStorage 不可用(隐身模式 / 沙盒)就走 prompt 流程
+    // RPC 失败不致命,继续 prompt 流程,后续 update 失败时再提示
   }
   const input = window.prompt(
-    "首次申请 SSL 证书需要一个真实邮箱(Let's Encrypt 用它做账户联系人,过期前会发邮件提醒)。\n以后不会再问,记在本地浏览器。",
+    "首次申请 SSL 证书需要一个真实邮箱(Let's Encrypt 用它做账户联系人,过期前发邮件提醒)。\n邮箱会存在面板里,所有浏览器共用,以后不再询问。",
     ""
   );
   if (!input) {
     return null;
   }
   const trimmed = input.trim();
-  if (!trimmed.includes("@") || trimmed.endsWith("@example.com")) {
-    window.alert("请填一个真实邮箱;example.com 域的邮箱会被 Let's Encrypt 拒掉。");
+  if (!trimmed.includes("@") || isForbiddenAcmeEmailDomain(trimmed)) {
+    window.alert("请填一个真实邮箱;example.com / .org / .net 域会被 Let's Encrypt 拒掉。");
     return null;
   }
   try {
-    window.localStorage.setItem(ACME_EMAIL_STORAGE_KEY, trimmed);
-  } catch {
-    // 写不进 localStorage 不致命,只是下次还会问一次
+    await clients.ssl.updateAcmeSettings({
+      settings: { contactEmail: trimmed }
+    });
+  } catch (err) {
+    console.warn("persist acme email failed:", err);
+    window.alert("邮箱写入面板失败,这次申请会临时用这个邮箱,但下次还会再问一次。");
   }
   return trimmed;
 }
@@ -4893,7 +4906,7 @@ function SmartSiteForm({
           .split(/[\s,]+/)
           .map((value) => value.trim())
           .filter(Boolean)[0];
-        const acmeEmail = primaryDomain ? ensureAcmeEmail() : null;
+        const acmeEmail = primaryDomain ? await ensureAcmeEmail() : null;
         if (primaryDomain && acmeEmail) {
           setSubmitStep("向 Let's Encrypt 发起 DNS-01 申请,拿 TXT 记录...");
           try {
@@ -5303,7 +5316,7 @@ function SslPanel({
       onError("本站点没有绑定域名,无法申请证书 — 在'基础'Tab 填上 domains 后再来");
       return;
     }
-    const acmeEmail = ensureAcmeEmail();
+    const acmeEmail = await ensureAcmeEmail();
     if (!acmeEmail) {
       onError("申请已取消 —— 需要一个真实邮箱才能向 Let's Encrypt 注册账户");
       return;

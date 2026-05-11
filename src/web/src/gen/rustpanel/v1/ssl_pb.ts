@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/ssl.proto.
  */
 export const file_rustpanel_v1_ssl: GenFile = /*@__PURE__*/
-  fileDesc("ChZydXN0cGFuZWwvdjEvc3NsLnByb3RvEgxydXN0cGFuZWwudjEi/QEKD0NlcnRpZmljYXRlSXRlbRIOCgZkb21haW4YASABKAkSGAoQY2VydGlmaWNhdGVfcGF0aBgCIAEoCRIYChBwcml2YXRlX2tleV9wYXRoGAMgASgJEhoKEmV4cGlyZXNfYXRfc2Vjb25kcxgEIAEoBBItCgVzdGF0ZRgFIAEoDjIeLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZVN0YXRlEg0KBWdyb3VwGAYgASgJEhkKEWRheXNfdW50aWxfZXhwaXJ5GAcgASgDEhoKEmF1dG9fcmVuZXdfZW5hYmxlZBgIIAEoCBIVCg13YXJuaW5nX2xldmVsGAkgASgJIqIBChlSZXF1ZXN0Q2VydGlmaWNhdGVSZXF1ZXN0Eg4KBmRvbWFpbhgBIAEoCRINCgVlbWFpbBgCIAEoCRI3Cg5jaGFsbGVuZ2VfdHlwZRgDIAEoDjIfLnJ1c3RwYW5lbC52MS5BY21lQ2hhbGxlbmdlVHlwZRIUCgxkbnNfcHJvdmlkZXIYBCABKAkSFwoPZG5zX2NyZWRlbnRpYWxzGAUgASgJIqsBChpSZXF1ZXN0Q2VydGlmaWNhdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USMgoLY2VydGlmaWNhdGUYAiABKAsyHS5ydXN0cGFuZWwudjEuQ2VydGlmaWNhdGVJdGVtEhcKD2Ruc19yZWNvcmRfbmFtZRgDIAEoCRIYChBkbnNfcmVjb3JkX3ZhbHVlGAQgASgJIioKGFJldm9rZUNlcnRpZmljYXRlUmVxdWVzdBIOCgZkb21haW4YASABKAkiQwoZUmV2b2tlQ2VydGlmaWNhdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiGQoXTGlzdENlcnRpZmljYXRlc1JlcXVlc3QidwoYTGlzdENlcnRpZmljYXRlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIzCgxjZXJ0aWZpY2F0ZXMYAiADKAsyHS5ydXN0cGFuZWwudjEuQ2VydGlmaWNhdGVJdGVtImsKGEltcG9ydENlcnRpZmljYXRlUmVxdWVzdBIOCgZkb21haW4YASABKAkSDQoFZ3JvdXAYAiABKAkSFwoPY2VydGlmaWNhdGVfcGVtGAMgASgJEhcKD3ByaXZhdGVfa2V5X3BlbRgEIAEoCSJ3ChlJbXBvcnRDZXJ0aWZpY2F0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIyCgtjZXJ0aWZpY2F0ZRgCIAEoCzIdLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZUl0ZW0iKQoXUmVuZXdDZXJ0aWZpY2F0ZVJlcXVlc3QSDgoGZG9tYWluGAEgASgJIoYBChhSZW5ld0NlcnRpZmljYXRlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjIKC2NlcnRpZmljYXRlGAIgASgLMh0ucnVzdHBhbmVsLnYxLkNlcnRpZmljYXRlSXRlbRIOCgZvdXRwdXQYAyABKAkiMQofV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVxdWVzdBIOCgZkb21haW4YASABKAkijwEKIFdhdGNoQ2VydGlmaWNhdGVQcm9ncmVzc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIyCgtjZXJ0aWZpY2F0ZRgCIAEoCzIdLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZUl0ZW0SDwoHbWVzc2FnZRgDIAEoCSqvAQoQQ2VydGlmaWNhdGVTdGF0ZRIhCh1DRVJUSUZJQ0FURV9TVEFURV9VTlNQRUNJRklFRBAAEh0KGUNFUlRJRklDQVRFX1NUQVRFX1BFTkRJTkcQARIcChhDRVJUSUZJQ0FURV9TVEFURV9JU1NVRUQQAhIdChlDRVJUSUZJQ0FURV9TVEFURV9SRVZPS0VEEAMSHAoYQ0VSVElGSUNBVEVfU1RBVEVfRkFJTEVEEAQqeQoRQWNtZUNoYWxsZW5nZVR5cGUSIwofQUNNRV9DSEFMTEVOR0VfVFlQRV9VTlNQRUNJRklFRBAAEh8KG0FDTUVfQ0hBTExFTkdFX1RZUEVfSFRUUF8wMRABEh4KGkFDTUVfQ0hBTExFTkdFX1RZUEVfRE5TXzAxEAIyhAUKClNzbFNlcnZpY2USZwoSUmVxdWVzdENlcnRpZmljYXRlEicucnVzdHBhbmVsLnYxLlJlcXVlc3RDZXJ0aWZpY2F0ZVJlcXVlc3QaKC5ydXN0cGFuZWwudjEuUmVxdWVzdENlcnRpZmljYXRlUmVzcG9uc2USZAoRUmV2b2tlQ2VydGlmaWNhdGUSJi5ydXN0cGFuZWwudjEuUmV2b2tlQ2VydGlmaWNhdGVSZXF1ZXN0GicucnVzdHBhbmVsLnYxLlJldm9rZUNlcnRpZmljYXRlUmVzcG9uc2USYQoQTGlzdENlcnRpZmljYXRlcxIlLnJ1c3RwYW5lbC52MS5MaXN0Q2VydGlmaWNhdGVzUmVxdWVzdBomLnJ1c3RwYW5lbC52MS5MaXN0Q2VydGlmaWNhdGVzUmVzcG9uc2USZAoRSW1wb3J0Q2VydGlmaWNhdGUSJi5ydXN0cGFuZWwudjEuSW1wb3J0Q2VydGlmaWNhdGVSZXF1ZXN0GicucnVzdHBhbmVsLnYxLkltcG9ydENlcnRpZmljYXRlUmVzcG9uc2USYQoQUmVuZXdDZXJ0aWZpY2F0ZRIlLnJ1c3RwYW5lbC52MS5SZW5ld0NlcnRpZmljYXRlUmVxdWVzdBomLnJ1c3RwYW5lbC52MS5SZW5ld0NlcnRpZmljYXRlUmVzcG9uc2USewoYV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzEi0ucnVzdHBhbmVsLnYxLldhdGNoQ2VydGlmaWNhdGVQcm9ncmVzc1JlcXVlc3QaLi5ydXN0cGFuZWwudjEuV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVzcG9uc2UwAWIGcHJvdG8z", [file_rustpanel_v1_common]);
+  fileDesc("ChZydXN0cGFuZWwvdjEvc3NsLnByb3RvEgxydXN0cGFuZWwudjEi/QEKD0NlcnRpZmljYXRlSXRlbRIOCgZkb21haW4YASABKAkSGAoQY2VydGlmaWNhdGVfcGF0aBgCIAEoCRIYChBwcml2YXRlX2tleV9wYXRoGAMgASgJEhoKEmV4cGlyZXNfYXRfc2Vjb25kcxgEIAEoBBItCgVzdGF0ZRgFIAEoDjIeLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZVN0YXRlEg0KBWdyb3VwGAYgASgJEhkKEWRheXNfdW50aWxfZXhwaXJ5GAcgASgDEhoKEmF1dG9fcmVuZXdfZW5hYmxlZBgIIAEoCBIVCg13YXJuaW5nX2xldmVsGAkgASgJIqIBChlSZXF1ZXN0Q2VydGlmaWNhdGVSZXF1ZXN0Eg4KBmRvbWFpbhgBIAEoCRINCgVlbWFpbBgCIAEoCRI3Cg5jaGFsbGVuZ2VfdHlwZRgDIAEoDjIfLnJ1c3RwYW5lbC52MS5BY21lQ2hhbGxlbmdlVHlwZRIUCgxkbnNfcHJvdmlkZXIYBCABKAkSFwoPZG5zX2NyZWRlbnRpYWxzGAUgASgJIqsBChpSZXF1ZXN0Q2VydGlmaWNhdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USMgoLY2VydGlmaWNhdGUYAiABKAsyHS5ydXN0cGFuZWwudjEuQ2VydGlmaWNhdGVJdGVtEhcKD2Ruc19yZWNvcmRfbmFtZRgDIAEoCRIYChBkbnNfcmVjb3JkX3ZhbHVlGAQgASgJIioKGFJldm9rZUNlcnRpZmljYXRlUmVxdWVzdBIOCgZkb21haW4YASABKAkiQwoZUmV2b2tlQ2VydGlmaWNhdGVSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiGQoXTGlzdENlcnRpZmljYXRlc1JlcXVlc3QidwoYTGlzdENlcnRpZmljYXRlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIzCgxjZXJ0aWZpY2F0ZXMYAiADKAsyHS5ydXN0cGFuZWwudjEuQ2VydGlmaWNhdGVJdGVtImsKGEltcG9ydENlcnRpZmljYXRlUmVxdWVzdBIOCgZkb21haW4YASABKAkSDQoFZ3JvdXAYAiABKAkSFwoPY2VydGlmaWNhdGVfcGVtGAMgASgJEhcKD3ByaXZhdGVfa2V5X3BlbRgEIAEoCSJ3ChlJbXBvcnRDZXJ0aWZpY2F0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIyCgtjZXJ0aWZpY2F0ZRgCIAEoCzIdLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZUl0ZW0iKQoXUmVuZXdDZXJ0aWZpY2F0ZVJlcXVlc3QSDgoGZG9tYWluGAEgASgJIoYBChhSZW5ld0NlcnRpZmljYXRlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEjIKC2NlcnRpZmljYXRlGAIgASgLMh0ucnVzdHBhbmVsLnYxLkNlcnRpZmljYXRlSXRlbRIOCgZvdXRwdXQYAyABKAkiMQofV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVxdWVzdBIOCgZkb21haW4YASABKAkijwEKIFdhdGNoQ2VydGlmaWNhdGVQcm9ncmVzc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIyCgtjZXJ0aWZpY2F0ZRgCIAEoCzIdLnJ1c3RwYW5lbC52MS5DZXJ0aWZpY2F0ZUl0ZW0SDwoHbWVzc2FnZRgDIAEoCSIlCgxBY21lU2V0dGluZ3MSFQoNY29udGFjdF9lbWFpbBgBIAEoCSIYChZHZXRBY21lU2V0dGluZ3NSZXF1ZXN0Im8KF0dldEFjbWVTZXR0aW5nc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIsCghzZXR0aW5ncxgCIAEoCzIaLnJ1c3RwYW5lbC52MS5BY21lU2V0dGluZ3MiSQoZVXBkYXRlQWNtZVNldHRpbmdzUmVxdWVzdBIsCghzZXR0aW5ncxgBIAEoCzIaLnJ1c3RwYW5lbC52MS5BY21lU2V0dGluZ3MicgoaVXBkYXRlQWNtZVNldHRpbmdzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiwKCHNldHRpbmdzGAIgASgLMhoucnVzdHBhbmVsLnYxLkFjbWVTZXR0aW5ncyqvAQoQQ2VydGlmaWNhdGVTdGF0ZRIhCh1DRVJUSUZJQ0FURV9TVEFURV9VTlNQRUNJRklFRBAAEh0KGUNFUlRJRklDQVRFX1NUQVRFX1BFTkRJTkcQARIcChhDRVJUSUZJQ0FURV9TVEFURV9JU1NVRUQQAhIdChlDRVJUSUZJQ0FURV9TVEFURV9SRVZPS0VEEAMSHAoYQ0VSVElGSUNBVEVfU1RBVEVfRkFJTEVEEAQqeQoRQWNtZUNoYWxsZW5nZVR5cGUSIwofQUNNRV9DSEFMTEVOR0VfVFlQRV9VTlNQRUNJRklFRBAAEh8KG0FDTUVfQ0hBTExFTkdFX1RZUEVfSFRUUF8wMRABEh4KGkFDTUVfQ0hBTExFTkdFX1RZUEVfRE5TXzAxEAIyzQYKClNzbFNlcnZpY2USZwoSUmVxdWVzdENlcnRpZmljYXRlEicucnVzdHBhbmVsLnYxLlJlcXVlc3RDZXJ0aWZpY2F0ZVJlcXVlc3QaKC5ydXN0cGFuZWwudjEuUmVxdWVzdENlcnRpZmljYXRlUmVzcG9uc2USZAoRUmV2b2tlQ2VydGlmaWNhdGUSJi5ydXN0cGFuZWwudjEuUmV2b2tlQ2VydGlmaWNhdGVSZXF1ZXN0GicucnVzdHBhbmVsLnYxLlJldm9rZUNlcnRpZmljYXRlUmVzcG9uc2USYQoQTGlzdENlcnRpZmljYXRlcxIlLnJ1c3RwYW5lbC52MS5MaXN0Q2VydGlmaWNhdGVzUmVxdWVzdBomLnJ1c3RwYW5lbC52MS5MaXN0Q2VydGlmaWNhdGVzUmVzcG9uc2USZAoRSW1wb3J0Q2VydGlmaWNhdGUSJi5ydXN0cGFuZWwudjEuSW1wb3J0Q2VydGlmaWNhdGVSZXF1ZXN0GicucnVzdHBhbmVsLnYxLkltcG9ydENlcnRpZmljYXRlUmVzcG9uc2USYQoQUmVuZXdDZXJ0aWZpY2F0ZRIlLnJ1c3RwYW5lbC52MS5SZW5ld0NlcnRpZmljYXRlUmVxdWVzdBomLnJ1c3RwYW5lbC52MS5SZW5ld0NlcnRpZmljYXRlUmVzcG9uc2USewoYV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzEi0ucnVzdHBhbmVsLnYxLldhdGNoQ2VydGlmaWNhdGVQcm9ncmVzc1JlcXVlc3QaLi5ydXN0cGFuZWwudjEuV2F0Y2hDZXJ0aWZpY2F0ZVByb2dyZXNzUmVzcG9uc2UwARJeCg9HZXRBY21lU2V0dGluZ3MSJC5ydXN0cGFuZWwudjEuR2V0QWNtZVNldHRpbmdzUmVxdWVzdBolLnJ1c3RwYW5lbC52MS5HZXRBY21lU2V0dGluZ3NSZXNwb25zZRJnChJVcGRhdGVBY21lU2V0dGluZ3MSJy5ydXN0cGFuZWwudjEuVXBkYXRlQWNtZVNldHRpbmdzUmVxdWVzdBooLnJ1c3RwYW5lbC52MS5VcGRhdGVBY21lU2V0dGluZ3NSZXNwb25zZWIGcHJvdG8z", [file_rustpanel_v1_common]);
 
 /**
  * CertificateItem 描述一个站点证书。
@@ -389,6 +389,111 @@ export const WatchCertificateProgressResponseSchema: GenMessage<WatchCertificate
   messageDesc(file_rustpanel_v1_ssl, 12);
 
 /**
+ * AcmeSettings 面板级 ACME 偏好。一个面板一份,与浏览器无关。
+ *
+ * @generated from message rustpanel.v1.AcmeSettings
+ */
+export type AcmeSettings = Message<"rustpanel.v1.AcmeSettings"> & {
+  /**
+   * Let's Encrypt 账户联系邮箱;LE 用它发"证书快过期"提醒。
+   * example.com / example.org / example.net 域被 LE 列入 forbiddenDomains,
+   * 后端 / 前端都拒绝写入这三个域。
+   *
+   * @generated from field: string contact_email = 1;
+   */
+  contactEmail: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.AcmeSettings.
+ * Use `create(AcmeSettingsSchema)` to create a new message.
+ */
+export const AcmeSettingsSchema: GenMessage<AcmeSettings> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_ssl, 13);
+
+/**
+ * GetAcmeSettingsRequest 读 ACME 面板级设置。
+ *
+ * @generated from message rustpanel.v1.GetAcmeSettingsRequest
+ */
+export type GetAcmeSettingsRequest = Message<"rustpanel.v1.GetAcmeSettingsRequest"> & {
+};
+
+/**
+ * Describes the message rustpanel.v1.GetAcmeSettingsRequest.
+ * Use `create(GetAcmeSettingsRequestSchema)` to create a new message.
+ */
+export const GetAcmeSettingsRequestSchema: GenMessage<GetAcmeSettingsRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_ssl, 14);
+
+/**
+ * GetAcmeSettingsResponse 返回当前设置(从未写入时 contact_email 为空)。
+ *
+ * @generated from message rustpanel.v1.GetAcmeSettingsResponse
+ */
+export type GetAcmeSettingsResponse = Message<"rustpanel.v1.GetAcmeSettingsResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.AcmeSettings settings = 2;
+   */
+  settings?: AcmeSettings | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.GetAcmeSettingsResponse.
+ * Use `create(GetAcmeSettingsResponseSchema)` to create a new message.
+ */
+export const GetAcmeSettingsResponseSchema: GenMessage<GetAcmeSettingsResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_ssl, 15);
+
+/**
+ * UpdateAcmeSettingsRequest 写入 ACME 设置(整覆盖)。
+ *
+ * @generated from message rustpanel.v1.UpdateAcmeSettingsRequest
+ */
+export type UpdateAcmeSettingsRequest = Message<"rustpanel.v1.UpdateAcmeSettingsRequest"> & {
+  /**
+   * @generated from field: rustpanel.v1.AcmeSettings settings = 1;
+   */
+  settings?: AcmeSettings | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.UpdateAcmeSettingsRequest.
+ * Use `create(UpdateAcmeSettingsRequestSchema)` to create a new message.
+ */
+export const UpdateAcmeSettingsRequestSchema: GenMessage<UpdateAcmeSettingsRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_ssl, 16);
+
+/**
+ * UpdateAcmeSettingsResponse 返回保存后的设置(便于前端反查校验)。
+ *
+ * @generated from message rustpanel.v1.UpdateAcmeSettingsResponse
+ */
+export type UpdateAcmeSettingsResponse = Message<"rustpanel.v1.UpdateAcmeSettingsResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: rustpanel.v1.AcmeSettings settings = 2;
+   */
+  settings?: AcmeSettings | undefined;
+};
+
+/**
+ * Describes the message rustpanel.v1.UpdateAcmeSettingsResponse.
+ * Use `create(UpdateAcmeSettingsResponseSchema)` to create a new message.
+ */
+export const UpdateAcmeSettingsResponseSchema: GenMessage<UpdateAcmeSettingsResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_ssl, 17);
+
+/**
  * CertificateState 描述证书状态。
  *
  * @generated from enum rustpanel.v1.CertificateState
@@ -511,6 +616,24 @@ export const SslService: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchCertificateProgressRequestSchema;
     output: typeof WatchCertificateProgressResponseSchema;
+  },
+  /**
+   * 面板级 ACME 偏好(目前只存 contact email)。读写都原子覆盖。
+   *
+   * @generated from rpc rustpanel.v1.SslService.GetAcmeSettings
+   */
+  getAcmeSettings: {
+    methodKind: "unary";
+    input: typeof GetAcmeSettingsRequestSchema;
+    output: typeof GetAcmeSettingsResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.SslService.UpdateAcmeSettings
+   */
+  updateAcmeSettings: {
+    methodKind: "unary";
+    input: typeof UpdateAcmeSettingsRequestSchema;
+    output: typeof UpdateAcmeSettingsResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_rustpanel_v1_ssl, 0);

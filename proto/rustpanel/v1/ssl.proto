@@ -116,6 +116,34 @@ message WatchCertificateProgressResponse {
   string message = 3;
 }
 
+// AcmeSettings 面板级 ACME 偏好。一个面板一份,与浏览器无关。
+message AcmeSettings {
+  // Let's Encrypt 账户联系邮箱;LE 用它发"证书快过期"提醒。
+  // example.com / example.org / example.net 域被 LE 列入 forbiddenDomains,
+  // 后端 / 前端都拒绝写入这三个域。
+  string contact_email = 1;
+}
+
+// GetAcmeSettingsRequest 读 ACME 面板级设置。
+message GetAcmeSettingsRequest {}
+
+// GetAcmeSettingsResponse 返回当前设置(从未写入时 contact_email 为空)。
+message GetAcmeSettingsResponse {
+  Response status = 1;
+  AcmeSettings settings = 2;
+}
+
+// UpdateAcmeSettingsRequest 写入 ACME 设置(整覆盖)。
+message UpdateAcmeSettingsRequest {
+  AcmeSettings settings = 1;
+}
+
+// UpdateAcmeSettingsResponse 返回保存后的设置(便于前端反查校验)。
+message UpdateAcmeSettingsResponse {
+  Response status = 1;
+  AcmeSettings settings = 2;
+}
+
 // SslService 提供 SSL 自动化能力。
 service SslService {
   rpc RequestCertificate(RequestCertificateRequest) returns (RequestCertificateResponse);
@@ -124,4 +152,7 @@ service SslService {
   rpc ImportCertificate(ImportCertificateRequest) returns (ImportCertificateResponse);
   rpc RenewCertificate(RenewCertificateRequest) returns (RenewCertificateResponse);
   rpc WatchCertificateProgress(WatchCertificateProgressRequest) returns (stream WatchCertificateProgressResponse);
+  // 面板级 ACME 偏好(目前只存 contact email)。读写都原子覆盖。
+  rpc GetAcmeSettings(GetAcmeSettingsRequest) returns (GetAcmeSettingsResponse);
+  rpc UpdateAcmeSettings(UpdateAcmeSettingsRequest) returns (UpdateAcmeSettingsResponse);
 }

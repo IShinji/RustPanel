@@ -14,12 +14,13 @@ use tonic::{Request, Response as GrpcResponse, Status};
 use crate::{
     ok_response,
     proto::rustpanel::v1::{
-        ssl_service_server::SslService, AcmeChallengeType, CertificateItem, CertificateState,
+        ssl_service_server::SslService, AcmeChallengeType, AcmeSettings as ProtoAcmeSettings,
+        CertificateItem, CertificateState, GetAcmeSettingsRequest, GetAcmeSettingsResponse,
         ImportCertificateRequest, ImportCertificateResponse, ListCertificatesRequest,
         ListCertificatesResponse, RenewCertificateRequest, RenewCertificateResponse,
         RequestCertificateRequest, RequestCertificateResponse, RevokeCertificateRequest,
-        RevokeCertificateResponse, WatchCertificateProgressRequest,
-        WatchCertificateProgressResponse,
+        RevokeCertificateResponse, UpdateAcmeSettingsRequest, UpdateAcmeSettingsResponse,
+        WatchCertificateProgressRequest, WatchCertificateProgressResponse,
     },
 };
 
@@ -41,10 +42,30 @@ impl SslService for SslServiceImpl {
         &self,
         request: Request<RequestCertificateRequest>,
     ) -> Result<GrpcResponse<RequestCertificateResponse>, Status> {
-        let request = request.into_inner();
+        let mut request = request.into_inner();
         validate_domain(&request.domain)?;
+        // 调用方没传 email 时,回落到面板级 AcmeSettings.contact_email。
+        // 设计意图:UI 不应该每次申请都问邮箱,装面板时一次性配好就行。
+        if request.email.trim().is_empty() {
+            let settings = crate::acme::read_settings()
+                .await
+                .map_err(|e| Status::internal(format!("read acme settings: {e}")))?;
+            if settings.contact_email.trim().is_empty() {
+                return Err(Status::failed_precondition(
+                    "未设置 ACME 联系邮箱;请在面板里填一次真实邮箱(Settings → ACME)",
+                ));
+            }
+            request.email = settings.contact_email;
+        }
         if !request.email.contains('@') {
             return Err(Status::invalid_argument("valid email is required"));
+        }
+        if crate::acme::is_forbidden_email_domain(&request.email) {
+            // LE 服务端必拒,提前拦下,避免一次冤枉的网络往返 + 把
+            // 真实错误吞在 instant-acme 的不太友好的 wrap 里。
+            return Err(Status::invalid_argument(
+                "联系邮箱不能是 example.com / example.org / example.net 域(Let's Encrypt 已禁用)",
+            ));
         }
         let sender = self.progress_sender(&request.domain)?;
 
@@ -288,6 +309,55 @@ impl SslService for SslServiceImpl {
         });
 
         Ok(GrpcResponse::new(Box::pin(stream)))
+    }
+
+    async fn get_acme_settings(
+        &self,
+        _request: Request<GetAcmeSettingsRequest>,
+    ) -> Result<GrpcResponse<GetAcmeSettingsResponse>, Status> {
+        let settings = crate::acme::read_settings()
+            .await
+            .map_err(|e| Status::internal(format!("read acme settings: {e}")))?;
+        Ok(GrpcResponse::new(GetAcmeSettingsResponse {
+            status: Some(ok_response("ok")),
+            settings: Some(ProtoAcmeSettings {
+                contact_email: settings.contact_email,
+            }),
+        }))
+    }
+
+    async fn update_acme_settings(
+        &self,
+        request: Request<UpdateAcmeSettingsRequest>,
+    ) -> Result<GrpcResponse<UpdateAcmeSettingsResponse>, Status> {
+        let proto = request
+            .into_inner()
+            .settings
+            .ok_or_else(|| Status::invalid_argument("settings is required"))?;
+        let trimmed = proto.contact_email.trim().to_owned();
+        // 空字符串等同清除;非空则做合法性校验。
+        if !trimmed.is_empty() {
+            if !trimmed.contains('@') {
+                return Err(Status::invalid_argument("contact_email 不是有效邮箱(缺 @)"));
+            }
+            if crate::acme::is_forbidden_email_domain(&trimmed) {
+                return Err(Status::invalid_argument(
+                    "contact_email 不能是 example.com / example.org / example.net 域",
+                ));
+            }
+        }
+        let to_save = crate::acme::AcmeSettings {
+            contact_email: trimmed,
+        };
+        crate::acme::write_settings(&to_save)
+            .await
+            .map_err(|e| Status::internal(format!("write acme settings: {e}")))?;
+        Ok(GrpcResponse::new(UpdateAcmeSettingsResponse {
+            status: Some(ok_response("saved")),
+            settings: Some(ProtoAcmeSettings {
+                contact_email: to_save.contact_email,
+            }),
+        }))
     }
 }
 

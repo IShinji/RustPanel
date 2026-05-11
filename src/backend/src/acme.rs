@@ -103,6 +103,50 @@ fn pending_path(domain: &str) -> PathBuf {
     acme_root().join("pending").join(format!("{domain}.json"))
 }
 
+fn settings_path() -> PathBuf {
+    acme_root().join("settings.json")
+}
+
+/// 面板级 ACME 偏好。目前只有 contact_email,后续可以扩(staging vs
+/// production override、默认 DNS provider 等)。**与浏览器无关**:换个
+/// 浏览器 / 清缓存都不该丢。
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct AcmeSettings {
+    #[serde(default)]
+    pub contact_email: String,
+}
+
+/// Let's Encrypt 自 2024 起把这三个 RFC 2606 保留域加入 forbiddenDomains,
+/// 任何 contact 落在它们上面都会 `invalidContact` 拒了。前端 + 后端都拦,
+/// 防止"占位符邮箱被持久化"再次发生。
+pub fn is_forbidden_email_domain(email: &str) -> bool {
+    let lower = email.trim().to_ascii_lowercase();
+    ["@example.com", "@example.org", "@example.net", "@example."]
+        .iter()
+        .any(|forbidden| lower.ends_with(forbidden) || lower.contains(forbidden))
+}
+
+pub async fn read_settings() -> Result<AcmeSettings, AcmeError> {
+    match tokio::fs::read_to_string(settings_path()).await {
+        Ok(content) => Ok(serde_json::from_str(&content)?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(AcmeSettings::default()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+pub async fn write_settings(settings: &AcmeSettings) -> Result<(), AcmeError> {
+    let path = settings_path();
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let content = serde_json::to_string_pretty(settings)?;
+    // tmp + rename 保证原子,避免半写状态。
+    let tmp = path.with_extension("json.tmp");
+    tokio::fs::write(&tmp, content).await?;
+    tokio::fs::rename(&tmp, &path).await?;
+    Ok(())
+}
+
 fn directory_url() -> &'static str {
     if env::var("RUSTPANEL_ACME_PRODUCTION")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
