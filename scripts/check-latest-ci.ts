@@ -126,13 +126,29 @@ async function githubRequest<T>(input: {
     headers.Authorization = `Bearer ${input.token}`
   }
 
-  const response = await fetch(url, { headers })
-  const text = await response.text()
-  if (!response.ok) {
-    const authHint = input.token ? '' : ' Set GITHUB_TOKEN or GH_TOKEN if this repository is private or rate limited.'
-    fail(`GitHub API GET ${url} failed with ${response.status}: ${text.slice(0, 800)}${authHint}`)
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      const response = await fetch(url, { headers })
+      const text = await response.text()
+      if (!response.ok) {
+        if (isRetryableStatus(response.status) && attempt < 4) {
+          await sleep(retryDelayMs(attempt))
+          continue
+        }
+        const authHint = input.token ? '' : ' Set GITHUB_TOKEN or GH_TOKEN if this repository is private or rate limited.'
+        fail(`GitHub API GET ${url} failed with ${response.status}: ${text.slice(0, 800)}${authHint}`)
+      }
+      return JSON.parse(text) as T
+    } catch (error) {
+      if (attempt < 4) {
+        await sleep(retryDelayMs(attempt))
+        continue
+      }
+      throw error
+    }
   }
-  return JSON.parse(text) as T
+
+  fail(`GitHub API GET ${url} failed after retries`)
 }
 
 function selectLatestRuns(runs: WorkflowRun[], workflowNames: string[]): WorkflowRun[] {
@@ -315,6 +331,14 @@ function compareRunRecency(left: WorkflowRun, right: WorkflowRun): number {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500
+}
+
+function retryDelayMs(attempt: number): number {
+  return Math.min(10_000, 1000 * 2 ** (attempt - 1))
 }
 
 function readValue(argv: string[], index: number, arg: string): string {

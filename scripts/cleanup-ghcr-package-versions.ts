@@ -150,23 +150,41 @@ async function githubRequest<T>(input: {
   token: string
 }): Promise<GitHubResponse<T>> {
   const url = `https://api.github.com${input.pathName}`
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${input.token}`,
-      'User-Agent': 'rustpanel-ghcr-cleanup',
-      'X-GitHub-Api-Version': GITHUB_API_VERSION,
-    },
-    method: input.method ?? 'GET',
-  })
-  const text = await response.text()
-  if (!input.expectedStatuses.includes(response.status)) {
-    fail(`GitHub API ${input.method ?? 'GET'} ${url} failed with ${response.status}: ${text.slice(0, 800)}`)
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${input.token}`,
+    'User-Agent': 'rustpanel-ghcr-cleanup',
+    'X-GitHub-Api-Version': GITHUB_API_VERSION,
   }
-  if (!text) {
-    return { data: null, status: response.status, text }
+
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers,
+        method: input.method ?? 'GET',
+      })
+      const text = await response.text()
+      if (!input.expectedStatuses.includes(response.status)) {
+        if (isRetryableStatus(response.status) && attempt < 4) {
+          await sleep(retryDelayMs(attempt))
+          continue
+        }
+        fail(`GitHub API ${input.method ?? 'GET'} ${url} failed with ${response.status}: ${text.slice(0, 800)}`)
+      }
+      if (!text) {
+        return { data: null, status: response.status, text }
+      }
+      return { data: JSON.parse(text) as T, status: response.status, text }
+    } catch (error) {
+      if (attempt < 4) {
+        await sleep(retryDelayMs(attempt))
+        continue
+      }
+      throw error
+    }
   }
-  return { data: JSON.parse(text) as T, status: response.status, text }
+
+  fail(`GitHub API ${input.method ?? 'GET'} ${url} failed after retries`)
 }
 
 function createCleanupPlan(versions: PackageVersion[], keepSha: number, includeUntagged: boolean): CleanupPlan {
@@ -315,6 +333,18 @@ function validateSingleLine(value: string, label: string) {
   if (value.includes('\n') || value.includes('\r')) {
     fail(`${label} must be a single-line value`)
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500
+}
+
+function retryDelayMs(attempt: number): number {
+  return Math.min(10_000, 1000 * 2 ** (attempt - 1))
 }
 
 function runSelfTest() {
