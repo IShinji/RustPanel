@@ -5746,9 +5746,17 @@ function SslPanel({
 }
 
 /// DeployPanel:站点详情抽屉的"部署" Tab。
-/// 让用户拖一个 zip 进来,前端 POST 到 /api/site/deploy(multipart);后端
-/// 流式落到 tmp 文件 → 解压到 staging → 原子 swap webroot,留 .previous 备份。
-/// 进度走 XHR.upload.onprogress(fetch 不给上传进度)。
+///
+/// 流程:
+/// 1. 用户拖 .zip → 前端切 1MB 片
+/// 2. 顺序 POST /api/site/deploy/chunk;每片完成更新上传进度条
+/// 3. 最后一片返回 job_id → 开 WS /api/site/deploy/progress?job_id=X
+/// 4. WS 收 stage 事件:extracting / swapping / done / error
+/// 5. done → 显示部署结果 + 备份路径;error → 提示
+///
+/// 之前是单次 multipart POST + XHR upload progress,大 zip(>50MB)容易
+/// 被反代超时;extract+swap 阶段前端只看 spinner 不知道在做啥。
+/// 切片 + WS 既能扛大文件,又能让用户看到每一阶段真实进度。
 function DeployPanel({
   site,
   clients,
@@ -5756,8 +5764,11 @@ function DeployPanel({
   onMessage,
   onError
 }: SiteSheetProps & { site: SiteItem }) {
-  const [phase, setPhase] = useState<"idle" | "uploading" | "extracting" | "done">("idle");
+  const [phase, setPhase] = useState<"idle" | "uploading" | "extracting" | "swapping" | "done">(
+    "idle"
+  );
   const [progressPct, setProgressPct] = useState(0);
+  const [extractInfo, setExtractInfo] = useState<{ bytes?: number; files?: number }>({});
   const [lastDeploy, setLastDeploy] = useState<{
     deployedPath: string;
     previousBackupPath: string;
@@ -5773,7 +5784,74 @@ function DeployPanel({
     !!lastDeploy?.previousBackupPath ||
     !!(site.previousBackupPath && site.previousBackupPath.length > 0);
 
-  const doUpload = (file: File) => {
+  const watchProgress = (jobId: string) =>
+    new Promise<void>((resolve) => {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const url = appendAuthQuery(
+        `/api/site/deploy/progress?job_id=${encodeURIComponent(jobId)}`
+      );
+      const ws = new WebSocket(`${protocol}//${window.location.host}${url}`);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data as string) as
+            | { stage: "extracting"; bytes_received: number }
+            | { stage: "swapping"; files_extracted: number }
+            | {
+                stage: "done";
+                deployed_path: string;
+                previous_backup_path: string;
+                bytes_received: number;
+                files_extracted: number;
+              }
+            | { stage: "error"; message: string };
+          if (data.stage === "extracting") {
+            setPhase("extracting");
+            setExtractInfo({ bytes: data.bytes_received });
+          } else if (data.stage === "swapping") {
+            setPhase("swapping");
+            setExtractInfo((prev) => ({ ...prev, files: data.files_extracted }));
+          } else if (data.stage === "done") {
+            setLastDeploy({
+              deployedPath: data.deployed_path,
+              previousBackupPath: data.previous_backup_path,
+              bytesReceived: data.bytes_received,
+              filesExtracted: data.files_extracted
+            });
+            setPhase("done");
+            onMessage(
+              `部署完成 · ${data.files_extracted} 个文件 / ${formatBytes(BigInt(data.bytes_received))} → ${data.deployed_path}`
+            );
+            onChanged();
+            try {
+              ws.close();
+            } catch {
+              // ignore
+            }
+            resolve();
+          } else if (data.stage === "error") {
+            onError(`部署失败:${data.message}`);
+            setPhase("idle");
+            try {
+              ws.close();
+            } catch {
+              // ignore
+            }
+            resolve();
+          }
+        } catch {
+          // 单条事件解析失败不致命,继续等下一条
+        }
+      };
+      ws.onerror = () => {
+        // 错误通常跟 onclose 一起到
+      };
+      ws.onclose = () => {
+        // 主流程已经 resolve;onclose 兜底防一直挂着
+        resolve();
+      };
+    });
+
+  const doUpload = async (file: File) => {
     if (!supportsDeploy) {
       onError("此站点没有 webroot,无法上传内容(纯反代 / RustBinary 站走代码部署)");
       return;
@@ -5782,69 +5860,50 @@ function DeployPanel({
       onError("请上传 .zip 归档(后端只识别 zip;tar.gz 后续支持)");
       return;
     }
+    const chunkSize = 1024 * 1024; // 1 MB
+    const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize));
+    const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     setPhase("uploading");
     setProgressPct(0);
-    const form = new FormData();
-    form.append("archive", file);
-    const xhr = new XMLHttpRequest();
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        setProgressPct(Math.round((event.loaded / event.total) * 100));
+    setExtractInfo({});
+    try {
+      let jobId: string | null = null;
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const slice = file.slice(start, end);
+        const qs = new URLSearchParams({
+          name: site.name,
+          upload_id: uploadId,
+          chunk_index: String(i),
+          total_chunks: String(totalChunks)
+        });
+        const url = appendAuthQuery(`/api/site/deploy/chunk?${qs.toString()}`);
+        const resp = await fetch(url, {
+          method: "POST",
+          body: slice,
+          headers: { "content-type": "application/octet-stream" }
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(`分片 ${i + 1}/${totalChunks} 失败 (HTTP ${resp.status}):${text.slice(0, 200)}`);
+        }
+        if (i === totalChunks - 1) {
+          const data = (await resp.json()) as { job_id?: string };
+          jobId = data.job_id ?? null;
+        }
+        setProgressPct(Math.round(((i + 1) / totalChunks) * 100));
       }
-    };
-    xhr.upload.onload = () => {
-      // 上传完进入"等后端解压"阶段
+      if (!jobId) {
+        throw new Error("最后一片没拿到 job_id,后端没启动解压任务");
+      }
+      // 切到 WS 等解压 + swap 进度
       setPhase("extracting");
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const data = JSON.parse(xhr.responseText) as {
-            deployed_path: string;
-            previous_backup_path: string;
-            bytes_received: number;
-            files_extracted: number;
-          };
-          setLastDeploy({
-            deployedPath: data.deployed_path,
-            previousBackupPath: data.previous_backup_path,
-            bytesReceived: data.bytes_received,
-            filesExtracted: data.files_extracted
-          });
-          setPhase("done");
-          onMessage(
-            `部署完成 · ${data.files_extracted} 个文件 / ${formatBytes(BigInt(data.bytes_received))} → ${data.deployed_path}`
-          );
-          onChanged();
-        } catch {
-          onError(`部署成功但响应解析失败:${xhr.responseText.slice(0, 200)}`);
-          setPhase("idle");
-        }
-      } else {
-        let detail = xhr.responseText;
-        try {
-          const parsed = JSON.parse(xhr.responseText) as { error?: string };
-          if (parsed.error) detail = parsed.error;
-        } catch {
-          // 留 raw text
-        }
-        onError(`部署失败(HTTP ${xhr.status}):${detail.slice(0, 300)}`);
-        setPhase("idle");
-      }
-    };
-    xhr.onerror = () => {
-      onError("上传网络错误,检查面板是否还可访问");
+      await watchProgress(jobId);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
       setPhase("idle");
-    };
-    xhr.open(
-      "POST",
-      `/api/site/deploy?name=${encodeURIComponent(site.name)}`,
-      true
-    );
-    // multipart 的 Content-Type 浏览器自动加 boundary,不要手动设
-    const token = window.localStorage.getItem("rustpanel.auth.token");
-    if (token) xhr.setRequestHeader("authorization", `Bearer ${token}`);
-    xhr.send(form);
+    }
   };
 
   const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
@@ -5914,10 +5973,12 @@ function DeployPanel({
             />
             <div className="text-sm font-medium">
               {phase === "uploading"
-                ? `上传中 ${progressPct}%`
+                ? `分片上传中 ${progressPct}%`
                 : phase === "extracting"
-                  ? "上传完成,服务器正在解压 + 切换..."
-                  : "点这里选 .zip,或者拖一个文件进来"}
+                  ? `服务器在解压${extractInfo.bytes ? `(收 ${formatBytes(BigInt(extractInfo.bytes))})` : ""}...`
+                  : phase === "swapping"
+                    ? `原子切换中${extractInfo.files ? `(${extractInfo.files} 个文件)` : ""}...`
+                    : "点这里选 .zip,或者拖一个文件进来"}
             </div>
             {phase === "uploading" && (
               <div className="mt-2 h-1.5 w-full rounded bg-muted overflow-hidden">
@@ -5927,7 +5988,7 @@ function DeployPanel({
                 />
               </div>
             )}
-            {phase === "extracting" && (
+            {(phase === "extracting" || phase === "swapping") && (
               <div className="mt-2 flex justify-center">
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
               </div>

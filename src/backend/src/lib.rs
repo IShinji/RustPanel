@@ -279,6 +279,8 @@ fn http_router_with_state(state: HttpState, authority: auth::JwtAuthority) -> Ro
         .route("/api/fs/upload/chunk", post(http_file_upload_chunk))
         .route("/api/fs/download", get(http_file_download))
         .route("/api/site/deploy", post(http_site_deploy))
+        .route("/api/site/deploy/chunk", post(http_site_deploy_chunk))
+        .route("/api/site/deploy/progress", get(http_site_deploy_progress))
         .route("/api/terminal/ws", get(http_terminal_ws))
         .layer(from_fn_with_state(
             Arc::new(authority),
@@ -717,6 +719,390 @@ struct DeploySiteResult {
     previous_backup_path: String,
     bytes_received: u64,
     files_extracted: u32,
+}
+
+// ============= 分片上传 + WebSocket 进度 =============
+//
+// 大 zip(>50MB)单次 POST 容易被反代超时;extract+swap 阶段前端只看到
+// spinner 也没法看进度。这套把流程切成:
+// 1. 客户端切片 1MB,每片 POST /api/site/deploy/chunk?upload_id=...&chunk_index=N&total_chunks=M
+// 2. 最后一片回 202 + { job_id },后端**异步**跑解压 + swap
+// 3. 客户端开 WS /api/site/deploy/progress?job_id=X,流式收 stage 事件
+//    最终事件含 done / error,前端拿到就知道部署结果。
+//
+// 每个 job 有一个 broadcast::Sender,extract 任务 push 进去,WS 订阅者
+// forward 出来。任务结束 5 分钟后 GC(避免内存累积)。
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "stage", rename_all = "snake_case")]
+enum DeployProgress {
+    /// 所有片接收完,开始解压
+    Extracting { bytes_received: u64 },
+    /// 解压完,开始原子 swap
+    Swapping { files_extracted: u32 },
+    /// 部署成功
+    Done {
+        deployed_path: String,
+        previous_backup_path: String,
+        bytes_received: u64,
+        files_extracted: u32,
+    },
+    /// 失败,带错误描述。客户端收到 error 后应该 close WS。
+    Error { message: String },
+}
+
+#[derive(Debug)]
+struct DeployJob {
+    /// 广播给 WS 订阅者用;subscribe() 现配一个新 Receiver
+    tx: tokio::sync::broadcast::Sender<DeployProgress>,
+    /// 任务结束时间(Unix 秒)。None = 还在跑;Some = 已经发出 Done/Error
+    /// terminal event,5 分钟后 GC。
+    finished_at: tokio::sync::Mutex<Option<u64>>,
+}
+
+impl DeployJob {
+    fn new() -> Arc<Self> {
+        // 8 cap 够:典型事件序列就 5-6 条;subscriber 慢半秒 fall behind
+        // 也没事,broadcast 会跳过老消息但保 latest。
+        let (tx, _) = tokio::sync::broadcast::channel(8);
+        Arc::new(Self {
+            tx,
+            finished_at: tokio::sync::Mutex::new(None),
+        })
+    }
+
+    fn push(&self, event: DeployProgress) {
+        let _ = self.tx.send(event);
+    }
+}
+
+type DeployJobs = Arc<tokio::sync::RwLock<std::collections::HashMap<String, Arc<DeployJob>>>>;
+
+fn deploy_jobs() -> &'static DeployJobs {
+    static JOBS: std::sync::OnceLock<DeployJobs> = std::sync::OnceLock::new();
+    JOBS.get_or_init(|| {
+        let jobs: DeployJobs = Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+        // 启动一个 GC 循环:每分钟扫一次,清掉 finished_at 超 5 分钟的 job
+        let jobs_clone = jobs.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let mut guard = jobs_clone.write().await;
+                guard.retain(|_id, job| {
+                    let finished = job.finished_at.try_lock().ok().and_then(|g| *g);
+                    match finished {
+                        Some(at) => now.saturating_sub(at) < 300,
+                        None => true,
+                    }
+                });
+            }
+        });
+        jobs
+    })
+}
+
+fn chunk_root_for(upload_id: &str) -> std::path::PathBuf {
+    std::env::temp_dir()
+        .join("rustpanel-deploy-chunks")
+        .join(sanitize_upload_name(upload_id))
+}
+
+#[derive(Debug, Deserialize)]
+struct DeployChunkQuery {
+    name: String,
+    upload_id: String,
+    chunk_index: u32,
+    total_chunks: u32,
+}
+
+#[derive(Debug, Serialize)]
+struct DeployChunkAck {
+    chunk_index: u32,
+    job_id: Option<String>,
+}
+
+async fn http_site_deploy_chunk(
+    Query(query): Query<DeployChunkQuery>,
+    body: Bytes,
+) -> Result<impl IntoResponse, HttpError> {
+    let site_name = query.name.trim().to_owned();
+    if site_name.is_empty() {
+        return Err(HttpError::bad_request("name is required"));
+    }
+    if query.total_chunks == 0 || query.chunk_index >= query.total_chunks {
+        return Err(HttpError::bad_request("invalid chunk index"));
+    }
+    if query.upload_id.trim().is_empty() {
+        return Err(HttpError::bad_request("upload_id is required"));
+    }
+    // 第一个 chunk 时确认站点存在 + 有 webroot(失败立刻退出,不浪费后续上传)
+    if query.chunk_index == 0 {
+        site::find_site_webroot_by_name(&site_name)
+            .await
+            .ok_or_else(|| {
+                HttpError::bad_request(format!(
+                    "site `{site_name}` not found or has no webroot configured"
+                ))
+            })?;
+    }
+
+    let chunk_root = chunk_root_for(&query.upload_id);
+    tokio::fs::create_dir_all(&chunk_root)
+        .await
+        .map_err(HttpError::internal)?;
+    tokio::fs::write(chunk_root.join(query.chunk_index.to_string()), &body)
+        .await
+        .map_err(HttpError::internal)?;
+
+    let is_last = query.chunk_index + 1 == query.total_chunks;
+    if !is_last {
+        return Ok(Json(DeployChunkAck {
+            chunk_index: query.chunk_index,
+            job_id: None,
+        }));
+    }
+
+    // 最后一片:拼装成完整 zip,创建 job,异步跑 extract+swap
+    let job_id = format!(
+        "{}-{}",
+        sanitize_upload_name(&site_name),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let job = DeployJob::new();
+    {
+        let jobs = deploy_jobs();
+        jobs.write().await.insert(job_id.clone(), job.clone());
+    }
+    let total = query.total_chunks;
+    let job_id_for_task = job_id.clone();
+    let chunk_root_for_task = chunk_root.clone();
+    tokio::spawn(async move {
+        run_deploy_job(job, site_name, chunk_root_for_task, total, job_id_for_task).await;
+    });
+
+    Ok(Json(DeployChunkAck {
+        chunk_index: query.chunk_index,
+        job_id: Some(job_id),
+    }))
+}
+
+async fn run_deploy_job(
+    job: Arc<DeployJob>,
+    site_name: String,
+    chunk_root: std::path::PathBuf,
+    total_chunks: u32,
+    _job_id: String,
+) {
+    // 把 chunk 拼成完整 zip
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let tmp_zip = std::env::temp_dir().join(format!("rustpanel-deploy-{site_name}-{now}.zip"));
+    let assemble = async {
+        let mut target = tokio::fs::File::create(&tmp_zip).await?;
+        let mut bytes: u64 = 0;
+        for i in 0..total_chunks {
+            let chunk = tokio::fs::read(chunk_root.join(i.to_string())).await?;
+            bytes = bytes.saturating_add(chunk.len() as u64);
+            target.write_all(&chunk).await?;
+        }
+        target.flush().await?;
+        Ok::<u64, std::io::Error>(bytes)
+    };
+    let bytes_received = match assemble.await {
+        Ok(b) => b,
+        Err(e) => {
+            let _ = tokio::fs::remove_dir_all(&chunk_root).await;
+            finish_deploy_job(
+                &job,
+                DeployProgress::Error {
+                    message: format!("assemble zip failed: {e}"),
+                },
+            )
+            .await;
+            return;
+        }
+    };
+    let _ = tokio::fs::remove_dir_all(&chunk_root).await;
+    job.push(DeployProgress::Extracting { bytes_received });
+
+    let webroot = match site::find_site_webroot_by_name(&site_name).await {
+        Some(p) => p,
+        None => {
+            let _ = tokio::fs::remove_file(&tmp_zip).await;
+            finish_deploy_job(
+                &job,
+                DeployProgress::Error {
+                    message: format!("site `{site_name}` lost webroot before extract"),
+                },
+            )
+            .await;
+            return;
+        }
+    };
+    let staging = webroot.with_extension(format!("staging-{now}"));
+    if let Err(e) = tokio::fs::create_dir_all(&staging).await {
+        let _ = tokio::fs::remove_file(&tmp_zip).await;
+        finish_deploy_job(
+            &job,
+            DeployProgress::Error {
+                message: format!("create staging dir failed: {e}"),
+            },
+        )
+        .await;
+        return;
+    }
+
+    let staging_for_extract = staging.clone();
+    let tmp_zip_for_extract = tmp_zip.clone();
+    let extract_result = tokio::task::spawn_blocking(move || {
+        site::extract_zip_to_dir(&tmp_zip_for_extract, &staging_for_extract)
+    })
+    .await;
+    let _ = tokio::fs::remove_file(&tmp_zip).await;
+    let files_extracted = match extract_result {
+        Ok(Ok(count)) => count,
+        Ok(Err(status)) => {
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+            finish_deploy_job(
+                &job,
+                DeployProgress::Error {
+                    message: format!("extract: {}", status.message()),
+                },
+            )
+            .await;
+            return;
+        }
+        Err(e) => {
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+            finish_deploy_job(
+                &job,
+                DeployProgress::Error {
+                    message: format!("extract task panic: {e}"),
+                },
+            )
+            .await;
+            return;
+        }
+    };
+    job.push(DeployProgress::Swapping { files_extracted });
+
+    let backup_path = match site::atomic_swap_into_webroot(&staging, &webroot).await {
+        Ok(p) => p,
+        Err(status) => {
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+            finish_deploy_job(
+                &job,
+                DeployProgress::Error {
+                    message: format!("swap: {}", status.message()),
+                },
+            )
+            .await;
+            return;
+        }
+    };
+    let backup_str = if tokio::fs::try_exists(&backup_path).await.unwrap_or(false) {
+        backup_path.to_string_lossy().into_owned()
+    } else {
+        String::new()
+    };
+
+    finish_deploy_job(
+        &job,
+        DeployProgress::Done {
+            deployed_path: webroot.to_string_lossy().into_owned(),
+            previous_backup_path: backup_str,
+            bytes_received,
+            files_extracted,
+        },
+    )
+    .await;
+}
+
+async fn finish_deploy_job(job: &DeployJob, event: DeployProgress) {
+    job.push(event);
+    let mut guard = job.finished_at.lock().await;
+    *guard = Some(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+    );
+}
+
+#[derive(Debug, Deserialize)]
+struct DeployProgressQuery {
+    job_id: String,
+}
+
+async fn http_site_deploy_progress(
+    Query(query): Query<DeployProgressQuery>,
+    upgrade: WebSocketUpgrade,
+) -> impl IntoResponse {
+    upgrade.on_upgrade(move |socket| handle_deploy_progress_ws(socket, query.job_id))
+}
+
+async fn handle_deploy_progress_ws(mut socket: WebSocket, job_id: String) {
+    let job = {
+        let jobs = deploy_jobs();
+        jobs.read().await.get(&job_id).cloned()
+    };
+    let Some(job) = job else {
+        let payload = serde_json::to_string(&DeployProgress::Error {
+            message: format!("job `{job_id}` not found (maybe expired)"),
+        })
+        .unwrap_or_else(|_| "{}".to_owned());
+        let _ = socket.send(WsMessage::Text(payload)).await;
+        let _ = socket.close().await;
+        return;
+    };
+
+    let mut rx = job.tx.subscribe();
+    // 如果 job 已经 finished,subscribe 拿不到历史事件 → 给客户端发一条
+    // 兜底:轮询 finished_at,有值时让客户端知道。
+    let already_finished = job.finished_at.lock().await.is_some();
+    if already_finished {
+        let payload = serde_json::to_string(&DeployProgress::Done {
+            deployed_path: String::new(),
+            previous_backup_path: String::new(),
+            bytes_received: 0,
+            files_extracted: 0,
+        })
+        .unwrap_or_else(|_| "{}".to_owned());
+        let _ = socket.send(WsMessage::Text(payload)).await;
+        let _ = socket.close().await;
+        return;
+    }
+
+    loop {
+        match rx.recv().await {
+            Ok(event) => {
+                let is_terminal = matches!(
+                    event,
+                    DeployProgress::Done { .. } | DeployProgress::Error { .. }
+                );
+                let payload = serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_owned());
+                if socket.send(WsMessage::Text(payload)).await.is_err() {
+                    break;
+                }
+                if is_terminal {
+                    let _ = socket.close().await;
+                    break;
+                }
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(_) => break, // sender 关闭
+        }
+    }
 }
 
 /// 上传 zip 到站点 webroot 并原子切换。流程:
