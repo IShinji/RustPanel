@@ -58,7 +58,7 @@ async function checkLatestCi(parsed: ParsedArgs) {
   validateRepository(repository)
   validateCommit(commit)
 
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
+  const token = detectGitHubToken()
   const deadline = Date.now() + parsed.timeoutSeconds * 1000
   let pollCount = 0
 
@@ -300,6 +300,16 @@ function detectRepository(): string {
 
 function detectCommit(): string {
   return process.env.GITHUB_SHA || git(['rev-parse', 'HEAD'])
+}
+
+function detectGitHubToken(): string | undefined {
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN
+  if (process.env.GH_TOKEN) return process.env.GH_TOKEN
+
+  const result = spawnSync('gh', ['auth', 'token'], { encoding: 'utf8' })
+  if (result.status !== 0) return undefined
+  const token = result.stdout.trim()
+  return token || undefined
 }
 
 function git(args: string[]): string {
