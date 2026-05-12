@@ -39,6 +39,7 @@ const DEFAULT_TITLE = 'RustPanel micro latest'
 const GITHUB_API_VERSION = '2022-11-28'
 const GITHUB_REQUEST_ATTEMPTS = 4
 const GITHUB_REQUEST_TIMEOUT_MS = 30_000
+const GITHUB_UPLOAD_TIMEOUT_MS = 10 * 60_000
 
 const args = parseArgs(process.argv.slice(2))
 
@@ -193,7 +194,7 @@ async function githubRequest<T>(input: {
   }
 
   for (let attempt = 1; attempt <= GITHUB_REQUEST_ATTEMPTS; attempt += 1) {
-    const timeout = abortAfter(GITHUB_REQUEST_TIMEOUT_MS)
+    const timeout = abortAfter(input.bodyBytes ? GITHUB_UPLOAD_TIMEOUT_MS : GITHUB_REQUEST_TIMEOUT_MS)
     try {
       const response = await fetch(url, {
         body,
