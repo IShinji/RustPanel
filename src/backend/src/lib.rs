@@ -818,6 +818,10 @@ struct DeployChunkQuery {
     upload_id: String,
     chunk_index: u32,
     total_chunks: u32,
+    /// 解压后是否保留 zip 到 <site_state>/archives/<site>/<ts>.zip
+    /// 便于一键重传 / 备份下载。默认 false(自动删除,省空间)。
+    #[serde(default)]
+    keep_archive: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -884,8 +888,17 @@ async fn http_site_deploy_chunk(
     let total = query.total_chunks;
     let job_id_for_task = job_id.clone();
     let chunk_root_for_task = chunk_root.clone();
+    let keep_archive = query.keep_archive;
     tokio::spawn(async move {
-        run_deploy_job(job, site_name, chunk_root_for_task, total, job_id_for_task).await;
+        run_deploy_job(
+            job,
+            site_name,
+            chunk_root_for_task,
+            total,
+            job_id_for_task,
+            keep_archive,
+        )
+        .await;
     });
 
     Ok(Json(DeployChunkAck {
@@ -900,6 +913,7 @@ async fn run_deploy_job(
     chunk_root: std::path::PathBuf,
     total_chunks: u32,
     _job_id: String,
+    keep_archive: bool,
 ) {
     // 把 chunk 拼成完整 zip
     let now = std::time::SystemTime::now()
@@ -968,6 +982,18 @@ async fn run_deploy_job(
         site::extract_zip_to_dir(&tmp_zip_for_extract, &staging_for_extract)
     })
     .await;
+    // 解压成功 + 用户勾了 "保留压缩包" → 把 tmp zip 复制到面板归档目录,
+    // 失败 / 用户没勾就直接删。容错:复制失败不阻塞部署主流程,只 warn 日志。
+    if keep_archive && matches!(extract_result, Ok(Ok(_))) {
+        match site::archive_deployed_zip(&site_name, &tmp_zip, now).await {
+            Ok(p) => {
+                tracing::info!(target = "site.deploy", site = %site_name, archive = %p.display(), "kept deploy archive")
+            }
+            Err(e) => {
+                tracing::warn!(target = "site.deploy", site = %site_name, error = %e, "archive copy failed (deploy 继续)")
+            }
+        }
+    }
     let _ = tokio::fs::remove_file(&tmp_zip).await;
     let files_extracted = match extract_result {
         Ok(Ok(count)) => count,

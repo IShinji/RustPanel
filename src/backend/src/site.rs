@@ -13,13 +13,15 @@ use crate::{
     ok_response,
     proto::rustpanel::v1::{
         site_service_server::SiteService, CreateSiteRequest, CreateSiteResponse,
-        DeleteReverseProxyRuleRequest, DeleteReverseProxyRuleResponse, DeleteSiteRequest,
-        DeleteSiteResponse, ListReverseProxyRulesRequest, ListReverseProxyRulesResponse,
-        ListRewriteTemplatesRequest, ListRewriteTemplatesResponse, ListSitesRequest,
-        ListSitesResponse, ReloadNginxRequest, ReloadNginxResponse, RenderRewriteTemplateRequest,
-        RenderRewriteTemplateResponse, ReverseProxyRule, RewriteTemplate, RollbackSiteRequest,
-        RollbackSiteResponse, SiteBindKind, SiteBinding, SiteItem, SiteKind, SiteTlsStrategy,
-        UpsertReverseProxyRuleRequest, UpsertReverseProxyRuleResponse, UpstreamTarget,
+        DeleteReverseProxyRuleRequest, DeleteReverseProxyRuleResponse, DeleteSiteArchiveRequest,
+        DeleteSiteArchiveResponse, DeleteSiteRequest, DeleteSiteResponse,
+        ListReverseProxyRulesRequest, ListReverseProxyRulesResponse, ListRewriteTemplatesRequest,
+        ListRewriteTemplatesResponse, ListSiteArchivesRequest, ListSiteArchivesResponse,
+        ListSitesRequest, ListSitesResponse, ReloadNginxRequest, ReloadNginxResponse,
+        RenderRewriteTemplateRequest, RenderRewriteTemplateResponse, ReverseProxyRule,
+        RewriteTemplate, RollbackSiteRequest, RollbackSiteResponse, SiteArchive, SiteBindKind,
+        SiteBinding, SiteItem, SiteKind, SiteTlsStrategy, UpsertReverseProxyRuleRequest,
+        UpsertReverseProxyRuleResponse, UpstreamTarget,
     },
 };
 
@@ -547,6 +549,83 @@ impl SiteService for SiteServiceImpl {
             deployed_path: webroot.to_string_lossy().into_owned(),
         }))
     }
+
+    async fn list_site_archives(
+        &self,
+        request: Request<ListSiteArchivesRequest>,
+    ) -> Result<GrpcResponse<ListSiteArchivesResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
+        let site_name = request.into_inner().site_name;
+        let dir = match site_archive_dir(&site_name) {
+            Ok(p) => p,
+            Err(status) => return Err(status),
+        };
+        let mut archives: Vec<SiteArchive> = Vec::new();
+        if !tokio::fs::try_exists(&dir).await.unwrap_or(false) {
+            return Ok(GrpcResponse::new(ListSiteArchivesResponse {
+                status: Some(ok_response("no archives")),
+                archives,
+            }));
+        }
+        let mut entries = tokio::fs::read_dir(&dir).await.map_err(io_status)?;
+        while let Some(entry) = entries.next_entry().await.map_err(io_status)? {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("zip") {
+                continue;
+            }
+            let meta = entry.metadata().await.map_err(io_status)?;
+            let created = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            archives.push(SiteArchive {
+                name: path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                path: path.to_string_lossy().into_owned(),
+                size_bytes: meta.len(),
+                created_at_seconds: created,
+            });
+        }
+        // 新的在前;按时间戳降序
+        archives.sort_by_key(|a| std::cmp::Reverse(a.created_at_seconds));
+        Ok(GrpcResponse::new(ListSiteArchivesResponse {
+            status: Some(ok_response("ok")),
+            archives,
+        }))
+    }
+
+    async fn delete_site_archive(
+        &self,
+        request: Request<DeleteSiteArchiveRequest>,
+    ) -> Result<GrpcResponse<DeleteSiteArchiveResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
+        let req = request.into_inner();
+        // 防 traversal:文件名不能含 / 或 ..,只接受平文件名
+        if req.archive_name.contains('/')
+            || req.archive_name.contains("..")
+            || req.archive_name.trim().is_empty()
+        {
+            return Err(Status::invalid_argument(
+                "archive_name must be a bare filename",
+            ));
+        }
+        let dir = site_archive_dir(&req.site_name)?;
+        let target = dir.join(&req.archive_name);
+        if !tokio::fs::try_exists(&target).await.unwrap_or(false) {
+            return Err(Status::not_found(format!(
+                "archive `{}` not found",
+                req.archive_name
+            )));
+        }
+        tokio::fs::remove_file(&target).await.map_err(io_status)?;
+        Ok(GrpcResponse::new(DeleteSiteArchiveResponse {
+            status: Some(ok_response("archive deleted")),
+        }))
+    }
 }
 
 /// 给 deploy 路径用:按站点 name 找 webroot。如果是 builtin 内置站点或
@@ -656,6 +735,35 @@ pub(crate) async fn dir_size_bytes(root: &std::path::Path) -> Option<u64> {
     .await
     .ok()?
     .ok()
+}
+
+/// 站点归档目录(保留下来的部署 zip)。每个站点一个子目录,文件名按
+/// 时间戳命名,避免冲突。
+pub(crate) fn site_archive_dir(site_name: &str) -> Result<std::path::PathBuf, Status> {
+    let safe = safe_name(site_name)?;
+    let root = env::var("RUSTPANEL_SITE_STATE_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from(DEFAULT_SITE_STATE_ROOT));
+    Ok(root.join("archives").join(safe))
+}
+
+/// 保留压缩包:把 tmp zip 复制到 <site_state>/archives/<site>/<ts>.zip。
+/// 文件名 ts 由调用方传(取部署任务的时间戳,便于跟其它日志对齐)。
+pub(crate) async fn archive_deployed_zip(
+    site_name: &str,
+    tmp_zip: &std::path::Path,
+    timestamp: u64,
+) -> Result<std::path::PathBuf, Status> {
+    let dir = site_archive_dir(site_name)?;
+    tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
+    // YYYYMMDD-HHMMSS 比 unix ts 可读多了,用户一眼能挑;UTC 简化
+    let secs = timestamp;
+    let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
+        .unwrap_or_else(chrono::Utc::now);
+    let label = dt.format("%Y%m%d-%H%M%S");
+    let path = dir.join(format!("{label}.zip"));
+    tokio::fs::copy(tmp_zip, &path).await.map_err(io_status)?;
+    Ok(path)
 }
 
 /// 从 zip 流式解压到 dest_dir,**严格拒绝**绝对路径 / `..` / symlink。

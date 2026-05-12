@@ -102,6 +102,7 @@ import {
 import {
   ReverseProxyRule,
   RewriteTemplate,
+  SiteArchive,
   SiteBindKind,
   SiteItem,
   SiteKind,
@@ -5777,12 +5778,31 @@ function DeployPanel({
   } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [rolling, setRolling] = useState(false);
+  // 默认不保留压缩包 —— 2GB 存储紧张,大多数用户也用不上。勾上后归档到
+  // <site_state>/archives/<site>/<ts>.zip,便于后面下载 / 再传。
+  const [keepArchive, setKeepArchive] = useState(false);
+  const [archives, setArchives] = useState<SiteArchive[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const supportsDeploy = (site.root?.trim().length ?? 0) > 0;
   const previousBackupExists =
     !!lastDeploy?.previousBackupPath ||
     !!(site.previousBackupPath && site.previousBackupPath.length > 0);
+
+  const refreshArchives = useCallback(async () => {
+    try {
+      const resp = await clients.site.listSiteArchives({ siteName: site.name });
+      setArchives(resp.archives);
+    } catch {
+      // 列归档失败不致命,默默吞掉,主流程仍可继续
+    }
+  }, [clients, site.name]);
+
+  useEffect(() => {
+    if (supportsDeploy) {
+      void refreshArchives();
+    }
+  }, [supportsDeploy, refreshArchives]);
 
   const watchProgress = (jobId: string) =>
     new Promise<void>((resolve) => {
@@ -5822,6 +5842,8 @@ function DeployPanel({
               `部署完成 · ${data.files_extracted} 个文件 / ${formatBytes(BigInt(data.bytes_received))} → ${data.deployed_path}`
             );
             onChanged();
+            // 刷新归档列表(用户勾了保留就会出现新条目)
+            void refreshArchives();
             try {
               ws.close();
             } catch {
@@ -5876,7 +5898,8 @@ function DeployPanel({
           name: site.name,
           upload_id: uploadId,
           chunk_index: String(i),
-          total_chunks: String(totalChunks)
+          total_chunks: String(totalChunks),
+          keep_archive: keepArchive ? "true" : "false"
         });
         const url = appendAuthQuery(`/api/site/deploy/chunk?${qs.toString()}`);
         const resp = await fetch(url, {
@@ -5950,6 +5973,21 @@ function DeployPanel({
             <code className="mx-1">{site.root}</code>。
             旧内容保留一份作 <code>.previous</code> 备份,失误能一键回滚。
           </div>
+          <label className="flex items-start gap-2 text-xs cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={keepArchive}
+              disabled={phase !== "idle" && phase !== "done"}
+              onChange={(event) => setKeepArchive(event.target.checked)}
+            />
+            <div>
+              <div className="font-medium">保留压缩包到面板</div>
+              <div className="text-muted-foreground">
+                默认解压完自动删,省 2GB 存储。勾上会复制到面板归档目录,以后能下载备份 / 一键重传(还没实现一键重传,下个迭代加)。
+              </div>
+            </div>
+          </label>
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -6027,6 +6065,66 @@ function DeployPanel({
               <span className="text-xs text-muted-foreground">
                 上一版备份存在;回滚后**当前版本会丢**,不能再回滚到再上一版。
               </span>
+            </div>
+          )}
+
+          {archives.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">已保留的压缩包</div>
+              <div className="rounded border border-border divide-y text-xs">
+                {archives.map((arch) => (
+                  <div
+                    key={arch.path}
+                    className="flex items-center justify-between gap-3 px-3 py-2"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-mono truncate">{arch.name}</div>
+                      <div className="text-muted-foreground">
+                        {formatBytes(arch.sizeBytes)} ·{" "}
+                        {arch.createdAtSeconds > 0n
+                          ? new Date(Number(arch.createdAtSeconds) * 1000).toLocaleString()
+                          : "—"}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <UIButton
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const url = appendAuthQuery(
+                            `/api/fs/download?path=${encodeURIComponent(arch.path)}`
+                          );
+                          window.location.href = url;
+                        }}
+                      >
+                        下载
+                      </UIButton>
+                      <UIButton
+                        size="sm"
+                        variant="ghost"
+                        title="删除归档"
+                        onClick={async () => {
+                          try {
+                            await clients.site.deleteSiteArchive({
+                              siteName: site.name,
+                              archiveName: arch.name
+                            });
+                            onMessage(`已删除归档 ${arch.name}`);
+                            void refreshArchives();
+                          } catch (err) {
+                            onError(safeError(err));
+                          }
+                        }}
+                      >
+                        <Trash2 className="size-3.5 text-destructive" />
+                      </UIButton>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                这些归档存在面板 state 目录(<code>{`/var/lib/rustpanel/site/archives/${site.name}/`}</code>),不算在站点 webroot 占用里;省空间记得手动删。
+              </div>
             </div>
           )}
 

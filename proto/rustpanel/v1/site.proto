@@ -207,9 +207,10 @@ message DeleteReverseProxyRuleResponse {
   Response status = 1;
 }
 
-// 站点 zip 部署走 HTTP POST /api/site/:name/deploy 多部分上传(gRPC-web
-// 不支持 client streaming,大文件用 axum multipart 更顺)。返回 JSON 的
-// DeploySiteResult。这里只留回滚 RPC,小请求小响应,适合 gRPC unary。
+// 站点 zip 部署走 HTTP POST /api/site/deploy/chunk?...&keep_archive=true|false
+// (gRPC-web 不支持 client streaming,大文件用 axum multipart 更顺)。
+// 解压进度通过 WS /api/site/deploy/progress 推回。
+// 这里只留 RPC:回滚、列归档、删归档,都是小请求小响应。
 
 // RollbackSiteRequest 把 <root>.previous 重新换回 <root>。
 // 备份不存在 → FAILED_PRECONDITION。回滚后 .previous 被覆盖,
@@ -223,6 +224,37 @@ message RollbackSiteResponse {
   string deployed_path = 2;
 }
 
+// SiteArchive 描述一份保留下来的部署压缩包(用户在上传时打勾"保留压缩包"
+// 才会留)。便于一键重新部署 / 下载备份,不勾就自动删,省空间。
+message SiteArchive {
+  // 归档文件名(不含路径,典型 "20260511-083544.zip")
+  string name = 1;
+  // 完整磁盘路径,便于 /api/fs/download 拉取
+  string path = 2;
+  uint64 size_bytes = 3;
+  uint64 created_at_seconds = 4;
+}
+
+message ListSiteArchivesRequest {
+  string site_name = 1;
+}
+
+message ListSiteArchivesResponse {
+  Response status = 1;
+  repeated SiteArchive archives = 2;
+}
+
+message DeleteSiteArchiveRequest {
+  string site_name = 1;
+  // 仅文件名,后端拼到 <site_state>/archives/<site>/<name>;
+  // 防 path traversal:不接受 / 或 ..
+  string archive_name = 2;
+}
+
+message DeleteSiteArchiveResponse {
+  Response status = 1;
+}
+
 // SiteService 提供站点与反向代理配置能力。
 service SiteService {
   rpc ListSites(ListSitesRequest) returns (ListSitesResponse);
@@ -234,6 +266,10 @@ service SiteService {
   rpc ListReverseProxyRules(ListReverseProxyRulesRequest) returns (ListReverseProxyRulesResponse);
   rpc UpsertReverseProxyRule(UpsertReverseProxyRuleRequest) returns (UpsertReverseProxyRuleResponse);
   rpc DeleteReverseProxyRule(DeleteReverseProxyRuleRequest) returns (DeleteReverseProxyRuleResponse);
-  // 回滚到 .previous 备份(zip 上传走 HTTP /api/site/:name/deploy)
+  // 回滚到 .previous 备份(zip 上传走 HTTP /api/site/deploy/chunk)
   rpc RollbackSite(RollbackSiteRequest) returns (RollbackSiteResponse);
+  // 列出当前站点保留下来的归档(用户上传时勾"保留压缩包"才有)
+  rpc ListSiteArchives(ListSiteArchivesRequest) returns (ListSiteArchivesResponse);
+  // 删一份归档(用户腾空间时用)
+  rpc DeleteSiteArchive(DeleteSiteArchiveRequest) returns (DeleteSiteArchiveResponse);
 }
