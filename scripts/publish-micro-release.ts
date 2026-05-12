@@ -37,6 +37,8 @@ const DEFAULT_ASSET_NAME = 'rustpanel-backend-linux-amd64.tar.gz'
 const DEFAULT_TAG = 'micro-latest'
 const DEFAULT_TITLE = 'RustPanel micro latest'
 const GITHUB_API_VERSION = '2022-11-28'
+const GITHUB_REQUEST_ATTEMPTS = 4
+const GITHUB_REQUEST_TIMEOUT_MS = 30_000
 
 const args = parseArgs(process.argv.slice(2))
 
@@ -190,21 +192,41 @@ async function githubRequest<T>(input: {
     body = input.bodyBytes
   }
 
-  const response = await fetch(url, {
-    body,
-    headers,
-    method: input.method ?? 'GET',
-  })
-  const text = await response.text()
-  if (!input.expectedStatuses.includes(response.status)) {
-    fail(`GitHub API ${input.method ?? 'GET'} ${url} failed with ${response.status}: ${text.slice(0, 800)}`)
+  for (let attempt = 1; attempt <= GITHUB_REQUEST_ATTEMPTS; attempt += 1) {
+    const timeout = abortAfter(GITHUB_REQUEST_TIMEOUT_MS)
+    try {
+      const response = await fetch(url, {
+        body,
+        headers,
+        method: input.method ?? 'GET',
+        signal: timeout.signal,
+      })
+      const text = await response.text()
+      if (!input.expectedStatuses.includes(response.status)) {
+        if (isRetryableStatus(response.status) && attempt < GITHUB_REQUEST_ATTEMPTS) {
+          await sleep(retryDelayMs(attempt))
+          continue
+        }
+        fail(`GitHub API ${input.method ?? 'GET'} ${url} failed with ${response.status}: ${text.slice(0, 800)}`)
+      }
+
+      if (!text) {
+        return { data: null, status: response.status, text }
+      }
+
+      return { data: JSON.parse(text) as T, status: response.status, text }
+    } catch (error) {
+      if (attempt < GITHUB_REQUEST_ATTEMPTS) {
+        await sleep(retryDelayMs(attempt))
+        continue
+      }
+      fail(`GitHub API ${input.method ?? 'GET'} ${url} failed after retries: ${errorMessage(error)}`)
+    } finally {
+      timeout.clear()
+    }
   }
 
-  if (!text) {
-    return { data: null, status: response.status, text }
-  }
-
-  return { data: JSON.parse(text) as T, status: response.status, text }
+  fail(`GitHub API ${input.method ?? 'GET'} ${url} failed after retries`)
 }
 
 function parseArgs(argv: string[]): Args {
@@ -266,6 +288,31 @@ function validateSingleLine(value: string, flag: string) {
 
 function releaseNotes(sha: string): string {
   return `Automated linux/amd64 binary for RustPanel micro installs.\n\nCommit: ${sha}`
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500
+}
+
+function retryDelayMs(attempt: number): number {
+  return Math.min(10_000, 1000 * 2 ** (attempt - 1))
+}
+
+function abortAfter(ms: number): { clear: () => void; signal: AbortSignal } {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), ms)
+  return {
+    clear: () => clearTimeout(timeout),
+    signal: controller.signal,
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function runSelfTest() {

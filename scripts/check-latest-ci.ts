@@ -36,6 +36,7 @@ type Evaluation =
   | { state: 'failure'; considered: WorkflowRun[]; failed: WorkflowRun[] }
 
 const GITHUB_API_VERSION = '2022-11-28'
+const GITHUB_REQUEST_TIMEOUT_MS = 30_000
 const DEFAULT_INTERVAL_SECONDS = 20
 const DEFAULT_TIMEOUT_SECONDS = 60 * 60
 const SUCCESS_CONCLUSIONS = new Set(['success', 'skipped', 'neutral'])
@@ -127,8 +128,9 @@ async function githubRequest<T>(input: {
   }
 
   for (let attempt = 1; attempt <= 4; attempt += 1) {
+    const timeout = abortAfter(GITHUB_REQUEST_TIMEOUT_MS)
     try {
-      const response = await fetch(url, { headers })
+      const response = await fetch(url, { headers, signal: timeout.signal })
       const text = await response.text()
       if (!response.ok) {
         if (isRetryableStatus(response.status) && attempt < 4) {
@@ -145,6 +147,8 @@ async function githubRequest<T>(input: {
         continue
       }
       throw error
+    } finally {
+      timeout.clear()
     }
   }
 
@@ -339,6 +343,15 @@ function isRetryableStatus(status: number): boolean {
 
 function retryDelayMs(attempt: number): number {
   return Math.min(10_000, 1000 * 2 ** (attempt - 1))
+}
+
+function abortAfter(ms: number): { clear: () => void; signal: AbortSignal } {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), ms)
+  return {
+    clear: () => clearTimeout(timeout),
+    signal: controller.signal,
+  }
 }
 
 function readValue(argv: string[], index: number, arg: string): string {

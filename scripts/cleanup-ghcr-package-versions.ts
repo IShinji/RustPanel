@@ -39,6 +39,7 @@ type GitHubResponse<T> = {
 }
 
 const GITHUB_API_VERSION = '2022-11-28'
+const GITHUB_REQUEST_TIMEOUT_MS = 30_000
 const DEFAULT_KEEP_SHA = 15
 
 const args = parseArgs(process.argv.slice(2))
@@ -158,10 +159,12 @@ async function githubRequest<T>(input: {
   }
 
   for (let attempt = 1; attempt <= 4; attempt += 1) {
+    const timeout = abortAfter(GITHUB_REQUEST_TIMEOUT_MS)
     try {
       const response = await fetch(url, {
         headers,
         method: input.method ?? 'GET',
+        signal: timeout.signal,
       })
       const text = await response.text()
       if (!input.expectedStatuses.includes(response.status)) {
@@ -181,6 +184,8 @@ async function githubRequest<T>(input: {
         continue
       }
       throw error
+    } finally {
+      timeout.clear()
     }
   }
 
@@ -345,6 +350,15 @@ function isRetryableStatus(status: number): boolean {
 
 function retryDelayMs(attempt: number): number {
   return Math.min(10_000, 1000 * 2 ** (attempt - 1))
+}
+
+function abortAfter(ms: number): { clear: () => void; signal: AbortSignal } {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), ms)
+  return {
+    clear: () => clearTimeout(timeout),
+    signal: controller.signal,
+  }
 }
 
 function runSelfTest() {
