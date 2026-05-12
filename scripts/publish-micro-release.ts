@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -39,7 +40,6 @@ const DEFAULT_TITLE = 'RustPanel micro latest'
 const GITHUB_API_VERSION = '2022-11-28'
 const GITHUB_REQUEST_ATTEMPTS = 4
 const GITHUB_REQUEST_TIMEOUT_MS = 30_000
-const GITHUB_UPLOAD_TIMEOUT_MS = 10 * 60_000
 
 const args = parseArgs(process.argv.slice(2))
 
@@ -149,19 +149,61 @@ async function uploadAsset(input: {
   token: string
 }): Promise<GitHubAsset> {
   const { parsed, release, repository, token } = input
-  const bytes = fs.readFileSync(parsed.assetPath)
-  const assetBlob = new Blob([bytes], { type: parsed.contentType })
-  const uploaded = await githubRequest<GitHubAsset>({
-    url: `https://uploads.github.com/repos/${repository}/releases/${release.id}/assets?name=${encodeURIComponent(parsed.assetName)}`,
-    token,
-    method: 'POST',
+  const uploadUrl = `https://uploads.github.com/repos/${repository}/releases/${release.id}/assets?name=${encodeURIComponent(parsed.assetName)}`
+  return uploadAssetWithCurl({
+    assetName: parsed.assetName,
+    assetPath: parsed.assetPath,
     contentType: parsed.contentType,
-    bodyBytes: assetBlob,
-    contentLength: bytes.byteLength,
-    expectedStatuses: [201],
+    token,
+    uploadUrl,
   })
-  if (!uploaded.data) fail('GitHub returned an empty asset upload response')
-  return uploaded.data
+}
+
+function uploadAssetWithCurl(input: {
+  assetName: string
+  assetPath: string
+  contentType: string
+  token: string
+  uploadUrl: string
+}): GitHubAsset {
+  const result = spawnSync('curl', [
+    '--fail-with-body',
+    '--silent',
+    '--show-error',
+    '--location',
+    '--retry',
+    '3',
+    '--retry-delay',
+    '2',
+    '--retry-all-errors',
+    '--connect-timeout',
+    '30',
+    '--max-time',
+    '600',
+    '--request',
+    'POST',
+    '--header',
+    'Accept: application/vnd.github+json',
+    '--header',
+    `Authorization: Bearer ${input.token}`,
+    '--header',
+    `Content-Type: ${input.contentType}`,
+    '--header',
+    `X-GitHub-Api-Version: ${GITHUB_API_VERSION}`,
+    '--data-binary',
+    `@${input.assetPath}`,
+    input.uploadUrl,
+  ], {
+    encoding: 'utf8',
+    maxBuffer: 10 * 1024 * 1024,
+  })
+
+  if (result.status !== 0) {
+    const detail = [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join('\n')
+    fail(`GitHub asset upload failed for ${input.assetName} with curl exit ${result.status}: ${detail.slice(0, 1200)}`)
+  }
+
+  return JSON.parse(result.stdout) as GitHubAsset
 }
 
 async function githubRequest<T>(input: {
@@ -194,7 +236,7 @@ async function githubRequest<T>(input: {
   }
 
   for (let attempt = 1; attempt <= GITHUB_REQUEST_ATTEMPTS; attempt += 1) {
-    const timeout = abortAfter(input.bodyBytes ? GITHUB_UPLOAD_TIMEOUT_MS : GITHUB_REQUEST_TIMEOUT_MS)
+    const timeout = abortAfter(GITHUB_REQUEST_TIMEOUT_MS)
     try {
       const response = await fetch(url, {
         body,
