@@ -12,6 +12,7 @@ import { DatabaseService } from "../gen/rustpanel/v1/db_pb";
 import { DockerService } from "../gen/rustpanel/v1/docker_pb";
 import { FileSystemService } from "../gen/rustpanel/v1/fs_pb";
 import { MonitorService } from "../gen/rustpanel/v1/monitor_pb";
+import { NotificationService } from "../gen/rustpanel/v1/notification_pb";
 import { ProxyService } from "../gen/rustpanel/v1/proxy_pb";
 import { RollbackService } from "../gen/rustpanel/v1/rollback_pb";
 import { SecurityService } from "../gen/rustpanel/v1/security_pb";
@@ -100,6 +101,7 @@ export function createRpcClients(baseUrl = window.location.origin) {
     docker: createClient(DockerService, transport),
     files: createClient(FileSystemService, transport),
     monitor: createClient(MonitorService, transport),
+    notification: createClient(NotificationService, transport),
     proxy: createClient(ProxyService, transport),
     rollback: createClient(RollbackService, transport),
     security: createClient(SecurityService, transport),

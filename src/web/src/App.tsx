@@ -50,7 +50,8 @@ import {
   Trash2,
   Upload,
   UserCircle2,
-  Wifi
+  Wifi,
+  Bell
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -85,6 +86,13 @@ import { CronRunState, CronTask, CronTaskState } from "./gen/rustpanel/v1/cron_p
 import { ComposeProject, ContainerItem, ImageItem } from "./gen/rustpanel/v1/docker_pb";
 import { ArchiveFormat, FileItem, FileKind, RecycleBinItem, SearchMatch } from "./gen/rustpanel/v1/fs_pb";
 import { ProcessResourceSnapshot, SystemStatus } from "./gen/rustpanel/v1/monitor_pb";
+import {
+  NotificationChannel,
+  NotificationChannelKind,
+  NotificationEventKind,
+  NotificationRecord,
+  NotificationRule
+} from "./gen/rustpanel/v1/notification_pb";
 import { ProxyInstance, ProxyState, VpnCapability } from "./gen/rustpanel/v1/proxy_pb";
 import {
   FirewallAction,
@@ -194,6 +202,7 @@ type TabId =
   | "terminal"
   | "micro"
   | "network"
+  | "notifications"
   | "settings";
 type NavGroup = "overview" | "host" | "resource" | "security" | "tools" | "system";
 type NavTab = {
@@ -506,6 +515,7 @@ const tabs: NavTab[] = [
   { id: "terminal", label: "终端", icon: TerminalSquare, group: "tools", modules: ["terminal"] },
   { id: "micro", label: "Micro", icon: Power, group: "tools", modules: ["static-sites", "workloads", "proxy"] },
   { id: "network", label: "网络与端口", icon: Wifi, group: "system" },
+  { id: "notifications", label: "通知", icon: Bell, group: "system" },
   { id: "settings", label: "面板设置", icon: SettingsIcon, group: "system" }
 ];
 
@@ -817,6 +827,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
           {active === "terminal" && <TerminalPanel cwd={terminalCwd} />}
           {active === "micro" && <MicroPanel clients={clients} />}
           {active === "network" && <NetworkPage clients={clients} />}
+          {active === "notifications" && <NotificationPage clients={clients} />}
           {active === "settings" && <SettingsPage clients={clients} onLogout={onLogout} />}
         </div>
       </main>
@@ -3172,6 +3183,415 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
                         <Trash2 className="size-3.5" />
                         卸载
                       </UIButton>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+const NOTIFICATION_CHANNEL_KINDS: Array<{ value: NotificationChannelKind; label: string }> = [
+  { value: NotificationChannelKind.WEBHOOK, label: "Webhook (通用)" },
+  { value: NotificationChannelKind.TELEGRAM, label: "Telegram" },
+  { value: NotificationChannelKind.DINGTALK, label: "钉钉" },
+  { value: NotificationChannelKind.WECOM, label: "企业微信" },
+  { value: NotificationChannelKind.BARK, label: "Bark (iOS)" }
+];
+
+const NOTIFICATION_EVENT_LABELS: Record<number, string> = {
+  [NotificationEventKind.TEST]: "测试",
+  [NotificationEventKind.CERT_EXPIRY]: "证书到期",
+  [NotificationEventKind.HIGH_LOAD]: "高负载",
+  [NotificationEventKind.DISK_FULL]: "磁盘将满",
+  [NotificationEventKind.SSH_AUTO_BAN]: "SSH 自动封禁",
+  [NotificationEventKind.LOGIN_FAILED]: "登录失败"
+};
+
+function notificationChannelKindLabel(kind: NotificationChannelKind): string {
+  return NOTIFICATION_CHANNEL_KINDS.find((item) => item.value === kind)?.label ?? "未知";
+}
+
+function notificationEventLabel(event: NotificationEventKind): string {
+  return NOTIFICATION_EVENT_LABELS[event] ?? "事件";
+}
+
+type NotificationChannelForm = {
+  id: string;
+  name: string;
+  kind: NotificationChannelKind;
+  target: string;
+  secret: string;
+  enabled: boolean;
+};
+
+const emptyNotificationChannelForm: NotificationChannelForm = {
+  id: "",
+  name: "",
+  kind: NotificationChannelKind.WEBHOOK,
+  target: "",
+  secret: "",
+  enabled: true
+};
+
+function NotificationPage({ clients }: { clients: Clients }) {
+  const [channels, setChannels] = useState<NotificationChannel[]>([]);
+  const [rules, setRules] = useState<NotificationRule[]>([]);
+  const [history, setHistory] = useState<NotificationRecord[]>([]);
+  const [form, setForm] = useState<NotificationChannelForm>(emptyNotificationChannelForm);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const [channelsResponse, settingsResponse, historyResponse] = await Promise.all([
+        clients.notification.listNotificationChannels({}),
+        clients.notification.getNotificationSettings({}),
+        clients.notification.listNotificationHistory({ limit: 50 })
+      ]);
+      setChannels(channelsResponse.channels);
+      setRules(settingsResponse.settings?.rules ?? []);
+      setHistory(historyResponse.records);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const editing = form.id !== "";
+
+  const saveChannel = async () => {
+    if (!form.name.trim() || !form.target.trim()) {
+      setError("渠道名称与目标地址不能为空");
+      return;
+    }
+    try {
+      await clients.notification.upsertNotificationChannel({
+        channel: {
+          id: form.id,
+          name: form.name.trim(),
+          kind: form.kind,
+          target: form.target.trim(),
+          secret: form.secret,
+          enabled: form.enabled,
+          createdAtSeconds: 0n,
+          updatedAtSeconds: 0n
+        }
+      });
+      setMessage(`渠道 ${form.name} 已保存`);
+      setForm(emptyNotificationChannelForm);
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const editChannel = (channel: NotificationChannel) => {
+    setForm({
+      id: channel.id,
+      name: channel.name,
+      kind: channel.kind,
+      target: channel.target,
+      // 密钥不回显,留空即"保持不变"(后端识别空 / 脱敏占位)。
+      secret: "",
+      enabled: channel.enabled
+    });
+    setError("");
+    setMessage("");
+  };
+
+  const removeChannel = async (channel: NotificationChannel) => {
+    try {
+      await clients.notification.deleteNotificationChannel({ id: channel.id });
+      setMessage(`渠道 ${channel.name} 已删除`);
+      if (form.id === channel.id) setForm(emptyNotificationChannelForm);
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const testChannel = async (channel: NotificationChannel) => {
+    setMessage(`正在向 ${channel.name} 发送测试...`);
+    setError("");
+    try {
+      const response = await clients.notification.testNotificationChannel({ id: channel.id });
+      const failed = response.record?.failedChannels ?? [];
+      if (failed.length === 0) {
+        setMessage(`渠道 ${channel.name} 测试发送成功`);
+      } else {
+        setMessage("");
+        setError(`测试发送失败:${failed.join(", ")}`);
+      }
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const saveSettings = async () => {
+    try {
+      await clients.notification.updateNotificationSettings({ settings: { rules } });
+      setMessage("通知规则已保存");
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight m-0">通知告警</h1>
+          <p className="text-sm text-muted-foreground m-0">
+            把证书到期、SSH 自动封禁等事件推送到 Webhook / Telegram / 钉钉 / 企业微信 / Bark。
+            密钥保存后不再回显,留空即保持不变。
+          </p>
+        </div>
+        <UIButton variant="outline" size="sm" onClick={() => void load()}>
+          <RefreshCw className="size-4" />
+          刷新
+        </UIButton>
+      </header>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive whitespace-pre-line">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success whitespace-pre-line">
+          {message}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{editing ? "编辑渠道" : "添加渠道"}</CardTitle>
+          <CardDescription>
+            目标地址:Webhook/钉钉/企业微信 填完整 URL,Telegram 填 chat_id,Bark 填
+            https://api.day.app/&lt;key&gt;。
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
+              label="渠道名称"
+              value={form.name}
+              onChange={(name) => setForm((prev) => ({ ...prev, name }))}
+            />
+            <div className="grid gap-1">
+              <UILabel htmlFor="notification-kind">类型</UILabel>
+              <Select
+                value={String(form.kind)}
+                onValueChange={(value) =>
+                  setForm((prev) => ({ ...prev, kind: Number(value) as NotificationChannelKind }))
+                }
+              >
+                <SelectTrigger id="notification-kind">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {NOTIFICATION_CHANNEL_KINDS.map((item) => (
+                    <SelectItem key={item.value} value={String(item.value)}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Input
+              label="目标地址 (URL / chat_id)"
+              value={form.target}
+              onChange={(target) => setForm((prev) => ({ ...prev, target }))}
+            />
+            <Input
+              label={editing ? "密钥 (留空保持不变)" : "密钥 (按需,如 Telegram bot token)"}
+              type="password"
+              value={form.secret}
+              onChange={(secret) => setForm((prev) => ({ ...prev, secret }))}
+            />
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <Switch
+                checked={form.enabled}
+                onCheckedChange={(enabled) => setForm((prev) => ({ ...prev, enabled }))}
+              />
+              启用
+            </label>
+            <div className="flex gap-2">
+              {editing && (
+                <UIButton
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setForm(emptyNotificationChannelForm)}
+                >
+                  取消
+                </UIButton>
+              )}
+              <UIButton size="sm" onClick={() => void saveChannel()}>
+                <Plus className="size-3.5" />
+                {editing ? "更新" : "保存"}
+              </UIButton>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>渠道列表</CardTitle>
+          <CardDescription>共 {channels.length} 个渠道</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {channels.length === 0 ? (
+            <div className="empty-state text-sm">尚未配置任何通知渠道</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>名称</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>目标</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {channels.map((channel) => (
+                  <UITableRow key={channel.id}>
+                    <TableCell className="font-medium">{channel.name}</TableCell>
+                    <TableCell>{notificationChannelKindLabel(channel.kind)}</TableCell>
+                    <TableCell className="font-mono text-xs max-w-[260px] truncate">
+                      {channel.target}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={channel.enabled ? "success" : "secondary"}>
+                        {channel.enabled ? "启用" : "停用"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <UIButton
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void testChannel(channel)}
+                        >
+                          测试
+                        </UIButton>
+                        <UIButton size="sm" variant="outline" onClick={() => editChannel(channel)}>
+                          编辑
+                        </UIButton>
+                        <UIButton
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void removeChannel(channel)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </UIButton>
+                      </div>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>事件规则</CardTitle>
+          <CardDescription>仅启用的事件会触发通知;阈值含义随事件而定(如证书=提前天数)。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-3">
+            {rules.map((rule) => (
+              <div
+                key={rule.event}
+                className="flex items-center justify-between gap-4 rounded-md border border-border bg-card px-4 py-3"
+              >
+                <label className="flex items-center gap-3 text-sm">
+                  <Switch
+                    checked={rule.enabled}
+                    onCheckedChange={(enabled) =>
+                      setRules((prev) =>
+                        prev.map((item) =>
+                          item.event === rule.event ? { ...item, enabled } : item
+                        )
+                      )
+                    }
+                  />
+                  <span className="font-medium">{notificationEventLabel(rule.event)}</span>
+                </label>
+                <div className="w-32">
+                  <NumberInput
+                    label="阈值"
+                    value={rule.threshold}
+                    onChange={(threshold) =>
+                      setRules((prev) =>
+                        prev.map((item) =>
+                          item.event === rule.event ? { ...item, threshold } : item
+                        )
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            ))}
+            <div>
+              <UIButton size="sm" onClick={() => void saveSettings()}>
+                保存规则
+              </UIButton>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>发送历史</CardTitle>
+          <CardDescription>最近 {history.length} 条</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {history.length === 0 ? (
+            <div className="empty-state text-sm">暂无发送记录</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>时间</TableHead>
+                  <TableHead>事件</TableHead>
+                  <TableHead>标题</TableHead>
+                  <TableHead>结果</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {history.map((record) => (
+                  <UITableRow key={record.id}>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {new Date(Number(record.occurredAtSeconds) * 1000).toLocaleString()}
+                    </TableCell>
+                    <TableCell>{notificationEventLabel(record.event)}</TableCell>
+                    <TableCell className="max-w-[240px] truncate">{record.title}</TableCell>
+                    <TableCell className="text-xs">
+                      <span className="text-success">{record.deliveredChannels.length} 成功</span>
+                      {record.failedChannels.length > 0 && (
+                        <span className="text-destructive">
+                          {" "}
+                          · {record.failedChannels.length} 失败
+                        </span>
+                      )}
                     </TableCell>
                   </UITableRow>
                 ))}
