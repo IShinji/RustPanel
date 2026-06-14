@@ -99,6 +99,31 @@ message BrowseTableResponse {
   uint64 total_rows = 4;
 }
 
+// ImportSqlRequest 导入 .sql(按 ; 拆分逐句执行)。
+message ImportSqlRequest {
+  string dsn = 1;
+  string sql = 2;
+}
+
+// ImportSqlResponse 返回执行了多少条语句。
+message ImportSqlResponse {
+  Response status = 1;
+  uint32 statements_executed = 2;
+}
+
+// DatabaseOverviewRequest 连接概览(版本/连接数/运行时长)。
+message DatabaseOverviewRequest {
+  string dsn = 1;
+}
+
+// DatabaseOverviewResponse 返回连接概览。
+message DatabaseOverviewResponse {
+  Response status = 1;
+  string version = 2;
+  uint64 active_connections = 3;
+  uint64 uptime_seconds = 4;
+}
+
 // BackupDatabaseRequest 表示数据库备份请求。
 message BackupDatabaseRequest {
   string dsn = 1;
@@ -181,6 +206,8 @@ service DatabaseService {
   rpc ExecuteSql(ExecuteSqlRequest) returns (ExecuteSqlResponse);
   rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
   rpc BrowseTable(BrowseTableRequest) returns (BrowseTableResponse);
+  rpc ImportSql(ImportSqlRequest) returns (ImportSqlResponse);
+  rpc DatabaseOverview(DatabaseOverviewRequest) returns (DatabaseOverviewResponse);
   rpc BackupDatabase(BackupDatabaseRequest) returns (BackupDatabaseResponse);
   // === Phase D: 轻量数据库优先 ===
   rpc ListSqliteFiles(ListSqliteFilesRequest) returns (ListSqliteFilesResponse);

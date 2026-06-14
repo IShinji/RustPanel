@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/db.proto.
  */
 export const file_rustpanel_v1_db: GenFile = /*@__PURE__*/
-  fileDesc("ChVydXN0cGFuZWwvdjEvZGIucHJvdG8SDHJ1c3RwYW5lbC52MSIcCgxEYXRhYmFzZUl0ZW0SDAoEbmFtZRgBIAEoCSIjChRMaXN0RGF0YWJhc2VzUmVxdWVzdBILCgNkc24YASABKAkibgoVTGlzdERhdGFiYXNlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRItCglkYXRhYmFzZXMYAiADKAsyGi5ydXN0cGFuZWwudjEuRGF0YWJhc2VJdGVtIjIKFUNyZWF0ZURhdGFiYXNlUmVxdWVzdBILCgNkc24YASABKAkSDAoEbmFtZRgCIAEoCSJAChZDcmVhdGVEYXRhYmFzZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSJeChlDcmVhdGVEYXRhYmFzZVVzZXJSZXF1ZXN0EgsKA2RzbhgBIAEoCRIQCgh1c2VybmFtZRgCIAEoCRIQCghwYXNzd29yZBgDIAEoCRIQCghkYXRhYmFzZRgEIAEoCSJEChpDcmVhdGVEYXRhYmFzZVVzZXJSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiPwoRRXhlY3V0ZVNxbFJlcXVlc3QSCwoDZHNuGAEgASgJEgsKA3NxbBgCIAEoCRIQCghtYXhfcm93cxgDIAEoDSIYCgZTcWxSb3cSDgoGdmFsdWVzGAEgAygJIogBChJFeGVjdXRlU3FsUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEg8KB2NvbHVtbnMYAiADKAkSIgoEcm93cxgDIAMoCzIULnJ1c3RwYW5lbC52MS5TcWxSb3cSFQoNcm93c19hZmZlY3RlZBgEIAEoBCIgChFMaXN0VGFibGVzUmVxdWVzdBILCgNkc24YASABKAkiTAoSTGlzdFRhYmxlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIOCgZ0YWJsZXMYAiADKAkiTwoSQnJvd3NlVGFibGVSZXF1ZXN0EgsKA2RzbhgBIAEoCRINCgV0YWJsZRgCIAEoCRINCgVsaW1pdBgDIAEoDRIOCgZvZmZzZXQYBCABKA0ihgEKE0Jyb3dzZVRhYmxlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEg8KB2NvbHVtbnMYAiADKAkSIgoEcm93cxgDIAMoCzIULnJ1c3RwYW5lbC52MS5TcWxSb3cSEgoKdG90YWxfcm93cxgEIAEoBCI2ChVCYWNrdXBEYXRhYmFzZVJlcXVlc3QSCwoDZHNuGAEgASgJEhAKCGRhdGFiYXNlGAIgASgJIlYKFkJhY2t1cERhdGFiYXNlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEhQKDGRvd25sb2FkX3VybBgCIAEoCSJLCgpTcWxpdGVGaWxlEgwKBHBhdGgYASABKAkSEgoKc2l6ZV9ieXRlcxgCIAEoBBIbChNtb2RpZmllZF9hdF9zZWNvbmRzGAMgASgEIisKFkxpc3RTcWxpdGVGaWxlc1JlcXVlc3QSEQoJc2Nhbl9kaXJzGAEgAygJImoKF0xpc3RTcWxpdGVGaWxlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRInCgVmaWxlcxgCIAMoCzIYLnJ1c3RwYW5lbC52MS5TcWxpdGVGaWxlIicKF0NyZWF0ZVNxbGl0ZUZpbGVSZXF1ZXN0EgwKBHBhdGgYASABKAkiagoYQ3JlYXRlU3FsaXRlRmlsZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRImCgRmaWxlGAIgASgLMhgucnVzdHBhbmVsLnYxLlNxbGl0ZUZpbGUiIwoTVmFjdXVtU3FsaXRlUmVxdWVzdBIMCgRwYXRoGAEgASgJInMKFFZhY3V1bVNxbGl0ZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIZChFzaXplX2JlZm9yZV9ieXRlcxgCIAEoBBIYChBzaXplX2FmdGVyX2J5dGVzGAMgASgEIqECCglSZWRpc0luZm8SEQoJcmVhY2hhYmxlGAEgASgIEg8KB3ZlcnNpb24YAiABKAkSDAoEbW9kZRgDIAEoCRIZChFjb25uZWN0ZWRfY2xpZW50cxgEIAEoBBIZChF1c2VkX21lbW9yeV9ieXRlcxgFIAEoBBIYChBtYXhfbWVtb3J5X2J5dGVzGAYgASgEEhkKEW1heF9tZW1vcnlfcG9saWN5GAcgASgJEhUKDWtleXNwYWNlX2hpdHMYCCABKAQSFwoPa2V5c3BhY2VfbWlzc2VzGAkgASgEEiAKGHRvdGFsX2NvbW1hbmRzX3Byb2Nlc3NlZBgKIAEoBBIWCg51cHRpbWVfc2Vjb25kcxgLIAEoBBINCgVlcnJvchgMIAEoCSIiChNHZXRSZWRpc0luZm9SZXF1ZXN0EgsKA3VybBgBIAEoCSJlChRHZXRSZWRpc0luZm9SZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USJQoEaW5mbxgCIAEoCzIXLnJ1c3RwYW5lbC52MS5SZWRpc0luZm8qhgEKDkRhdGFiYXNlRW5naW5lEh8KG0RBVEFCQVNFX0VOR0lORV9VTlNQRUNJRklFRBAAEhkKFURBVEFCQVNFX0VOR0lORV9NWVNRTBABEhwKGERBVEFCQVNFX0VOR0lORV9QT1NUR1JFUxACEhoKFkRBVEFCQVNFX0VOR0lORV9TUUxJVEUQAzL1BwoPRGF0YWJhc2VTZXJ2aWNlElgKDUxpc3REYXRhYmFzZXMSIi5ydXN0cGFuZWwudjEuTGlzdERhdGFiYXNlc1JlcXVlc3QaIy5ydXN0cGFuZWwudjEuTGlzdERhdGFiYXNlc1Jlc3BvbnNlElsKDkNyZWF0ZURhdGFiYXNlEiMucnVzdHBhbmVsLnYxLkNyZWF0ZURhdGFiYXNlUmVxdWVzdBokLnJ1c3RwYW5lbC52MS5DcmVhdGVEYXRhYmFzZVJlc3BvbnNlEmcKEkNyZWF0ZURhdGFiYXNlVXNlchInLnJ1c3RwYW5lbC52MS5DcmVhdGVEYXRhYmFzZVVzZXJSZXF1ZXN0GigucnVzdHBhbmVsLnYxLkNyZWF0ZURhdGFiYXNlVXNlclJlc3BvbnNlEk8KCkV4ZWN1dGVTcWwSHy5ydXN0cGFuZWwudjEuRXhlY3V0ZVNxbFJlcXVlc3QaIC5ydXN0cGFuZWwudjEuRXhlY3V0ZVNxbFJlc3BvbnNlEk8KCkxpc3RUYWJsZXMSHy5ydXN0cGFuZWwudjEuTGlzdFRhYmxlc1JlcXVlc3QaIC5ydXN0cGFuZWwudjEuTGlzdFRhYmxlc1Jlc3BvbnNlElIKC0Jyb3dzZVRhYmxlEiAucnVzdHBhbmVsLnYxLkJyb3dzZVRhYmxlUmVxdWVzdBohLnJ1c3RwYW5lbC52MS5Ccm93c2VUYWJsZVJlc3BvbnNlElsKDkJhY2t1cERhdGFiYXNlEiMucnVzdHBhbmVsLnYxLkJhY2t1cERhdGFiYXNlUmVxdWVzdBokLnJ1c3RwYW5lbC52MS5CYWNrdXBEYXRhYmFzZVJlc3BvbnNlEl4KD0xpc3RTcWxpdGVGaWxlcxIkLnJ1c3RwYW5lbC52MS5MaXN0U3FsaXRlRmlsZXNSZXF1ZXN0GiUucnVzdHBhbmVsLnYxLkxpc3RTcWxpdGVGaWxlc1Jlc3BvbnNlEmEKEENyZWF0ZVNxbGl0ZUZpbGUSJS5ydXN0cGFuZWwudjEuQ3JlYXRlU3FsaXRlRmlsZVJlcXVlc3QaJi5ydXN0cGFuZWwudjEuQ3JlYXRlU3FsaXRlRmlsZVJlc3BvbnNlElUKDFZhY3V1bVNxbGl0ZRIhLnJ1c3RwYW5lbC52MS5WYWN1dW1TcWxpdGVSZXF1ZXN0GiIucnVzdHBhbmVsLnYxLlZhY3V1bVNxbGl0ZVJlc3BvbnNlElUKDEdldFJlZGlzSW5mbxIhLnJ1c3RwYW5lbC52MS5HZXRSZWRpc0luZm9SZXF1ZXN0GiIucnVzdHBhbmVsLnYxLkdldFJlZGlzSW5mb1Jlc3BvbnNlYgZwcm90bzM", [file_rustpanel_v1_common]);
+  fileDesc("ChVydXN0cGFuZWwvdjEvZGIucHJvdG8SDHJ1c3RwYW5lbC52MSIcCgxEYXRhYmFzZUl0ZW0SDAoEbmFtZRgBIAEoCSIjChRMaXN0RGF0YWJhc2VzUmVxdWVzdBILCgNkc24YASABKAkibgoVTGlzdERhdGFiYXNlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRItCglkYXRhYmFzZXMYAiADKAsyGi5ydXN0cGFuZWwudjEuRGF0YWJhc2VJdGVtIjIKFUNyZWF0ZURhdGFiYXNlUmVxdWVzdBILCgNkc24YASABKAkSDAoEbmFtZRgCIAEoCSJAChZDcmVhdGVEYXRhYmFzZVJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSJeChlDcmVhdGVEYXRhYmFzZVVzZXJSZXF1ZXN0EgsKA2RzbhgBIAEoCRIQCgh1c2VybmFtZRgCIAEoCRIQCghwYXNzd29yZBgDIAEoCRIQCghkYXRhYmFzZRgEIAEoCSJEChpDcmVhdGVEYXRhYmFzZVVzZXJSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2UiPwoRRXhlY3V0ZVNxbFJlcXVlc3QSCwoDZHNuGAEgASgJEgsKA3NxbBgCIAEoCRIQCghtYXhfcm93cxgDIAEoDSIYCgZTcWxSb3cSDgoGdmFsdWVzGAEgAygJIogBChJFeGVjdXRlU3FsUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEg8KB2NvbHVtbnMYAiADKAkSIgoEcm93cxgDIAMoCzIULnJ1c3RwYW5lbC52MS5TcWxSb3cSFQoNcm93c19hZmZlY3RlZBgEIAEoBCIgChFMaXN0VGFibGVzUmVxdWVzdBILCgNkc24YASABKAkiTAoSTGlzdFRhYmxlc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIOCgZ0YWJsZXMYAiADKAkiTwoSQnJvd3NlVGFibGVSZXF1ZXN0EgsKA2RzbhgBIAEoCRINCgV0YWJsZRgCIAEoCRINCgVsaW1pdBgDIAEoDRIOCgZvZmZzZXQYBCABKA0ihgEKE0Jyb3dzZVRhYmxlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEg8KB2NvbHVtbnMYAiADKAkSIgoEcm93cxgDIAMoCzIULnJ1c3RwYW5lbC52MS5TcWxSb3cSEgoKdG90YWxfcm93cxgEIAEoBCIsChBJbXBvcnRTcWxSZXF1ZXN0EgsKA2RzbhgBIAEoCRILCgNzcWwYAiABKAkiWAoRSW1wb3J0U3FsUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEhsKE3N0YXRlbWVudHNfZXhlY3V0ZWQYAiABKA0iJgoXRGF0YWJhc2VPdmVydmlld1JlcXVlc3QSCwoDZHNuGAEgASgJIocBChhEYXRhYmFzZU92ZXJ2aWV3UmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEg8KB3ZlcnNpb24YAiABKAkSGgoSYWN0aXZlX2Nvbm5lY3Rpb25zGAMgASgEEhYKDnVwdGltZV9zZWNvbmRzGAQgASgEIjYKFUJhY2t1cERhdGFiYXNlUmVxdWVzdBILCgNkc24YASABKAkSEAoIZGF0YWJhc2UYAiABKAkiVgoWQmFja3VwRGF0YWJhc2VSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USFAoMZG93bmxvYWRfdXJsGAIgASgJIksKClNxbGl0ZUZpbGUSDAoEcGF0aBgBIAEoCRISCgpzaXplX2J5dGVzGAIgASgEEhsKE21vZGlmaWVkX2F0X3NlY29uZHMYAyABKAQiKwoWTGlzdFNxbGl0ZUZpbGVzUmVxdWVzdBIRCglzY2FuX2RpcnMYASADKAkiagoXTGlzdFNxbGl0ZUZpbGVzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEicKBWZpbGVzGAIgAygLMhgucnVzdHBhbmVsLnYxLlNxbGl0ZUZpbGUiJwoXQ3JlYXRlU3FsaXRlRmlsZVJlcXVlc3QSDAoEcGF0aBgBIAEoCSJqChhDcmVhdGVTcWxpdGVGaWxlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEiYKBGZpbGUYAiABKAsyGC5ydXN0cGFuZWwudjEuU3FsaXRlRmlsZSIjChNWYWN1dW1TcWxpdGVSZXF1ZXN0EgwKBHBhdGgYASABKAkicwoUVmFjdXVtU3FsaXRlUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEhkKEXNpemVfYmVmb3JlX2J5dGVzGAIgASgEEhgKEHNpemVfYWZ0ZXJfYnl0ZXMYAyABKAQioQIKCVJlZGlzSW5mbxIRCglyZWFjaGFibGUYASABKAgSDwoHdmVyc2lvbhgCIAEoCRIMCgRtb2RlGAMgASgJEhkKEWNvbm5lY3RlZF9jbGllbnRzGAQgASgEEhkKEXVzZWRfbWVtb3J5X2J5dGVzGAUgASgEEhgKEG1heF9tZW1vcnlfYnl0ZXMYBiABKAQSGQoRbWF4X21lbW9yeV9wb2xpY3kYByABKAkSFQoNa2V5c3BhY2VfaGl0cxgIIAEoBBIXCg9rZXlzcGFjZV9taXNzZXMYCSABKAQSIAoYdG90YWxfY29tbWFuZHNfcHJvY2Vzc2VkGAogASgEEhYKDnVwdGltZV9zZWNvbmRzGAsgASgEEg0KBWVycm9yGAwgASgJIiIKE0dldFJlZGlzSW5mb1JlcXVlc3QSCwoDdXJsGAEgASgJImUKFEdldFJlZGlzSW5mb1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIlCgRpbmZvGAIgASgLMhcucnVzdHBhbmVsLnYxLlJlZGlzSW5mbyqGAQoORGF0YWJhc2VFbmdpbmUSHwobREFUQUJBU0VfRU5HSU5FX1VOU1BFQ0lGSUVEEAASGQoVREFUQUJBU0VfRU5HSU5FX01ZU1FMEAESHAoYREFUQUJBU0VfRU5HSU5FX1BPU1RHUkVTEAISGgoWREFUQUJBU0VfRU5HSU5FX1NRTElURRADMqYJCg9EYXRhYmFzZVNlcnZpY2USWAoNTGlzdERhdGFiYXNlcxIiLnJ1c3RwYW5lbC52MS5MaXN0RGF0YWJhc2VzUmVxdWVzdBojLnJ1c3RwYW5lbC52MS5MaXN0RGF0YWJhc2VzUmVzcG9uc2USWwoOQ3JlYXRlRGF0YWJhc2USIy5ydXN0cGFuZWwudjEuQ3JlYXRlRGF0YWJhc2VSZXF1ZXN0GiQucnVzdHBhbmVsLnYxLkNyZWF0ZURhdGFiYXNlUmVzcG9uc2USZwoSQ3JlYXRlRGF0YWJhc2VVc2VyEicucnVzdHBhbmVsLnYxLkNyZWF0ZURhdGFiYXNlVXNlclJlcXVlc3QaKC5ydXN0cGFuZWwudjEuQ3JlYXRlRGF0YWJhc2VVc2VyUmVzcG9uc2USTwoKRXhlY3V0ZVNxbBIfLnJ1c3RwYW5lbC52MS5FeGVjdXRlU3FsUmVxdWVzdBogLnJ1c3RwYW5lbC52MS5FeGVjdXRlU3FsUmVzcG9uc2USTwoKTGlzdFRhYmxlcxIfLnJ1c3RwYW5lbC52MS5MaXN0VGFibGVzUmVxdWVzdBogLnJ1c3RwYW5lbC52MS5MaXN0VGFibGVzUmVzcG9uc2USUgoLQnJvd3NlVGFibGUSIC5ydXN0cGFuZWwudjEuQnJvd3NlVGFibGVSZXF1ZXN0GiEucnVzdHBhbmVsLnYxLkJyb3dzZVRhYmxlUmVzcG9uc2USTAoJSW1wb3J0U3FsEh4ucnVzdHBhbmVsLnYxLkltcG9ydFNxbFJlcXVlc3QaHy5ydXN0cGFuZWwudjEuSW1wb3J0U3FsUmVzcG9uc2USYQoQRGF0YWJhc2VPdmVydmlldxIlLnJ1c3RwYW5lbC52MS5EYXRhYmFzZU92ZXJ2aWV3UmVxdWVzdBomLnJ1c3RwYW5lbC52MS5EYXRhYmFzZU92ZXJ2aWV3UmVzcG9uc2USWwoOQmFja3VwRGF0YWJhc2USIy5ydXN0cGFuZWwudjEuQmFja3VwRGF0YWJhc2VSZXF1ZXN0GiQucnVzdHBhbmVsLnYxLkJhY2t1cERhdGFiYXNlUmVzcG9uc2USXgoPTGlzdFNxbGl0ZUZpbGVzEiQucnVzdHBhbmVsLnYxLkxpc3RTcWxpdGVGaWxlc1JlcXVlc3QaJS5ydXN0cGFuZWwudjEuTGlzdFNxbGl0ZUZpbGVzUmVzcG9uc2USYQoQQ3JlYXRlU3FsaXRlRmlsZRIlLnJ1c3RwYW5lbC52MS5DcmVhdGVTcWxpdGVGaWxlUmVxdWVzdBomLnJ1c3RwYW5lbC52MS5DcmVhdGVTcWxpdGVGaWxlUmVzcG9uc2USVQoMVmFjdXVtU3FsaXRlEiEucnVzdHBhbmVsLnYxLlZhY3V1bVNxbGl0ZVJlcXVlc3QaIi5ydXN0cGFuZWwudjEuVmFjdXVtU3FsaXRlUmVzcG9uc2USVQoMR2V0UmVkaXNJbmZvEiEucnVzdHBhbmVsLnYxLkdldFJlZGlzSW5mb1JlcXVlc3QaIi5ydXN0cGFuZWwudjEuR2V0UmVkaXNJbmZvUmVzcG9uc2ViBnByb3RvMw", [file_rustpanel_v1_common]);
 
 /**
  * DatabaseItem 描述数据库。
@@ -366,6 +366,107 @@ export const BrowseTableResponseSchema: GenMessage<BrowseTableResponse> = /*@__P
   messageDesc(file_rustpanel_v1_db, 13);
 
 /**
+ * ImportSqlRequest 导入 .sql(按 ; 拆分逐句执行)。
+ *
+ * @generated from message rustpanel.v1.ImportSqlRequest
+ */
+export type ImportSqlRequest = Message<"rustpanel.v1.ImportSqlRequest"> & {
+  /**
+   * @generated from field: string dsn = 1;
+   */
+  dsn: string;
+
+  /**
+   * @generated from field: string sql = 2;
+   */
+  sql: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.ImportSqlRequest.
+ * Use `create(ImportSqlRequestSchema)` to create a new message.
+ */
+export const ImportSqlRequestSchema: GenMessage<ImportSqlRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_db, 14);
+
+/**
+ * ImportSqlResponse 返回执行了多少条语句。
+ *
+ * @generated from message rustpanel.v1.ImportSqlResponse
+ */
+export type ImportSqlResponse = Message<"rustpanel.v1.ImportSqlResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: uint32 statements_executed = 2;
+   */
+  statementsExecuted: number;
+};
+
+/**
+ * Describes the message rustpanel.v1.ImportSqlResponse.
+ * Use `create(ImportSqlResponseSchema)` to create a new message.
+ */
+export const ImportSqlResponseSchema: GenMessage<ImportSqlResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_db, 15);
+
+/**
+ * DatabaseOverviewRequest 连接概览(版本/连接数/运行时长)。
+ *
+ * @generated from message rustpanel.v1.DatabaseOverviewRequest
+ */
+export type DatabaseOverviewRequest = Message<"rustpanel.v1.DatabaseOverviewRequest"> & {
+  /**
+   * @generated from field: string dsn = 1;
+   */
+  dsn: string;
+};
+
+/**
+ * Describes the message rustpanel.v1.DatabaseOverviewRequest.
+ * Use `create(DatabaseOverviewRequestSchema)` to create a new message.
+ */
+export const DatabaseOverviewRequestSchema: GenMessage<DatabaseOverviewRequest> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_db, 16);
+
+/**
+ * DatabaseOverviewResponse 返回连接概览。
+ *
+ * @generated from message rustpanel.v1.DatabaseOverviewResponse
+ */
+export type DatabaseOverviewResponse = Message<"rustpanel.v1.DatabaseOverviewResponse"> & {
+  /**
+   * @generated from field: rustpanel.v1.Response status = 1;
+   */
+  status?: Response | undefined;
+
+  /**
+   * @generated from field: string version = 2;
+   */
+  version: string;
+
+  /**
+   * @generated from field: uint64 active_connections = 3;
+   */
+  activeConnections: bigint;
+
+  /**
+   * @generated from field: uint64 uptime_seconds = 4;
+   */
+  uptimeSeconds: bigint;
+};
+
+/**
+ * Describes the message rustpanel.v1.DatabaseOverviewResponse.
+ * Use `create(DatabaseOverviewResponseSchema)` to create a new message.
+ */
+export const DatabaseOverviewResponseSchema: GenMessage<DatabaseOverviewResponse> = /*@__PURE__*/
+  messageDesc(file_rustpanel_v1_db, 17);
+
+/**
  * BackupDatabaseRequest 表示数据库备份请求。
  *
  * @generated from message rustpanel.v1.BackupDatabaseRequest
@@ -387,7 +488,7 @@ export type BackupDatabaseRequest = Message<"rustpanel.v1.BackupDatabaseRequest"
  * Use `create(BackupDatabaseRequestSchema)` to create a new message.
  */
 export const BackupDatabaseRequestSchema: GenMessage<BackupDatabaseRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 14);
+  messageDesc(file_rustpanel_v1_db, 18);
 
 /**
  * BackupDatabaseResponse 返回数据库备份入口。
@@ -411,7 +512,7 @@ export type BackupDatabaseResponse = Message<"rustpanel.v1.BackupDatabaseRespons
  * Use `create(BackupDatabaseResponseSchema)` to create a new message.
  */
 export const BackupDatabaseResponseSchema: GenMessage<BackupDatabaseResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 15);
+  messageDesc(file_rustpanel_v1_db, 19);
 
 /**
  * SqliteFile 描述一个 SQLite 数据库文件。
@@ -440,7 +541,7 @@ export type SqliteFile = Message<"rustpanel.v1.SqliteFile"> & {
  * Use `create(SqliteFileSchema)` to create a new message.
  */
 export const SqliteFileSchema: GenMessage<SqliteFile> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 16);
+  messageDesc(file_rustpanel_v1_db, 20);
 
 /**
  * @generated from message rustpanel.v1.ListSqliteFilesRequest
@@ -459,7 +560,7 @@ export type ListSqliteFilesRequest = Message<"rustpanel.v1.ListSqliteFilesReques
  * Use `create(ListSqliteFilesRequestSchema)` to create a new message.
  */
 export const ListSqliteFilesRequestSchema: GenMessage<ListSqliteFilesRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 17);
+  messageDesc(file_rustpanel_v1_db, 21);
 
 /**
  * @generated from message rustpanel.v1.ListSqliteFilesResponse
@@ -481,7 +582,7 @@ export type ListSqliteFilesResponse = Message<"rustpanel.v1.ListSqliteFilesRespo
  * Use `create(ListSqliteFilesResponseSchema)` to create a new message.
  */
 export const ListSqliteFilesResponseSchema: GenMessage<ListSqliteFilesResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 18);
+  messageDesc(file_rustpanel_v1_db, 22);
 
 /**
  * @generated from message rustpanel.v1.CreateSqliteFileRequest
@@ -498,7 +599,7 @@ export type CreateSqliteFileRequest = Message<"rustpanel.v1.CreateSqliteFileRequ
  * Use `create(CreateSqliteFileRequestSchema)` to create a new message.
  */
 export const CreateSqliteFileRequestSchema: GenMessage<CreateSqliteFileRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 19);
+  messageDesc(file_rustpanel_v1_db, 23);
 
 /**
  * @generated from message rustpanel.v1.CreateSqliteFileResponse
@@ -520,7 +621,7 @@ export type CreateSqliteFileResponse = Message<"rustpanel.v1.CreateSqliteFileRes
  * Use `create(CreateSqliteFileResponseSchema)` to create a new message.
  */
 export const CreateSqliteFileResponseSchema: GenMessage<CreateSqliteFileResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 20);
+  messageDesc(file_rustpanel_v1_db, 24);
 
 /**
  * @generated from message rustpanel.v1.VacuumSqliteRequest
@@ -537,7 +638,7 @@ export type VacuumSqliteRequest = Message<"rustpanel.v1.VacuumSqliteRequest"> & 
  * Use `create(VacuumSqliteRequestSchema)` to create a new message.
  */
 export const VacuumSqliteRequestSchema: GenMessage<VacuumSqliteRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 21);
+  messageDesc(file_rustpanel_v1_db, 25);
 
 /**
  * @generated from message rustpanel.v1.VacuumSqliteResponse
@@ -564,7 +665,7 @@ export type VacuumSqliteResponse = Message<"rustpanel.v1.VacuumSqliteResponse"> 
  * Use `create(VacuumSqliteResponseSchema)` to create a new message.
  */
 export const VacuumSqliteResponseSchema: GenMessage<VacuumSqliteResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 22);
+  messageDesc(file_rustpanel_v1_db, 26);
 
 /**
  * RedisInfo 是 Redis INFO 命令解析后的精简视图,只保留监控关心的关键指标。
@@ -638,7 +739,7 @@ export type RedisInfo = Message<"rustpanel.v1.RedisInfo"> & {
  * Use `create(RedisInfoSchema)` to create a new message.
  */
 export const RedisInfoSchema: GenMessage<RedisInfo> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 23);
+  messageDesc(file_rustpanel_v1_db, 27);
 
 /**
  * @generated from message rustpanel.v1.GetRedisInfoRequest
@@ -657,7 +758,7 @@ export type GetRedisInfoRequest = Message<"rustpanel.v1.GetRedisInfoRequest"> & 
  * Use `create(GetRedisInfoRequestSchema)` to create a new message.
  */
 export const GetRedisInfoRequestSchema: GenMessage<GetRedisInfoRequest> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 24);
+  messageDesc(file_rustpanel_v1_db, 28);
 
 /**
  * @generated from message rustpanel.v1.GetRedisInfoResponse
@@ -679,7 +780,7 @@ export type GetRedisInfoResponse = Message<"rustpanel.v1.GetRedisInfoResponse"> 
  * Use `create(GetRedisInfoResponseSchema)` to create a new message.
  */
 export const GetRedisInfoResponseSchema: GenMessage<GetRedisInfoResponse> = /*@__PURE__*/
-  messageDesc(file_rustpanel_v1_db, 25);
+  messageDesc(file_rustpanel_v1_db, 29);
 
 /**
  * DatabaseEngine 描述数据库引擎。
@@ -767,6 +868,22 @@ export const DatabaseService: GenService<{
     methodKind: "unary";
     input: typeof BrowseTableRequestSchema;
     output: typeof BrowseTableResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.DatabaseService.ImportSql
+   */
+  importSql: {
+    methodKind: "unary";
+    input: typeof ImportSqlRequestSchema;
+    output: typeof ImportSqlResponseSchema;
+  },
+  /**
+   * @generated from rpc rustpanel.v1.DatabaseService.DatabaseOverview
+   */
+  databaseOverview: {
+    methodKind: "unary";
+    input: typeof DatabaseOverviewRequestSchema;
+    output: typeof DatabaseOverviewResponseSchema;
   },
   /**
    * @generated from rpc rustpanel.v1.DatabaseService.BackupDatabase

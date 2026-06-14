@@ -14,8 +14,9 @@ use crate::{
         database_service_server::DatabaseService, BackupDatabaseRequest, BackupDatabaseResponse,
         BrowseTableRequest, BrowseTableResponse, CreateDatabaseRequest, CreateDatabaseResponse,
         CreateDatabaseUserRequest, CreateDatabaseUserResponse, CreateSqliteFileRequest,
-        CreateSqliteFileResponse, DatabaseItem, ExecuteSqlRequest, ExecuteSqlResponse,
-        GetRedisInfoRequest, GetRedisInfoResponse, ListDatabasesRequest, ListDatabasesResponse,
+        CreateSqliteFileResponse, DatabaseItem, DatabaseOverviewRequest, DatabaseOverviewResponse,
+        ExecuteSqlRequest, ExecuteSqlResponse, GetRedisInfoRequest, GetRedisInfoResponse,
+        ImportSqlRequest, ImportSqlResponse, ListDatabasesRequest, ListDatabasesResponse,
         ListSqliteFilesRequest, ListSqliteFilesResponse, ListTablesRequest, ListTablesResponse,
         RedisInfo, SqlRow, SqliteFile, VacuumSqliteRequest, VacuumSqliteResponse,
     },
@@ -268,6 +269,64 @@ impl DatabaseService for DatabaseServiceImpl {
             columns,
             rows,
             total_rows,
+        }))
+    }
+
+    async fn import_sql(
+        &self,
+        request: Request<ImportSqlRequest>,
+    ) -> Result<GrpcResponse<ImportSqlResponse>, Status> {
+        let request = request.into_inner();
+        let pool = connect_any(&request.dsn).await?;
+        // 朴素按 ; 拆句逐条执行(v1):适合常规 dump;字符串/存储过程内的 ; 不支持,
+        // 前端会提示"复杂脚本请用 SQL 控制台"。
+        let mut executed = 0u32;
+        for statement in split_sql_statements(&request.sql) {
+            sqlx::query(&statement)
+                .execute(&pool)
+                .await
+                .map_err(db_status)?;
+            executed += 1;
+        }
+        Ok(GrpcResponse::new(ImportSqlResponse {
+            status: Some(ok_response("ok")),
+            statements_executed: executed,
+        }))
+    }
+
+    async fn database_overview(
+        &self,
+        request: Request<DatabaseOverviewRequest>,
+    ) -> Result<GrpcResponse<DatabaseOverviewResponse>, Status> {
+        let request = request.into_inner();
+        let engine = engine_from_dsn(&request.dsn)?;
+        let pool = connect_any(&request.dsn).await?;
+        let (version_sql, conn_sql, uptime_sql) = match engine {
+            DatabaseEngineKind::Mysql => (
+                "SELECT VERSION()",
+                "SELECT COUNT(*) FROM information_schema.processlist",
+                "SELECT VARIABLE_VALUE FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Uptime'",
+            ),
+            DatabaseEngineKind::Postgres => (
+                "SELECT version()",
+                "SELECT count(*) FROM pg_stat_activity",
+                "SELECT EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))::bigint",
+            ),
+            DatabaseEngineKind::Sqlite => ("SELECT sqlite_version()", "SELECT 1", "SELECT 0"),
+        };
+        let version = sqlx::query(version_sql)
+            .fetch_one(&pool)
+            .await
+            .ok()
+            .and_then(|row| row.try_get::<String, _>(0).ok())
+            .unwrap_or_default();
+        let active_connections = fetch_scalar_u64(&pool, conn_sql).await;
+        let uptime_seconds = fetch_scalar_u64(&pool, uptime_sql).await;
+        Ok(GrpcResponse::new(DatabaseOverviewResponse {
+            status: Some(ok_response("ok")),
+            version,
+            active_connections,
+            uptime_seconds,
         }))
     }
 
@@ -539,6 +598,38 @@ fn engine_from_dsn(dsn: &str) -> Result<DatabaseEngineKind, Status> {
     }
 }
 
+/// 朴素 SQL 拆句:按 ; 分;每段逐行剔掉空行与整行 `--` 注释后再拼回。
+/// v1,不处理字符串字面量内部的 ;(前端提示复杂脚本用 SQL 控制台)。
+fn split_sql_statements(sql: &str) -> Vec<String> {
+    sql.split(';')
+        .map(|segment| {
+            segment
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty() && !line.starts_with("--"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .filter(|stmt| !stmt.is_empty())
+        .collect()
+}
+
+/// 取单标量并尽量转成 u64(i64 / f64 / 字符串数字都兼容),失败返 0。
+async fn fetch_scalar_u64(pool: &sqlx::AnyPool, sql: &str) -> u64 {
+    match sqlx::query(sql).fetch_one(pool).await {
+        Ok(row) => row
+            .try_get::<i64, _>(0)
+            .map(|value| value.max(0) as u64)
+            .or_else(|_| row.try_get::<f64, _>(0).map(|value| value.max(0.0) as u64))
+            .or_else(|_| {
+                row.try_get::<String, _>(0)
+                    .map(|value| value.trim().parse::<u64>().unwrap_or(0))
+            })
+            .unwrap_or(0),
+        Err(_) => 0,
+    }
+}
+
 /// 给已 validate_identifier 校验过的标识符加引擎对应的引号。
 fn quote_identifier(engine: DatabaseEngineKind, ident: &str) -> String {
     match engine {
@@ -605,5 +696,21 @@ mod tests {
     fn detects_query_shape() {
         assert!(returns_rows("SELECT 1"));
         assert!(!returns_rows("UPDATE users SET name = 'a'"));
+    }
+
+    #[test]
+    fn splits_sql_statements_and_skips_blanks_and_comments() {
+        let stmts = split_sql_statements(
+            "CREATE TABLE t(id int);\n-- a comment\nINSERT INTO t VALUES (1);\n\n",
+        );
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "CREATE TABLE t(id int)");
+        assert_eq!(stmts[1], "INSERT INTO t VALUES (1)");
+    }
+
+    #[test]
+    fn quotes_identifier_per_engine() {
+        assert_eq!(quote_identifier(DatabaseEngineKind::Mysql, "t"), "`t`");
+        assert_eq!(quote_identifier(DatabaseEngineKind::Postgres, "t"), "\"t\"");
     }
 }

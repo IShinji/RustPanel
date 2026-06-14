@@ -7274,6 +7274,9 @@ function DatabasePanel({ clients }: { clients: Clients }) {
   const [browseRows, setBrowseRows] = useState<string[][]>([]);
   const [browseTotal, setBrowseTotal] = useState(0);
   const [browseOffset, setBrowseOffset] = useState(0);
+  const [overview, setOverview] = useState<
+    { version: string; connections: number; uptime: number } | undefined
+  >(undefined);
 
   const refreshSqlite = useCallback(async () => {
     try {
@@ -7413,6 +7416,39 @@ function DatabasePanel({ clients }: { clients: Clients }) {
       setBrowseRows(response.rows.map((row) => row.values));
       setBrowseTotal(Number(response.totalRows));
       setBrowseOffset(offset);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const importSqlFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      void (async () => {
+        try {
+          const response = await clients.database.importSql({
+            dsn,
+            sql: String(reader.result ?? "")
+          });
+          setMessage(`已执行 ${response.statementsExecuted} 条语句`);
+          setError("");
+        } catch (err) {
+          setError(safeError(err));
+        }
+      })();
+    };
+    reader.readAsText(file);
+  };
+
+  const loadOverview = async () => {
+    try {
+      const response = await clients.database.databaseOverview({ dsn });
+      setOverview({
+        version: response.version,
+        connections: Number(response.activeConnections),
+        uptime: Number(response.uptimeSeconds)
+      });
       setError("");
     } catch (err) {
       setError(safeError(err));
@@ -7705,18 +7741,47 @@ function DatabasePanel({ clients }: { clients: Clients }) {
                   options={{ minimap: { enabled: false }, fontSize: 13 }}
                 />
               </div>
-              <div className="flex justify-end gap-2">
-                {columns.length > 0 && (
-                  <UIButton variant="outline" onClick={() => downloadCsv(columns, rows, "query.csv")}>
-                    <Download className="size-4" />
-                    导出 CSV
+              <div className="flex justify-between items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <UIButton variant="outline" size="sm" onClick={() => void loadOverview()}>
+                    连接概览
                   </UIButton>
-                )}
-                <UIButton onClick={() => void execute()}>
-                  <Play className="size-4" />
-                  执行
-                </UIButton>
+                  <label className="text-xs text-muted-foreground flex items-center gap-1">
+                    导入 .sql
+                    <input
+                      type="file"
+                      accept=".sql"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) importSqlFile(file);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  {columns.length > 0 && (
+                    <UIButton
+                      variant="outline"
+                      onClick={() => downloadCsv(columns, rows, "query.csv")}
+                    >
+                      <Download className="size-4" />
+                      导出 CSV
+                    </UIButton>
+                  )}
+                  <UIButton onClick={() => void execute()}>
+                    <Play className="size-4" />
+                    执行
+                  </UIButton>
+                </div>
               </div>
+              {overview && (
+                <div className="text-xs text-muted-foreground flex gap-4 flex-wrap">
+                  <span>版本: {overview.version || "-"}</span>
+                  <span>活动连接: {overview.connections}</span>
+                  <span>运行: {overview.uptime > 0 ? formatDuration(overview.uptime) : "-"}</span>
+                </div>
+              )}
               {columns.length > 0 && (
                 <div className="overflow-x-auto">
                   <table className="result-table">
