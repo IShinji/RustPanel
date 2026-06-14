@@ -11,6 +11,9 @@ enum BackupTargetKind {
   BACKUP_TARGET_KIND_LOCAL = 1;
   // WebDAV(Nextcloud / 坚果云 / 群晖等):离站副本。
   BACKUP_TARGET_KIND_WEBDAV = 2;
+  // S3 兼容(AWS S3 / Cloudflare R2 / MinIO / 阿里云 OSS / 腾讯云 COS / Backblaze B2)。
+  // 路径风格寻址 + SigV4 签名 + 流式上传(UNSIGNED-PAYLOAD,不预读整档)。
+  BACKUP_TARGET_KIND_S3 = 3;
 }
 
 // BackupTarget 一个备份去向配置。
@@ -18,14 +21,19 @@ message BackupTarget {
   string id = 1;
   string name = 2;
   BackupTargetKind kind = 3;
-  // WebDAV:到目录的基础 URL,如
-  // https://dav.example.com/remote.php/dav/files/<user>/rustpanel-backups
+  // WebDAV:到目录的基础 URL;S3:服务 endpoint(如 https://s3.us-east-1.amazonaws.com
+  // 或 https://<account>.r2.cloudflarestorage.com)。
   string endpoint = 4;
+  // WebDAV 用户名;S3 access key id。
   string username = 5;
-  // 密码 / 应用专用密码;返回时脱敏。
+  // WebDAV 密码;S3 secret access key。返回时脱敏。
   string password = 6;
   bool enabled = 7;
   uint64 created_at_seconds = 8;
+  // S3 专用:区域(SigV4 凭据范围必需,如 us-east-1 / auto)。
+  string region = 9;
+  // S3 专用:桶名(路径风格 {endpoint}/{bucket}/{key})。
+  string bucket = 10;
 }
 
 // BackupRecord 一次备份的记录。

@@ -54,8 +54,9 @@ v3.0 已对齐宝塔在「安全 / 站点 / SSL / 文件 / 监控 / Docker / 集
 目标：网站 / 数据库可定时备份到本地与云端，并能一键还原。
 
 - [x] **P1-01** `backup.proto` + `backup.rs`：目录备份(tar.gz)、记录列表、安全还原(unpack_in 防 tar-slip)、删除;原子写+锁。**(数据库 dump 备份待做,见 P1-06)**
-- [ ] **P1-02** 云存储 target：**WebDAV 已实现**(PUT/GET/DELETE + Basic Auth,密码脱敏);
-      S3 兼容(MinIO/R2/OSS/COS,SigV4 签名) 待做;凭据加密存储待做。
+- [x] **P1-02** 云存储 target：WebDAV + **S3 兼容(R2/MinIO/OSS/COS,SigV4 + 路径风格 +
+      UNSIGNED-PAYLOAD 流式上传)** 均已实现;前端去向表单含 S3 region/bucket。
+      (凭据落盘加密 待做,见拓展池;真实 S3 端到端以 MinIO/R2 实测为终检。)
 - [ ] **P1-03** 定时策略：复用 CronService,预设「每日库备份 / 每周站点全量 / 保留 N 份」模板。
 - [ ] **P1-04** 增量与校验：restic 集成(P8 catalog 已含 restic)做增量 + 完整性校验。
 - [x] **P1-05** 前端备份页：去向配置 + 创建备份 + 备份点列表 + 还原(二次确认) + 删除 + 离站标识。

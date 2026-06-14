@@ -38,6 +38,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 sha1 = "0.10"
+sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["any", "json", "mysql", "postgres", "runtime-tokio", "sqlite"] }
 sysinfo = "0.30"
 tar = "0.4"

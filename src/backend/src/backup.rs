@@ -7,7 +7,9 @@ use std::{
 
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use futures_util::StreamExt;
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 use tonic::{Request, Response as GrpcResponse, Status};
@@ -176,14 +178,12 @@ impl BackupService for BackupServiceImpl {
         .map_err(io_status)?
         .map_err(io_status)?;
 
-        // 离站上传(WebDAV)。失败不丢本地备份,只在 message 里告警。
+        // 离站上传(WebDAV / S3)。失败不丢本地备份,只在 message 里告警。
         let mut offsite_uploaded = false;
         let mut warning = String::new();
         if let Some(target) = &target {
-            if target.enabled
-                && BackupTargetKind::try_from(target.kind).ok() == Some(BackupTargetKind::Webdav)
-            {
-                match webdav_upload(target, &archive_name, &archive_path).await {
+            if target.enabled && is_offsite_kind(target.kind) {
+                match offsite_upload(target, &archive_name, &archive_path).await {
                     Ok(()) => offsite_uploaded = true,
                     Err(error) => warning = format!("(离站上传失败: {error})"),
                 }
@@ -244,20 +244,18 @@ impl BackupService for BackupServiceImpl {
             return Err(Status::invalid_argument("restore_path must be absolute"));
         }
 
-        // 本地归档不在(可能只在离站)→ 先从 WebDAV 拉回来。
+        // 本地归档不在(可能只在离站)→ 先从离站(WebDAV / S3)拉回来。
         let archive_path = self.store.archive_path(&record.archive_name);
         if !tokio::fs::try_exists(&archive_path).await.unwrap_or(false) {
             let target = state
                 .targets
                 .iter()
                 .find(|t| t.id == record.target_id)
-                .filter(|t| {
-                    BackupTargetKind::try_from(t.kind).ok() == Some(BackupTargetKind::Webdav)
-                })
+                .filter(|t| is_offsite_kind(t.kind))
                 .ok_or_else(|| {
                     Status::failed_precondition("local archive missing and no offsite target")
                 })?;
-            webdav_download(target, &record.archive_name, &archive_path)
+            offsite_download(target, &record.archive_name, &archive_path)
                 .await
                 .map_err(Status::internal)?;
         }
@@ -298,8 +296,8 @@ impl BackupService for BackupServiceImpl {
         // 离站副本 best-effort 删除。
         if record.offsite_uploaded {
             if let Some(target) = state.targets.iter().find(|t| t.id == record.target_id) {
-                if BackupTargetKind::try_from(target.kind).ok() == Some(BackupTargetKind::Webdav) {
-                    let _ = webdav_delete(target, &record.archive_name).await;
+                if is_offsite_kind(target.kind) {
+                    let _ = offsite_delete(target, &record.archive_name).await;
                 }
             }
         }
@@ -414,6 +412,228 @@ async fn webdav_delete(target: &StoredTarget, archive_name: &str) -> Result<(), 
         .map_err(|error| error.to_string())
 }
 
+fn is_offsite_kind(kind: i32) -> bool {
+    matches!(
+        BackupTargetKind::try_from(kind).ok(),
+        Some(BackupTargetKind::Webdav) | Some(BackupTargetKind::S3)
+    )
+}
+
+async fn offsite_upload(target: &StoredTarget, name: &str, path: &Path) -> Result<(), String> {
+    match BackupTargetKind::try_from(target.kind).unwrap_or(BackupTargetKind::Unspecified) {
+        BackupTargetKind::Webdav => webdav_upload(target, name, path).await,
+        BackupTargetKind::S3 => s3_upload(target, name, path).await,
+        _ => Err("target is not an offsite kind".to_owned()),
+    }
+}
+
+async fn offsite_download(target: &StoredTarget, name: &str, path: &Path) -> Result<(), String> {
+    match BackupTargetKind::try_from(target.kind).unwrap_or(BackupTargetKind::Unspecified) {
+        BackupTargetKind::Webdav => webdav_download(target, name, path).await,
+        BackupTargetKind::S3 => s3_download(target, name, path).await,
+        _ => Err("target is not an offsite kind".to_owned()),
+    }
+}
+
+async fn offsite_delete(target: &StoredTarget, name: &str) -> Result<(), String> {
+    match BackupTargetKind::try_from(target.kind).unwrap_or(BackupTargetKind::Unspecified) {
+        BackupTargetKind::Webdav => webdav_delete(target, name).await,
+        BackupTargetKind::S3 => s3_delete(target, name).await,
+        _ => Err("target is not an offsite kind".to_owned()),
+    }
+}
+
+// ===== S3 兼容(SigV4 + 路径风格 + 流式;UNSIGNED-PAYLOAD 免哈希整档,低配友好) =====
+
+type HmacSha256 = Hmac<Sha256>;
+
+fn sha256_hex(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hex_lower(&hasher.finalize())
+}
+
+fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
+    let mut mac = HmacSha256::new_from_slice(key).expect("hmac accepts any key length");
+    mac.update(data);
+    mac.finalize().into_bytes().to_vec()
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
+}
+
+/// RFC 3986 编码 S3 路径(encode_slash=false 时保留 '/')。
+fn s3_uri_encode(input: &str, encode_slash: bool) -> String {
+    let mut out = String::new();
+    for &byte in input.as_bytes() {
+        let ch = byte as char;
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '.' | '_' | '~') {
+            out.push(ch);
+        } else if ch == '/' && !encode_slash {
+            out.push('/');
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+struct S3Signed {
+    url: String,
+    // 除 host 外要显式设的头(host 由 reqwest 按 URL 自动发,且已纳入签名)。
+    headers: Vec<(String, String)>,
+}
+
+/// 计算单次 S3 请求的 SigV4 签名(路径风格 {endpoint}/{bucket}/{key})。
+fn s3_sign(
+    target: &StoredTarget,
+    method: &str,
+    key: &str,
+    payload_hash: &str,
+) -> Result<S3Signed, String> {
+    let endpoint = target.endpoint.trim().trim_end_matches('/');
+    if endpoint.is_empty() {
+        return Err("s3 endpoint is empty".to_owned());
+    }
+    let region = if target.region.trim().is_empty() {
+        "us-east-1"
+    } else {
+        target.region.trim()
+    };
+    let host = endpoint
+        .strip_prefix("https://")
+        .or_else(|| endpoint.strip_prefix("http://"))
+        .unwrap_or(endpoint)
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .to_owned();
+    if host.is_empty() {
+        return Err("s3 endpoint has no host".to_owned());
+    }
+
+    let object_path = format!("{}/{}", target.bucket.trim().trim_matches('/'), key);
+    let encoded_path = s3_uri_encode(&object_path, false);
+    let canonical_uri = format!("/{encoded_path}");
+    let url = format!("{endpoint}/{encoded_path}");
+
+    let now = chrono::Utc::now();
+    let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
+    let date_stamp = now.format("%Y%m%d").to_string();
+
+    let canonical_headers =
+        format!("host:{host}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n");
+    let signed_headers = "host;x-amz-content-sha256;x-amz-date";
+    let canonical_request = format!(
+        "{method}\n{canonical_uri}\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
+    );
+    let scope = format!("{date_stamp}/{region}/s3/aws4_request");
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{}",
+        sha256_hex(canonical_request.as_bytes())
+    );
+
+    let k_date = hmac_sha256(
+        format!("AWS4{}", target.password).as_bytes(),
+        date_stamp.as_bytes(),
+    );
+    let k_region = hmac_sha256(&k_date, region.as_bytes());
+    let k_service = hmac_sha256(&k_region, b"s3");
+    let k_signing = hmac_sha256(&k_service, b"aws4_request");
+    let signature = hex_lower(&hmac_sha256(&k_signing, string_to_sign.as_bytes()));
+
+    let authorization = format!(
+        "AWS4-HMAC-SHA256 Credential={}/{scope}, SignedHeaders={signed_headers}, Signature={signature}",
+        target.username.trim()
+    );
+    Ok(S3Signed {
+        url,
+        headers: vec![
+            ("x-amz-content-sha256".to_owned(), payload_hash.to_owned()),
+            ("x-amz-date".to_owned(), amz_date),
+            ("authorization".to_owned(), authorization),
+        ],
+    })
+}
+
+async fn s3_upload(target: &StoredTarget, key: &str, archive_path: &Path) -> Result<(), String> {
+    let signed = s3_sign(target, "PUT", key, "UNSIGNED-PAYLOAD")?;
+    let file = tokio::fs::File::open(archive_path)
+        .await
+        .map_err(|error| error.to_string())?;
+    let body = reqwest::Body::wrap_stream(ReaderStream::new(file));
+    let client = reqwest::Client::new();
+    let mut request = client.put(&signed.url).body(body);
+    for (name, value) in &signed.headers {
+        request = request.header(name.as_str(), value.as_str());
+    }
+    let response = request.send().await.map_err(|error| error.to_string())?;
+    let status = response.status();
+    if status.is_success() {
+        Ok(())
+    } else {
+        let detail: String = response
+            .text()
+            .await
+            .unwrap_or_default()
+            .chars()
+            .take(300)
+            .collect();
+        Err(format!("S3 PUT {status}: {detail}"))
+    }
+}
+
+async fn s3_download(target: &StoredTarget, key: &str, archive_path: &Path) -> Result<(), String> {
+    let signed = s3_sign(target, "GET", key, "UNSIGNED-PAYLOAD")?;
+    let client = reqwest::Client::new();
+    let mut request = client.get(&signed.url);
+    for (name, value) in &signed.headers {
+        request = request.header(name.as_str(), value.as_str());
+    }
+    let response = request.send().await.map_err(|error| error.to_string())?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("S3 GET {status}"));
+    }
+    if let Some(parent) = archive_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    let mut file = tokio::fs::File::create(archive_path)
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| error.to_string())?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    file.flush().await.map_err(|error| error.to_string())
+}
+
+async fn s3_delete(target: &StoredTarget, key: &str) -> Result<(), String> {
+    let signed = s3_sign(target, "DELETE", key, "UNSIGNED-PAYLOAD")?;
+    let client = reqwest::Client::new();
+    let mut request = client.delete(&signed.url);
+    for (name, value) in &signed.headers {
+        request = request.header(name.as_str(), value.as_str());
+    }
+    let response = request.send().await.map_err(|error| error.to_string())?;
+    let status = response.status();
+    if status.is_success() {
+        Ok(())
+    } else {
+        Err(format!("S3 DELETE {status}"))
+    }
+}
+
 fn validate_target(target: &BackupTarget) -> Result<(), Status> {
     if target.name.trim().is_empty() {
         return Err(Status::invalid_argument("target name is required"));
@@ -424,6 +644,19 @@ fn validate_target(target: &BackupTarget) -> Result<(), Status> {
         BackupTargetKind::Webdav => {
             if target.endpoint.trim().is_empty() {
                 Err(Status::invalid_argument("webdav endpoint is required"))
+            } else {
+                Ok(())
+            }
+        }
+        BackupTargetKind::S3 => {
+            if target.endpoint.trim().is_empty()
+                || target.bucket.trim().is_empty()
+                || target.region.trim().is_empty()
+                || target.username.trim().is_empty()
+            {
+                Err(Status::invalid_argument(
+                    "s3 target needs endpoint / bucket / region / access key",
+                ))
             } else {
                 Ok(())
             }
@@ -504,6 +737,10 @@ struct StoredTarget {
     password: String,
     enabled: bool,
     created_at_seconds: u64,
+    #[serde(default)]
+    region: String,
+    #[serde(default)]
+    bucket: String,
 }
 
 impl StoredTarget {
@@ -517,6 +754,8 @@ impl StoredTarget {
             password: target.password,
             enabled: target.enabled,
             created_at_seconds: target.created_at_seconds,
+            region: target.region,
+            bucket: target.bucket,
         }
     }
 
@@ -530,6 +769,8 @@ impl StoredTarget {
             password: self.password,
             enabled: self.enabled,
             created_at_seconds: self.created_at_seconds,
+            region: self.region,
+            bucket: self.bucket,
         }
     }
 }
@@ -639,10 +880,43 @@ mod tests {
             password: String::new(),
             enabled: true,
             created_at_seconds: 0,
+            region: String::new(),
+            bucket: String::new(),
         };
         assert_eq!(
             webdav_url(&target, "x.tar.gz"),
             "https://dav.example.com/backups/x.tar.gz"
         );
+    }
+
+    #[test]
+    fn sha256_hex_of_empty_matches_known_vector() {
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn sigv4_signing_key_chain_is_stable() {
+        // SigV4 派生链(kDate→kRegion→kService→kSigning)的确定性/回归保护:
+        // 哈希原语已由 sha256_hex 空串向量独立验证,HMAC 用标准 hmac crate(与
+        // TOTP 同),此处固定 (secret, 20120215, us-east-1, iam) 的派生结果防链路被
+        // 误改;真实端到端正确性以 MinIO / R2 实测为终检。
+        let secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+        let k_date = hmac_sha256(format!("AWS4{secret}").as_bytes(), b"20120215");
+        let k_region = hmac_sha256(&k_date, b"us-east-1");
+        let k_service = hmac_sha256(&k_region, b"iam");
+        let k_signing = hmac_sha256(&k_service, b"aws4_request");
+        assert_eq!(
+            hex_lower(&k_signing),
+            "004aa806e13dae88b9032d9261bcb04c67d023afadd221e6b0d206e1760e0b5e"
+        );
+    }
+
+    #[test]
+    fn s3_uri_encode_keeps_or_encodes_slash() {
+        assert_eq!(s3_uri_encode("a/b c", false), "a/b%20c");
+        assert_eq!(s3_uri_encode("a/b", true), "a%2Fb");
     }
 }

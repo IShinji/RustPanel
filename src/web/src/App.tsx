@@ -3201,7 +3201,8 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
 
 const BACKUP_TARGET_KINDS: Array<{ value: BackupTargetKind; label: string }> = [
   { value: BackupTargetKind.LOCAL, label: "本地" },
-  { value: BackupTargetKind.WEBDAV, label: "WebDAV (离站)" }
+  { value: BackupTargetKind.WEBDAV, label: "WebDAV (离站)" },
+  { value: BackupTargetKind.S3, label: "S3 兼容 (R2/MinIO/OSS/COS)" }
 ];
 
 function backupTargetKindLabel(kind: BackupTargetKind): string {
@@ -3216,6 +3217,8 @@ type BackupTargetForm = {
   username: string;
   password: string;
   enabled: boolean;
+  region: string;
+  bucket: string;
 };
 
 const emptyBackupTargetForm: BackupTargetForm = {
@@ -3225,7 +3228,9 @@ const emptyBackupTargetForm: BackupTargetForm = {
   endpoint: "",
   username: "",
   password: "",
-  enabled: true
+  enabled: true,
+  region: "",
+  bucket: ""
 };
 
 function BackupPage({ clients }: { clients: Clients }) {
@@ -3271,7 +3276,9 @@ function BackupPage({ clients }: { clients: Clients }) {
           username: targetForm.username.trim(),
           password: targetForm.password,
           enabled: targetForm.enabled,
-          createdAtSeconds: 0n
+          createdAtSeconds: 0n,
+          region: targetForm.region.trim(),
+          bucket: targetForm.bucket.trim()
         }
       });
       setMessage(`去向 ${targetForm.name} 已保存`);
@@ -3290,7 +3297,9 @@ function BackupPage({ clients }: { clients: Clients }) {
       endpoint: target.endpoint,
       username: target.username,
       password: "",
-      enabled: target.enabled
+      enabled: target.enabled,
+      region: target.region,
+      bucket: target.bucket
     });
     setError("");
     setMessage("");
@@ -3386,7 +3395,10 @@ function BackupPage({ clients }: { clients: Clients }) {
       <Card>
         <CardHeader>
           <CardTitle>备份去向</CardTitle>
-          <CardDescription>本地无需额外配置;WebDAV 填到目录的完整 URL + 账号密码。</CardDescription>
+          <CardDescription>
+            本地无需配置;WebDAV 填目录完整 URL + 账号密码;S3 填 endpoint / 区域 / 桶 / AK / SK
+            (兼容 R2 / MinIO / OSS / COS,路径风格)。
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -3416,21 +3428,35 @@ function BackupPage({ clients }: { clients: Clients }) {
               </Select>
             </div>
             <Input
-              label="WebDAV 目录 URL"
+              label="地址 (WebDAV 目录 URL / S3 endpoint)"
               value={targetForm.endpoint}
               onChange={(endpoint) => setTargetForm((prev) => ({ ...prev, endpoint }))}
             />
             <Input
-              label="用户名"
+              label="用户名 / S3 Access Key"
               value={targetForm.username}
               onChange={(username) => setTargetForm((prev) => ({ ...prev, username }))}
             />
             <Input
-              label={editingTarget ? "密码 (留空保持不变)" : "密码"}
+              label={editingTarget ? "密码 / Secret Key (留空保持不变)" : "密码 / S3 Secret Key"}
               type="password"
               value={targetForm.password}
               onChange={(password) => setTargetForm((prev) => ({ ...prev, password }))}
             />
+            {targetForm.kind === BackupTargetKind.S3 && (
+              <>
+                <Input
+                  label="S3 区域 (region,如 us-east-1 / auto)"
+                  value={targetForm.region}
+                  onChange={(region) => setTargetForm((prev) => ({ ...prev, region }))}
+                />
+                <Input
+                  label="S3 桶名 (bucket)"
+                  value={targetForm.bucket}
+                  onChange={(bucket) => setTargetForm((prev) => ({ ...prev, bucket }))}
+                />
+              </>
+            )}
           </div>
           <div className="mt-3 flex items-center justify-between gap-4">
             <label className="flex items-center gap-2 text-sm">
