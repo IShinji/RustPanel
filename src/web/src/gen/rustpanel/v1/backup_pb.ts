@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file rustpanel/v1/backup.proto.
  */
 export const file_rustpanel_v1_backup: GenFile = /*@__PURE__*/
-  fileDesc("ChlydXN0cGFuZWwvdjEvYmFja3VwLnByb3RvEgxydXN0cGFuZWwudjEi2QEKDEJhY2t1cFRhcmdldBIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEiwKBGtpbmQYAyABKA4yHi5ydXN0cGFuZWwudjEuQmFja3VwVGFyZ2V0S2luZBIQCghlbmRwb2ludBgEIAEoCRIQCgh1c2VybmFtZRgFIAEoCRIQCghwYXNzd29yZBgGIAEoCRIPCgdlbmFibGVkGAcgASgIEhoKEmNyZWF0ZWRfYXRfc2Vjb25kcxgIIAEoBBIOCgZyZWdpb24YCSABKAkSDgoGYnVja2V0GAogASgJIrABCgxCYWNrdXBSZWNvcmQSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRITCgtzb3VyY2VfcGF0aBgDIAEoCRIRCgl0YXJnZXRfaWQYBCABKAkSFAoMYXJjaGl2ZV9uYW1lGAUgASgJEhIKCnNpemVfYnl0ZXMYBiABKAQSGAoQb2Zmc2l0ZV91cGxvYWRlZBgHIAEoCBIaChJjcmVhdGVkX2F0X3NlY29uZHMYCCABKAQiGgoYTGlzdEJhY2t1cFRhcmdldHNSZXF1ZXN0InAKGUxpc3RCYWNrdXBUYXJnZXRzUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlEisKB3RhcmdldHMYAiADKAsyGi5ydXN0cGFuZWwudjEuQmFja3VwVGFyZ2V0IkcKGVVwc2VydEJhY2t1cFRhcmdldFJlcXVlc3QSKgoGdGFyZ2V0GAEgASgLMhoucnVzdHBhbmVsLnYxLkJhY2t1cFRhcmdldCJwChpVcHNlcnRCYWNrdXBUYXJnZXRSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USKgoGdGFyZ2V0GAIgASgLMhoucnVzdHBhbmVsLnYxLkJhY2t1cFRhcmdldCInChlEZWxldGVCYWNrdXBUYXJnZXRSZXF1ZXN0EgoKAmlkGAEgASgJIkQKGkRlbGV0ZUJhY2t1cFRhcmdldFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSJLChNDcmVhdGVCYWNrdXBSZXF1ZXN0EhMKC3NvdXJjZV9wYXRoGAEgASgJEgwKBG5hbWUYAiABKAkSEQoJdGFyZ2V0X2lkGAMgASgJImoKFENyZWF0ZUJhY2t1cFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIqCgZyZWNvcmQYAiABKAsyGi5ydXN0cGFuZWwudjEuQmFja3VwUmVjb3JkIhQKEkxpc3RCYWNrdXBzUmVxdWVzdCJqChNMaXN0QmFja3Vwc1Jlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIrCgdyZWNvcmRzGAIgAygLMhoucnVzdHBhbmVsLnYxLkJhY2t1cFJlY29yZCI4ChRSZXN0b3JlQmFja3VwUmVxdWVzdBIKCgJpZBgBIAEoCRIUCgxyZXN0b3JlX3BhdGgYAiABKAkiVgoVUmVzdG9yZUJhY2t1cFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIVCg1yZXN0b3JlZF9wYXRoGAIgASgJIiEKE0RlbGV0ZUJhY2t1cFJlcXVlc3QSCgoCaWQYASABKAkiPgoURGVsZXRlQmFja3VwUmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlKo4BChBCYWNrdXBUYXJnZXRLaW5kEiIKHkJBQ0tVUF9UQVJHRVRfS0lORF9VTlNQRUNJRklFRBAAEhwKGEJBQ0tVUF9UQVJHRVRfS0lORF9MT0NBTBABEh0KGUJBQ0tVUF9UQVJHRVRfS0lORF9XRUJEQVYQAhIZChVCQUNLVVBfVEFSR0VUX0tJTkRfUzMQAzKjBQoNQmFja3VwU2VydmljZRJkChFMaXN0QmFja3VwVGFyZ2V0cxImLnJ1c3RwYW5lbC52MS5MaXN0QmFja3VwVGFyZ2V0c1JlcXVlc3QaJy5ydXN0cGFuZWwudjEuTGlzdEJhY2t1cFRhcmdldHNSZXNwb25zZRJnChJVcHNlcnRCYWNrdXBUYXJnZXQSJy5ydXN0cGFuZWwudjEuVXBzZXJ0QmFja3VwVGFyZ2V0UmVxdWVzdBooLnJ1c3RwYW5lbC52MS5VcHNlcnRCYWNrdXBUYXJnZXRSZXNwb25zZRJnChJEZWxldGVCYWNrdXBUYXJnZXQSJy5ydXN0cGFuZWwudjEuRGVsZXRlQmFja3VwVGFyZ2V0UmVxdWVzdBooLnJ1c3RwYW5lbC52MS5EZWxldGVCYWNrdXBUYXJnZXRSZXNwb25zZRJVCgxDcmVhdGVCYWNrdXASIS5ydXN0cGFuZWwudjEuQ3JlYXRlQmFja3VwUmVxdWVzdBoiLnJ1c3RwYW5lbC52MS5DcmVhdGVCYWNrdXBSZXNwb25zZRJSCgtMaXN0QmFja3VwcxIgLnJ1c3RwYW5lbC52MS5MaXN0QmFja3Vwc1JlcXVlc3QaIS5ydXN0cGFuZWwudjEuTGlzdEJhY2t1cHNSZXNwb25zZRJYCg1SZXN0b3JlQmFja3VwEiIucnVzdHBhbmVsLnYxLlJlc3RvcmVCYWNrdXBSZXF1ZXN0GiMucnVzdHBhbmVsLnYxLlJlc3RvcmVCYWNrdXBSZXNwb25zZRJVCgxEZWxldGVCYWNrdXASIS5ydXN0cGFuZWwudjEuRGVsZXRlQmFja3VwUmVxdWVzdBoiLnJ1c3RwYW5lbC52MS5EZWxldGVCYWNrdXBSZXNwb25zZWIGcHJvdG8z", [file_rustpanel_v1_common]);
+  fileDesc("ChlydXN0cGFuZWwvdjEvYmFja3VwLnByb3RvEgxydXN0cGFuZWwudjEi2QEKDEJhY2t1cFRhcmdldBIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEiwKBGtpbmQYAyABKA4yHi5ydXN0cGFuZWwudjEuQmFja3VwVGFyZ2V0S2luZBIQCghlbmRwb2ludBgEIAEoCRIQCgh1c2VybmFtZRgFIAEoCRIQCghwYXNzd29yZBgGIAEoCRIPCgdlbmFibGVkGAcgASgIEhoKEmNyZWF0ZWRfYXRfc2Vjb25kcxgIIAEoBBIOCgZyZWdpb24YCSABKAkSDgoGYnVja2V0GAogASgJIuUBCgxCYWNrdXBSZWNvcmQSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRITCgtzb3VyY2VfcGF0aBgDIAEoCRIRCgl0YXJnZXRfaWQYBCABKAkSFAoMYXJjaGl2ZV9uYW1lGAUgASgJEhIKCnNpemVfYnl0ZXMYBiABKAQSGAoQb2Zmc2l0ZV91cGxvYWRlZBgHIAEoCBIaChJjcmVhdGVkX2F0X3NlY29uZHMYCCABKAQSMwoLc291cmNlX2tpbmQYCSABKA4yHi5ydXN0cGFuZWwudjEuQmFja3VwU291cmNlS2luZCIaChhMaXN0QmFja3VwVGFyZ2V0c1JlcXVlc3QicAoZTGlzdEJhY2t1cFRhcmdldHNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USKwoHdGFyZ2V0cxgCIAMoCzIaLnJ1c3RwYW5lbC52MS5CYWNrdXBUYXJnZXQiRwoZVXBzZXJ0QmFja3VwVGFyZ2V0UmVxdWVzdBIqCgZ0YXJnZXQYASABKAsyGi5ydXN0cGFuZWwudjEuQmFja3VwVGFyZ2V0InAKGlVwc2VydEJhY2t1cFRhcmdldFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZRIqCgZ0YXJnZXQYAiABKAsyGi5ydXN0cGFuZWwudjEuQmFja3VwVGFyZ2V0IicKGURlbGV0ZUJhY2t1cFRhcmdldFJlcXVlc3QSCgoCaWQYASABKAkiRAoaRGVsZXRlQmFja3VwVGFyZ2V0UmVzcG9uc2USJgoGc3RhdHVzGAEgASgLMhYucnVzdHBhbmVsLnYxLlJlc3BvbnNlIpQBChNDcmVhdGVCYWNrdXBSZXF1ZXN0EhMKC3NvdXJjZV9wYXRoGAEgASgJEgwKBG5hbWUYAiABKAkSEQoJdGFyZ2V0X2lkGAMgASgJEjMKC3NvdXJjZV9raW5kGAQgASgOMh4ucnVzdHBhbmVsLnYxLkJhY2t1cFNvdXJjZUtpbmQSEgoKc291cmNlX2RzbhgFIAEoCSJqChRDcmVhdGVCYWNrdXBSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USKgoGcmVjb3JkGAIgASgLMhoucnVzdHBhbmVsLnYxLkJhY2t1cFJlY29yZCIUChJMaXN0QmFja3Vwc1JlcXVlc3QiagoTTGlzdEJhY2t1cHNSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USKwoHcmVjb3JkcxgCIAMoCzIaLnJ1c3RwYW5lbC52MS5CYWNrdXBSZWNvcmQiOAoUUmVzdG9yZUJhY2t1cFJlcXVlc3QSCgoCaWQYASABKAkSFAoMcmVzdG9yZV9wYXRoGAIgASgJIlYKFVJlc3RvcmVCYWNrdXBSZXNwb25zZRImCgZzdGF0dXMYASABKAsyFi5ydXN0cGFuZWwudjEuUmVzcG9uc2USFQoNcmVzdG9yZWRfcGF0aBgCIAEoCSIhChNEZWxldGVCYWNrdXBSZXF1ZXN0EgoKAmlkGAEgASgJIj4KFERlbGV0ZUJhY2t1cFJlc3BvbnNlEiYKBnN0YXR1cxgBIAEoCzIWLnJ1c3RwYW5lbC52MS5SZXNwb25zZSqOAQoQQmFja3VwVGFyZ2V0S2luZBIiCh5CQUNLVVBfVEFSR0VUX0tJTkRfVU5TUEVDSUZJRUQQABIcChhCQUNLVVBfVEFSR0VUX0tJTkRfTE9DQUwQARIdChlCQUNLVVBfVEFSR0VUX0tJTkRfV0VCREFWEAISGQoVQkFDS1VQX1RBUkdFVF9LSU5EX1MzEAMqeQoQQmFja3VwU291cmNlS2luZBIiCh5CQUNLVVBfU09VUkNFX0tJTkRfVU5TUEVDSUZJRUQQABIgChxCQUNLVVBfU09VUkNFX0tJTkRfRElSRUNUT1JZEAESHwobQkFDS1VQX1NPVVJDRV9LSU5EX0RBVEFCQVNFEAIyowUKDUJhY2t1cFNlcnZpY2USZAoRTGlzdEJhY2t1cFRhcmdldHMSJi5ydXN0cGFuZWwudjEuTGlzdEJhY2t1cFRhcmdldHNSZXF1ZXN0GicucnVzdHBhbmVsLnYxLkxpc3RCYWNrdXBUYXJnZXRzUmVzcG9uc2USZwoSVXBzZXJ0QmFja3VwVGFyZ2V0EicucnVzdHBhbmVsLnYxLlVwc2VydEJhY2t1cFRhcmdldFJlcXVlc3QaKC5ydXN0cGFuZWwudjEuVXBzZXJ0QmFja3VwVGFyZ2V0UmVzcG9uc2USZwoSRGVsZXRlQmFja3VwVGFyZ2V0EicucnVzdHBhbmVsLnYxLkRlbGV0ZUJhY2t1cFRhcmdldFJlcXVlc3QaKC5ydXN0cGFuZWwudjEuRGVsZXRlQmFja3VwVGFyZ2V0UmVzcG9uc2USVQoMQ3JlYXRlQmFja3VwEiEucnVzdHBhbmVsLnYxLkNyZWF0ZUJhY2t1cFJlcXVlc3QaIi5ydXN0cGFuZWwudjEuQ3JlYXRlQmFja3VwUmVzcG9uc2USUgoLTGlzdEJhY2t1cHMSIC5ydXN0cGFuZWwudjEuTGlzdEJhY2t1cHNSZXF1ZXN0GiEucnVzdHBhbmVsLnYxLkxpc3RCYWNrdXBzUmVzcG9uc2USWAoNUmVzdG9yZUJhY2t1cBIiLnJ1c3RwYW5lbC52MS5SZXN0b3JlQmFja3VwUmVxdWVzdBojLnJ1c3RwYW5lbC52MS5SZXN0b3JlQmFja3VwUmVzcG9uc2USVQoMRGVsZXRlQmFja3VwEiEucnVzdHBhbmVsLnYxLkRlbGV0ZUJhY2t1cFJlcXVlc3QaIi5ydXN0cGFuZWwudjEuRGVsZXRlQmFja3VwUmVzcG9uc2ViBnByb3RvMw", [file_rustpanel_v1_common]);
 
 /**
  * BackupTarget 一个备份去向配置。
@@ -106,7 +106,7 @@ export type BackupRecord = Message<"rustpanel.v1.BackupRecord"> & {
   name: string;
 
   /**
-   * 被备份的目录绝对路径(还原默认回此路径)。
+   * 目录备份=被备份目录绝对路径;数据库备份=DSN(脱敏后)。还原默认回此处(目录)。
    *
    * @generated from field: string source_path = 3;
    */
@@ -130,7 +130,7 @@ export type BackupRecord = Message<"rustpanel.v1.BackupRecord"> & {
   sizeBytes: bigint;
 
   /**
-   * 是否已成功推送到离站(WebDAV)目标。
+   * 是否已成功推送到离站(WebDAV/S3)目标。
    *
    * @generated from field: bool offsite_uploaded = 7;
    */
@@ -140,6 +140,13 @@ export type BackupRecord = Message<"rustpanel.v1.BackupRecord"> & {
    * @generated from field: uint64 created_at_seconds = 8;
    */
   createdAtSeconds: bigint;
+
+  /**
+   * 来源类型;数据库备份还原时只解出 dump.sql,不自动应用。
+   *
+   * @generated from field: rustpanel.v1.BackupSourceKind source_kind = 9;
+   */
+  sourceKind: BackupSourceKind;
 };
 
 /**
@@ -262,14 +269,14 @@ export const DeleteBackupTargetResponseSchema: GenMessage<DeleteBackupTargetResp
  */
 export type CreateBackupRequest = Message<"rustpanel.v1.CreateBackupRequest"> & {
   /**
-   * 要备份的目录绝对路径。
+   * 目录备份:要备份的目录绝对路径。
    *
    * @generated from field: string source_path = 1;
    */
   sourcePath: string;
 
   /**
-   * 备份显示名(可选,默认取目录名 + 时间)。
+   * 备份显示名(可选,默认取目录名/库名 + 时间)。
    *
    * @generated from field: string name = 2;
    */
@@ -281,6 +288,20 @@ export type CreateBackupRequest = Message<"rustpanel.v1.CreateBackupRequest"> & 
    * @generated from field: string target_id = 3;
    */
   targetId: string;
+
+  /**
+   * 来源类型:DIRECTORY(默认,用 source_path)/ DATABASE(用 source_dsn)。
+   *
+   * @generated from field: rustpanel.v1.BackupSourceKind source_kind = 4;
+   */
+  sourceKind: BackupSourceKind;
+
+  /**
+   * 数据库备份:DSN(mysql:// / postgres:// / sqlite:)。
+   *
+   * @generated from field: string source_dsn = 5;
+   */
+  sourceDsn: string;
 };
 
 /**
@@ -466,6 +487,40 @@ export enum BackupTargetKind {
  */
 export const BackupTargetKindSchema: GenEnum<BackupTargetKind> = /*@__PURE__*/
   enumDesc(file_rustpanel_v1_backup, 0);
+
+/**
+ * BackupSourceKind 备份来源类型。
+ *
+ * @generated from enum rustpanel.v1.BackupSourceKind
+ */
+export enum BackupSourceKind {
+  /**
+   * 未指定 = 按目录处理(向后兼容旧请求)。
+   *
+   * @generated from enum value: BACKUP_SOURCE_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * 目录:tar.gz 打包 source_path。
+   *
+   * @generated from enum value: BACKUP_SOURCE_KIND_DIRECTORY = 1;
+   */
+  DIRECTORY = 1,
+
+  /**
+   * 数据库逻辑备份:mysqldump / pg_dump 落 dump.sql,或 SQLite 拷文件,再 tar.gz。
+   *
+   * @generated from enum value: BACKUP_SOURCE_KIND_DATABASE = 2;
+   */
+  DATABASE = 2,
+}
+
+/**
+ * Describes the enum rustpanel.v1.BackupSourceKind.
+ */
+export const BackupSourceKindSchema: GenEnum<BackupSourceKind> = /*@__PURE__*/
+  enumDesc(file_rustpanel_v1_backup, 1);
 
 /**
  * BackupService 备份体系:去向管理 + 目录备份/还原/列表。归档为 tar.gz,

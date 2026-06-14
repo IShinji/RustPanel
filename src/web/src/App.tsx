@@ -93,7 +93,12 @@ import {
   NotificationRecord,
   NotificationRule
 } from "./gen/rustpanel/v1/notification_pb";
-import { BackupRecord, BackupTarget, BackupTargetKind } from "./gen/rustpanel/v1/backup_pb";
+import {
+  BackupRecord,
+  BackupSourceKind,
+  BackupTarget,
+  BackupTargetKind
+} from "./gen/rustpanel/v1/backup_pb";
 import { ProxyInstance, ProxyState, VpnCapability } from "./gen/rustpanel/v1/proxy_pb";
 import {
   FirewallAction,
@@ -3237,7 +3242,13 @@ function BackupPage({ clients }: { clients: Clients }) {
   const [targets, setTargets] = useState<BackupTarget[]>([]);
   const [records, setRecords] = useState<BackupRecord[]>([]);
   const [targetForm, setTargetForm] = useState<BackupTargetForm>(emptyBackupTargetForm);
-  const [backupForm, setBackupForm] = useState({ sourcePath: "", name: "", targetId: "" });
+  const [backupForm, setBackupForm] = useState({
+    sourcePath: "",
+    name: "",
+    targetId: "",
+    sourceKind: BackupSourceKind.DIRECTORY,
+    sourceDsn: ""
+  });
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -3317,8 +3328,9 @@ function BackupPage({ clients }: { clients: Clients }) {
   };
 
   const createBackup = async () => {
-    if (!backupForm.sourcePath.trim()) {
-      setError("请填写要备份的目录绝对路径");
+    const isDb = backupForm.sourceKind === BackupSourceKind.DATABASE;
+    if (isDb ? !backupForm.sourceDsn.trim() : !backupForm.sourcePath.trim()) {
+      setError(isDb ? "请填写数据库 DSN" : "请填写要备份的目录绝对路径");
       return;
     }
     setMessage("正在创建备份...");
@@ -3327,10 +3339,18 @@ function BackupPage({ clients }: { clients: Clients }) {
       const response = await clients.backup.createBackup({
         sourcePath: backupForm.sourcePath.trim(),
         name: backupForm.name.trim(),
-        targetId: backupForm.targetId
+        targetId: backupForm.targetId,
+        sourceKind: backupForm.sourceKind,
+        sourceDsn: backupForm.sourceDsn.trim()
       });
       setMessage(response.status?.message || "备份已创建");
-      setBackupForm({ sourcePath: "", name: "", targetId: "" });
+      setBackupForm({
+        sourcePath: "",
+        name: "",
+        targetId: "",
+        sourceKind: BackupSourceKind.DIRECTORY,
+        sourceDsn: ""
+      });
       void load();
     } catch (err) {
       setError(safeError(err));
@@ -3538,15 +3558,45 @@ function BackupPage({ clients }: { clients: Clients }) {
       <Card>
         <CardHeader>
           <CardTitle>创建备份</CardTitle>
-          <CardDescription>备份指定目录的绝对路径,如站点 webroot。</CardDescription>
+          <CardDescription>
+            备份目录(如站点 webroot)或数据库(mysqldump/pg_dump,需已安装;SQLite 直接拷文件)。
+          </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <UILabel htmlFor="backup-source-kind">来源</UILabel>
+            <Select
+              value={String(backupForm.sourceKind)}
+              onValueChange={(value) =>
+                setBackupForm((prev) => ({
+                  ...prev,
+                  sourceKind: Number(value) as BackupSourceKind
+                }))
+              }
+            >
+              <SelectTrigger id="backup-source-kind" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={String(BackupSourceKind.DIRECTORY)}>目录</SelectItem>
+                <SelectItem value={String(BackupSourceKind.DATABASE)}>数据库</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
-            <Input
-              label="目录绝对路径"
-              value={backupForm.sourcePath}
-              onChange={(sourcePath) => setBackupForm((prev) => ({ ...prev, sourcePath }))}
-            />
+            {backupForm.sourceKind === BackupSourceKind.DATABASE ? (
+              <Input
+                label="数据库 DSN"
+                value={backupForm.sourceDsn}
+                onChange={(sourceDsn) => setBackupForm((prev) => ({ ...prev, sourceDsn }))}
+              />
+            ) : (
+              <Input
+                label="目录绝对路径"
+                value={backupForm.sourcePath}
+                onChange={(sourcePath) => setBackupForm((prev) => ({ ...prev, sourcePath }))}
+              />
+            )}
             <Input
               label="备份名(可选)"
               value={backupForm.name}

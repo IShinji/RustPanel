@@ -18,11 +18,12 @@ use uuid::Uuid;
 use crate::{
     ok_response,
     proto::rustpanel::v1::{
-        backup_service_server::BackupService, BackupRecord, BackupTarget, BackupTargetKind,
-        CreateBackupRequest, CreateBackupResponse, DeleteBackupRequest, DeleteBackupResponse,
-        DeleteBackupTargetRequest, DeleteBackupTargetResponse, ListBackupTargetsRequest,
-        ListBackupTargetsResponse, ListBackupsRequest, ListBackupsResponse, RestoreBackupRequest,
-        RestoreBackupResponse, UpsertBackupTargetRequest, UpsertBackupTargetResponse,
+        backup_service_server::BackupService, BackupRecord, BackupSourceKind, BackupTarget,
+        BackupTargetKind, CreateBackupRequest, CreateBackupResponse, DeleteBackupRequest,
+        DeleteBackupResponse, DeleteBackupTargetRequest, DeleteBackupTargetResponse,
+        ListBackupTargetsRequest, ListBackupTargetsResponse, ListBackupsRequest,
+        ListBackupsResponse, RestoreBackupRequest, RestoreBackupResponse,
+        UpsertBackupTargetRequest, UpsertBackupTargetResponse,
     },
 };
 
@@ -99,6 +100,8 @@ pub async fn run_oneshot_backup(
             source_path: source_path.clone(),
             name,
             target_id,
+            source_kind: BackupSourceKind::Directory as i32,
+            source_dsn: String::new(),
         }))
         .await
         .map_err(|status| status.message().to_owned())?;
@@ -198,16 +201,9 @@ impl BackupService for BackupServiceImpl {
         request: Request<CreateBackupRequest>,
     ) -> Result<GrpcResponse<CreateBackupResponse>, Status> {
         let request = request.into_inner();
-        let source = PathBuf::from(request.source_path.trim());
-        if source.as_os_str().is_empty() || !source.is_absolute() {
-            return Err(Status::invalid_argument(
-                "source_path must be an absolute directory path",
-            ));
-        }
-        let metadata = tokio::fs::metadata(&source).await.map_err(io_status)?;
-        if !metadata.is_dir() {
-            return Err(Status::invalid_argument("source_path must be a directory"));
-        }
+        // UNSPECIFIED(旧请求)按目录处理;仅 DATABASE 走数据库分支。
+        let is_database = BackupSourceKind::try_from(request.source_kind).ok()
+            == Some(BackupSourceKind::Database);
 
         let _guard = self.store.write_lock.lock().await;
         let mut state = self.store.load().await?;
@@ -230,25 +226,61 @@ impl BackupService for BackupServiceImpl {
         let archive_name = format!("{id}.tar.gz");
         let archive_path = self.store.archive_path(&archive_name);
         let now = current_timestamp();
-        let display_name = if request.name.trim().is_empty() {
+
+        // 按来源确定"要打包的目录" + 记录里的 source_path + 默认显示名。
+        // 数据库备份先把 dump 落到临时目录,再 tar 该目录(打完即删)。
+        let mut tmp_dir: Option<PathBuf> = None;
+        let (tar_source, record_source_path, display_base) = if is_database {
+            let dsn = request.source_dsn.trim();
+            if dsn.is_empty() {
+                return Err(Status::invalid_argument(
+                    "source_dsn is required for database backup",
+                ));
+            }
+            let dir = self.store.root.join("tmp").join(&id);
+            tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
+            dump_database(dsn, &dir).await?;
+            tmp_dir = Some(dir.clone());
+            (dir, redact_dsn(dsn), database_name(dsn))
+        } else {
+            let source = PathBuf::from(request.source_path.trim());
+            if source.as_os_str().is_empty() || !source.is_absolute() {
+                return Err(Status::invalid_argument(
+                    "source_path must be an absolute directory path",
+                ));
+            }
+            if !tokio::fs::metadata(&source)
+                .await
+                .map_err(io_status)?
+                .is_dir()
+            {
+                return Err(Status::invalid_argument("source_path must be a directory"));
+            }
             let base = source
                 .file_name()
                 .map(|name| name.to_string_lossy().to_string())
                 .unwrap_or_else(|| "backup".to_owned());
-            format!("{base}-{now}")
+            (source.clone(), source.to_string_lossy().to_string(), base)
+        };
+
+        let display_name = if request.name.trim().is_empty() {
+            format!("{display_base}-{now}")
         } else {
             request.name.trim().to_owned()
         };
 
         // 打 tar.gz(spawn_blocking,避免阻塞 reactor)。
-        let source_for_task = source.clone();
+        let source_for_task = tar_source.clone();
         let archive_for_task = archive_path.clone();
-        let size_bytes = tokio::task::spawn_blocking(move || {
+        let tar_result = tokio::task::spawn_blocking(move || {
             create_tar_gz_blocking(&source_for_task, &archive_for_task)
         })
         .await
-        .map_err(io_status)?
         .map_err(io_status)?;
+        if let Some(dir) = &tmp_dir {
+            let _ = tokio::fs::remove_dir_all(dir).await;
+        }
+        let size_bytes = tar_result.map_err(io_status)?;
 
         // 离站上传(WebDAV / S3)。失败不丢本地备份,只在 message 里告警。
         let mut offsite_uploaded = false;
@@ -265,12 +297,17 @@ impl BackupService for BackupServiceImpl {
         let record = StoredRecord {
             id,
             name: display_name,
-            source_path: source.to_string_lossy().to_string(),
+            source_path: record_source_path,
             target_id: request.target_id,
             archive_name,
             size_bytes,
             offsite_uploaded,
             created_at_seconds: now,
+            source_kind: if is_database {
+                BackupSourceKind::Database as i32
+            } else {
+                BackupSourceKind::Directory as i32
+            },
         };
         state.records.push(record.clone());
         self.store.save(&state).await?;
@@ -307,6 +344,15 @@ impl BackupService for BackupServiceImpl {
             .cloned()
             .ok_or_else(|| Status::not_found("backup not found"))?;
 
+        // 数据库备份的 source_path 是脱敏 DSN(非路径),还原只能解出 dump,
+        // 必须显式给目标目录,不自动应用回库(避免误覆盖)。
+        if record.source_kind == BackupSourceKind::Database as i32
+            && request.restore_path.trim().is_empty()
+        {
+            return Err(Status::invalid_argument(
+                "数据库备份请指定还原目录(将 dump.sql 解出到该目录,再自行导入)",
+            ));
+        }
         let restore_path = if request.restore_path.trim().is_empty() {
             PathBuf::from(&record.source_path)
         } else {
@@ -706,6 +752,143 @@ async fn s3_delete(target: &StoredTarget, key: &str) -> Result<(), String> {
     }
 }
 
+struct SqlDsn {
+    user: String,
+    pass: String,
+    host: String,
+    port: String,
+    db: String,
+}
+
+/// 解析 mysql:// / postgres:// DSN 为各部件(v1:不做 %xx 解码)。
+fn parse_sql_dsn(dsn: &str) -> Option<SqlDsn> {
+    let rest = dsn.split_once("://")?.1;
+    let (userinfo, hostpart) = rest.split_once('@')?;
+    let (user, pass) = userinfo.split_once(':').unwrap_or((userinfo, ""));
+    let (hostport, dbpart) = hostpart.split_once('/').unwrap_or((hostpart, ""));
+    let db = dbpart.split(['?', '&']).next().unwrap_or("").to_owned();
+    let (host, port) = hostport.split_once(':').unwrap_or((hostport, ""));
+    if host.is_empty() || db.is_empty() {
+        return None;
+    }
+    Some(SqlDsn {
+        user: user.to_owned(),
+        pass: pass.to_owned(),
+        host: host.to_owned(),
+        port: port.to_owned(),
+        db,
+    })
+}
+
+fn sqlite_path(dsn: &str) -> Option<PathBuf> {
+    let rest = dsn.strip_prefix("sqlite:")?;
+    let rest = rest.strip_prefix("//").unwrap_or(rest);
+    let path = rest.split('?').next().unwrap_or("");
+    if path.is_empty() || path == ":memory:" {
+        return None;
+    }
+    Some(PathBuf::from(path))
+}
+
+/// 抹掉 DSN 里的密码用于展示/记录。
+fn redact_dsn(dsn: &str) -> String {
+    if let Some((scheme, rest)) = dsn.split_once("://") {
+        if let Some((userinfo, hostpart)) = rest.split_once('@') {
+            let user = userinfo.split_once(':').map(|(u, _)| u).unwrap_or(userinfo);
+            return format!("{scheme}://{user}:***@{hostpart}");
+        }
+    }
+    dsn.to_owned()
+}
+
+fn database_name(dsn: &str) -> String {
+    parse_sql_dsn(dsn)
+        .map(|parts| parts.db)
+        .filter(|db| !db.is_empty())
+        .or_else(|| {
+            sqlite_path(dsn).and_then(|path| {
+                path.file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+            })
+        })
+        .unwrap_or_else(|| "db".to_owned())
+}
+
+/// 数据库逻辑备份:mysqldump / pg_dump 落 dump.sql,或 SQLite 拷文件。工具缺失给清晰报错。
+async fn dump_database(dsn: &str, out_dir: &Path) -> Result<(), Status> {
+    if dsn.starts_with("mysql://") {
+        let parts =
+            parse_sql_dsn(dsn).ok_or_else(|| Status::invalid_argument("invalid mysql dsn"))?;
+        let out = out_dir.join("dump.sql");
+        let mut command = tokio::process::Command::new("mysqldump");
+        command
+            .env("MYSQL_PWD", &parts.pass)
+            .arg("-h")
+            .arg(&parts.host)
+            .arg("-u")
+            .arg(&parts.user)
+            .arg(format!("--result-file={}", out.display()));
+        if !parts.port.is_empty() {
+            command.arg("-P").arg(&parts.port);
+        }
+        command.arg(&parts.db);
+        run_dump(command, "mysqldump").await
+    } else if dsn.starts_with("postgres://") || dsn.starts_with("postgresql://") {
+        let parts =
+            parse_sql_dsn(dsn).ok_or_else(|| Status::invalid_argument("invalid postgres dsn"))?;
+        let out = out_dir.join("dump.sql");
+        let mut command = tokio::process::Command::new("pg_dump");
+        command
+            .env("PGPASSWORD", &parts.pass)
+            .arg("-h")
+            .arg(&parts.host)
+            .arg("-U")
+            .arg(&parts.user)
+            .arg("-f")
+            .arg(&out)
+            .arg("-d")
+            .arg(&parts.db);
+        if !parts.port.is_empty() {
+            command.arg("-p").arg(&parts.port);
+        }
+        run_dump(command, "pg_dump").await
+    } else if dsn.starts_with("sqlite:") {
+        let path = sqlite_path(dsn).ok_or_else(|| {
+            Status::invalid_argument("invalid sqlite dsn (:memory: not supported)")
+        })?;
+        tokio::fs::copy(&path, out_dir.join("dump.sqlite"))
+            .await
+            .map_err(io_status)?;
+        Ok(())
+    } else {
+        Err(Status::invalid_argument(
+            "dsn must start with mysql:// / postgres:// / sqlite:",
+        ))
+    }
+}
+
+async fn run_dump(mut command: tokio::process::Command, tool: &str) -> Result<(), Status> {
+    let output = match command.output().await {
+        Ok(output) => output,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(Status::failed_precondition(format!(
+                "{tool} 未安装,无法做数据库逻辑备份(可改用目录/卷备份)"
+            )));
+        }
+        Err(error) => return Err(io_status(error)),
+    };
+    if output.status.success() {
+        Ok(())
+    } else {
+        let detail: String = String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .chars()
+            .take(300)
+            .collect();
+        Err(Status::internal(format!("{tool}: {detail}")))
+    }
+}
+
 fn validate_target(target: &BackupTarget) -> Result<(), Status> {
     if target.name.trim().is_empty() {
         return Err(Status::invalid_argument("target name is required"));
@@ -858,6 +1041,8 @@ struct StoredRecord {
     #[serde(default)]
     offsite_uploaded: bool,
     created_at_seconds: u64,
+    #[serde(default)]
+    source_kind: i32,
 }
 
 impl StoredRecord {
@@ -871,6 +1056,7 @@ impl StoredRecord {
             size_bytes: self.size_bytes,
             offsite_uploaded: self.offsite_uploaded,
             created_at_seconds: self.created_at_seconds,
+            source_kind: self.source_kind,
         }
     }
 }
@@ -990,5 +1176,29 @@ mod tests {
     fn s3_uri_encode_keeps_or_encodes_slash() {
         assert_eq!(s3_uri_encode("a/b c", false), "a/b%20c");
         assert_eq!(s3_uri_encode("a/b", true), "a%2Fb");
+    }
+
+    #[test]
+    fn parses_and_redacts_sql_dsn() {
+        let parsed = parse_sql_dsn("mysql://app:secret@db.local:3306/shop?x=1").expect("dsn");
+        assert_eq!(parsed.user, "app");
+        assert_eq!(parsed.pass, "secret");
+        assert_eq!(parsed.host, "db.local");
+        assert_eq!(parsed.port, "3306");
+        assert_eq!(parsed.db, "shop");
+        assert_eq!(
+            redact_dsn("mysql://app:secret@db.local:3306/shop"),
+            "mysql://app:***@db.local:3306/shop"
+        );
+        assert_eq!(database_name("postgres://u:p@h/orders"), "orders");
+    }
+
+    #[test]
+    fn sqlite_path_rejects_memory() {
+        assert_eq!(
+            sqlite_path("sqlite:/var/lib/app.db"),
+            Some(PathBuf::from("/var/lib/app.db"))
+        );
+        assert!(sqlite_path("sqlite::memory:").is_none());
     }
 }
