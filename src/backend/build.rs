@@ -23,6 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "../../proto/rustpanel/v1/ssl.proto",
         "../../proto/rustpanel/v1/system.proto",
         "../../proto/rustpanel/v1/terminal.proto",
+        "../../proto/rustpanel/v1/toolbox.proto",
         "../../proto/rustpanel/v1/user.proto",
         "../../proto/rustpanel/v1/vsmtp.proto",
         "../../proto/rustpanel/v1/workload.proto",

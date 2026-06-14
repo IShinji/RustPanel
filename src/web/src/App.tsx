@@ -212,6 +212,7 @@ type TabId =
   | "notifications"
   | "backup"
   | "users"
+  | "toolbox"
   | "settings";
 type NavGroup = "overview" | "host" | "resource" | "security" | "tools" | "system";
 type NavTab = {
@@ -526,6 +527,7 @@ const tabs: NavTab[] = [
   { id: "network", label: "网络与端口", icon: Wifi, group: "system" },
   { id: "notifications", label: "通知", icon: Bell, group: "system" },
   { id: "backup", label: "备份", icon: Archive, group: "tools" },
+  { id: "toolbox", label: "工具箱", icon: HardDrive, group: "tools" },
   { id: "users", label: "用户", icon: UserCircle2, group: "system" },
   { id: "settings", label: "面板设置", icon: SettingsIcon, group: "system" }
 ];
@@ -841,6 +843,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
           {active === "notifications" && <NotificationPage clients={clients} />}
           {active === "backup" && <BackupPage clients={clients} />}
           {active === "users" && <UserPage clients={clients} />}
+          {active === "toolbox" && <ToolboxPage clients={clients} />}
           {active === "settings" && <SettingsPage clients={clients} onLogout={onLogout} />}
         </div>
       </main>
@@ -3202,6 +3205,144 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
               </TableBody>
             </Table>
           )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+function ToolboxPage({ clients }: { clients: Clients }) {
+  const [info, setInfo] = useState<
+    { swapTotal: number; swapUsed: number; timezone: string; rootAvail: number } | undefined
+  >(undefined);
+  const [swapSize, setSwapSize] = useState("512");
+  const [timezone, setTimezone] = useState("Asia/Shanghai");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const response = await clients.toolbox.getToolbox({});
+      setInfo({
+        swapTotal: Number(response.swapTotalBytes),
+        swapUsed: Number(response.swapUsedBytes),
+        timezone: response.timezone,
+        rootAvail: Number(response.rootAvailableBytes)
+      });
+      if (response.timezone) setTimezone(response.timezone);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const createSwap = async () => {
+    try {
+      const response = await clients.toolbox.createSwap({ sizeMb: Number(swapSize) || 0 });
+      setMessage(response.status?.message || "swap 已创建");
+      setError("");
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const applyTimezone = async () => {
+    try {
+      const response = await clients.toolbox.setTimezone({ timezone: timezone.trim() });
+      setMessage(response.status?.message || "时区已设置");
+      setError("");
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight m-0">系统工具箱</h1>
+          <p className="text-sm text-muted-foreground m-0">
+            低配 VPS 常用:加 swap、调时区。系统改动需后端设 RUSTPANEL_TOOLBOX_APPLY=1 才生效。
+          </p>
+        </div>
+        <UIButton variant="outline" size="sm" onClick={() => void load()}>
+          <RefreshCw className="size-4" />
+          刷新
+        </UIButton>
+      </header>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive whitespace-pre-line">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success whitespace-pre-line">
+          {message}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>状态</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {info ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div>
+                <div className="text-muted-foreground">Swap</div>
+                <div className="font-medium">
+                  {formatBytes(info.swapUsed)} / {formatBytes(info.swapTotal)}
+                </div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">时区</div>
+                <div className="font-medium">{info.timezone || "-"}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">根分区可用</div>
+                <div className="font-medium">{formatBytes(info.rootAvail)}</div>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state text-sm">读取中…</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>创建 Swap</CardTitle>
+          <CardDescription>在根分区建 swapfile 并启用 + 写入 /etc/fstab(64–4096 MB)。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <Input label="大小 (MB)" type="number" value={swapSize} onChange={setSwapSize} />
+            <UIButton size="sm" onClick={() => void createSwap()}>
+              创建
+            </UIButton>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>设置时区</CardTitle>
+          <CardDescription>如 Asia/Shanghai / UTC(需 /usr/share/zoneinfo 存在该时区)。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <Input label="时区" value={timezone} onChange={setTimezone} />
+            <UIButton size="sm" onClick={() => void applyTimezone()}>
+              设置
+            </UIButton>
+          </div>
         </CardContent>
       </Card>
     </section>

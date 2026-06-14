@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// GetToolboxRequest 读取系统工具箱状态。
+message GetToolboxRequest {}
+
+// GetToolboxResponse 返回 swap / 时区 / 根分区可用空间。
+message GetToolboxResponse {
+  Response status = 1;
+  uint64 swap_total_bytes = 2;
+  uint64 swap_used_bytes = 3;
+  string timezone = 4;
+  uint64 root_available_bytes = 5;
+}
+
+// CreateSwapRequest 创建并启用 swapfile(低配 VPS 常用)。
+message CreateSwapRequest {
+  // 大小(MB),64..=4096。
+  uint32 size_mb = 1;
+}
+
+message CreateSwapResponse {
+  Response status = 1;
+}
+
+// SetTimezoneRequest 设置系统时区(如 Asia/Shanghai)。
+message SetTimezoneRequest {
+  string timezone = 1;
+}
+
+message SetTimezoneResponse {
+  Response status = 1;
+}
+
+// ToolboxService 轻量系统工具箱:swap 状态/创建、时区。专注低配 VPS 运维。
+service ToolboxService {
+  rpc GetToolbox(GetToolboxRequest) returns (GetToolboxResponse);
+  rpc CreateSwap(CreateSwapRequest) returns (CreateSwapResponse);
+  rpc SetTimezone(SetTimezoneRequest) returns (SetTimezoneResponse);
+}

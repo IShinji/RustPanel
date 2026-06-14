@@ -51,6 +51,7 @@ pub mod security;
 pub mod site;
 pub mod ssl;
 pub mod terminal;
+pub mod toolbox;
 pub mod user;
 pub mod vsmtp;
 pub mod workload;
@@ -84,6 +85,7 @@ use proto::rustpanel::v1::{
     ssl_service_server::SslServiceServer,
     system_service_server::{SystemService, SystemServiceServer},
     terminal_service_server::TerminalServiceServer,
+    toolbox_service_server::ToolboxServiceServer,
     user_service_server::UserServiceServer,
     vsmtp_alias_service_server::VsmtpAliasServiceServer,
     workload_service_server::WorkloadServiceServer,
@@ -422,6 +424,10 @@ fn multiplex_service_with_auth(
         ))
         .add_service(NotificationServiceServer::with_interceptor(
             notification::NotificationServiceImpl::new(),
+            auth_interceptor.clone(),
+        ))
+        .add_service(ToolboxServiceServer::with_interceptor(
+            toolbox::ToolboxServiceImpl,
             auth_interceptor.clone(),
         ))
         .add_service(UserServiceServer::with_interceptor(
