@@ -123,6 +123,119 @@ pub async fn run_oneshot_backup(
     Ok(())
 }
 
+/// restic 增量备份(CLI / cron 用):去重 + 增量 + 压缩,极省磁盘/带宽,
+/// 适合低配主机做离站。repo 可为本地路径或 restic 原生后端(sftp:/s3:/rest: 等),
+/// 由 restic 自己处理传输;密码经 RESTIC_PASSWORD / RESTIC_PASSWORD_FILE env 传入,
+/// 绝不上命令行。本进程仅 shell-out restic,不在常驻服务里新增攻击面。
+pub async fn run_restic_backup(
+    source_path: String,
+    repo: String,
+    keep: u32,
+    tag: String,
+) -> Result<(), String> {
+    let source = source_path.trim();
+    let repo = repo.trim();
+    if source.is_empty() || repo.is_empty() {
+        return Err("restic 备份需同时指定 --restic-source 与 --restic-repo".to_owned());
+    }
+    if env::var("RESTIC_PASSWORD").is_err() && env::var("RESTIC_PASSWORD_FILE").is_err() {
+        return Err(
+            "请设置 RESTIC_PASSWORD(或 RESTIC_PASSWORD_FILE)环境变量后再运行 restic 备份"
+                .to_owned(),
+        );
+    }
+    // repo 不存在则先 init(用 cat config 探测;若密码错或 repo 已存在,init 会安全报错
+    // 而非覆盖)。
+    if !restic_repo_exists(repo).await? {
+        run_restic(restic_init_args(repo), "restic init").await?;
+        tracing::info!(target = "backup.restic", repo = %repo, "initialized restic repository");
+    }
+    run_restic(restic_backup_args(repo, source, &tag), "restic backup").await?;
+    if keep > 0 {
+        run_restic(restic_forget_args(repo, keep, &tag), "restic forget/prune").await?;
+    }
+    tracing::info!(
+        target = "backup.restic",
+        repo = %repo,
+        source = %source,
+        keep,
+        "restic backup done"
+    );
+    Ok(())
+}
+
+fn restic_init_args(repo: &str) -> Vec<String> {
+    vec!["-r".to_owned(), repo.to_owned(), "init".to_owned()]
+}
+
+fn restic_backup_args(repo: &str, source: &str, tag: &str) -> Vec<String> {
+    let mut args = vec![
+        "-r".to_owned(),
+        repo.to_owned(),
+        "backup".to_owned(),
+        "--one-file-system".to_owned(),
+    ];
+    if !tag.trim().is_empty() {
+        args.push("--tag".to_owned());
+        args.push(tag.trim().to_owned());
+    }
+    args.push(source.to_owned());
+    args
+}
+
+/// forget + prune:多来源共用一个 repo 时务必配 --restic-tag,否则 keep-last 作用于
+/// 整库,会误删其它来源的快照。带 tag 时 keep-last 仅在该 tag 内生效。
+fn restic_forget_args(repo: &str, keep: u32, tag: &str) -> Vec<String> {
+    let mut args = vec![
+        "-r".to_owned(),
+        repo.to_owned(),
+        "forget".to_owned(),
+        "--prune".to_owned(),
+        "--keep-last".to_owned(),
+        keep.to_string(),
+    ];
+    if !tag.trim().is_empty() {
+        args.push("--tag".to_owned());
+        args.push(tag.trim().to_owned());
+    }
+    args
+}
+
+async fn restic_repo_exists(repo: &str) -> Result<bool, String> {
+    let output = tokio::process::Command::new("restic")
+        .args(["-r", repo, "cat", "config"])
+        .output()
+        .await
+        .map_err(restic_spawn_err)?;
+    Ok(output.status.success())
+}
+
+async fn run_restic(args: Vec<String>, label: &str) -> Result<(), String> {
+    let output = tokio::process::Command::new("restic")
+        .args(&args)
+        .output()
+        .await
+        .map_err(restic_spawn_err)?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let detail: String = String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .chars()
+            .take(400)
+            .collect();
+        Err(format!("{label} 失败: {detail}"))
+    }
+}
+
+fn restic_spawn_err(error: std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        "restic 未安装(请先安装 restic 二进制后重试:https://restic.net)".to_owned()
+    } else {
+        error.to_string()
+    }
+}
+
 #[tonic::async_trait]
 impl BackupService for BackupServiceImpl {
     async fn list_backup_targets(
@@ -1191,6 +1304,49 @@ mod tests {
             "mysql://app:***@db.local:3306/shop"
         );
         assert_eq!(database_name("postgres://u:p@h/orders"), "orders");
+    }
+
+    #[test]
+    fn restic_args_are_built_with_tag_scoping() {
+        assert_eq!(restic_init_args("/srv/repo"), ["-r", "/srv/repo", "init"]);
+
+        // 无 tag:不追加 --tag。
+        let plain = restic_backup_args("repo", "/var/www", "");
+        assert_eq!(
+            plain,
+            ["-r", "repo", "backup", "--one-file-system", "/var/www"]
+        );
+
+        // 带 tag:--tag 在 source 之前。
+        let tagged = restic_backup_args("repo", "/var/www", " site-a ");
+        assert_eq!(
+            tagged,
+            [
+                "-r",
+                "repo",
+                "backup",
+                "--one-file-system",
+                "--tag",
+                "site-a",
+                "/var/www"
+            ]
+        );
+
+        // forget:keep-last + prune,带 tag 时仅在该 tag 内保留。
+        let forget = restic_forget_args("repo", 7, "site-a");
+        assert_eq!(
+            forget,
+            [
+                "-r",
+                "repo",
+                "forget",
+                "--prune",
+                "--keep-last",
+                "7",
+                "--tag",
+                "site-a"
+            ]
+        );
     }
 
     #[test]

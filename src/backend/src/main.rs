@@ -25,6 +25,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .map_err(Into::into);
     }
 
+    // restic 增量备份模式(供 cron 定时调度):跑完即退,不起服务。
+    if let Some(source) = cli.restic_source.clone() {
+        init_tracing();
+        return rustpanel_backend::backup::run_restic_backup(
+            source,
+            cli.restic_repo.clone(),
+            cli.restic_keep,
+            cli.restic_tag.clone(),
+        )
+        .await
+        .map_err(Into::into);
+    }
+
     init_tracing();
     if cli.daemon {
         daemonize()?;

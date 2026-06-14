@@ -28,7 +28,6 @@ v3.0 已对齐宝塔在「安全 / 站点 / SSL / 文件 / 监控 / Docker / 集
 - 低配约束固化(AGENTS.md 架构约束)+ 项目记忆 + 3 处 OOM 流式化修复。
 
 **有理由暂缓(不宜在自动部署到生产的流水线上仓促做,需专门+真机验证)**：
-- `P1-04` restic 增量备份:依赖 restic 二进制(外部工具),按需再接;目录/库备份已覆盖常规需求。
 - `P2-02(导入)` .sql 导入 / `P2-03` MySQL 运维(改密/慢日志/白名单):需按引擎拆语句、动管理员凭据,
   风险偏高且无真实 DB 端到端验证环境。
 - `P3` FTP:虚拟用户需 `pure-pw`/`db_load` 外部工具 + 守护进程生命周期 + 暴露文件系统,
@@ -81,7 +80,12 @@ v3.0 已对齐宝塔在「安全 / 站点 / SSL / 文件 / 监控 / Docker / 集
 - [x] **P1-03** 定时策略：CLI 一次性备份模式 `rustpanel-backend --backup-source <dir>
       [--backup-target <id>] [--backup-keep N]`(跑完即退),配 CronService 即可定时;
       `--backup-keep` 实现"保留同源最新 N 份"。(cron 页一键预设模板 待补。)
-- [ ] **P1-04** 增量与校验：restic 集成(P8 catalog 已含 restic)做增量 + 完整性校验。
+- [x] **P1-04** 增量备份:restic CLI 模式 `--restic-source <dir> --restic-repo <repo>
+      [--restic-keep N] [--restic-tag T]`(跑完即退,配 CronService 定时);repo 不存在自动
+      `init`,`backup --one-file-system`,`forget --prune --keep-last N`(带 tag 时按来源隔离
+      保留);密码经 `RESTIC_PASSWORD`/`_FILE` env(不上命令行);restic 缺失清晰报错。
+      去重+增量+压缩,极省磁盘/带宽,适合低配离站。仅 CLI shell-out,不在常驻服务加攻击面。
+      (完整性校验 `restic check` 未做。)
 - [x] **P1-05** 前端备份页：去向配置 + 创建备份 + 备份点列表 + 还原(二次确认) + 删除 + 离站标识。
 - [x] **P1-06** 数据库 dump 备份:`source_kind=DATABASE` + `source_dsn`;mysqldump/pg_dump 落 dump.sql
       (MYSQL_PWD/PGPASSWORD env,不上命令行)、SQLite 拷文件,再 tar.gz 走同一 离站/还原 管道;

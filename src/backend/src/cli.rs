@@ -30,6 +30,18 @@ pub struct Cli {
     pub backup_name: String,
     #[arg(long, default_value_t = 0)]
     pub backup_keep: u32,
+    // restic 增量备份模式(供 cron 定时调度):设了 --restic-source 就跑一次 restic
+    // 备份后退出。--restic-repo 为 restic 仓库(本地路径或 sftp:/s3:/rest: 后端);
+    // 密码经 RESTIC_PASSWORD / RESTIC_PASSWORD_FILE env 传入;--restic-keep N=forget
+    // 后保留最新 N 个快照(多来源共库时配 --restic-tag 隔离)。
+    #[arg(long)]
+    pub restic_source: Option<String>,
+    #[arg(long, default_value = "")]
+    pub restic_repo: String,
+    #[arg(long, default_value_t = 0)]
+    pub restic_keep: u32,
+    #[arg(long, default_value = "")]
+    pub restic_tag: String,
 }
 
 impl Cli {
