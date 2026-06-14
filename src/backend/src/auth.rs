@@ -34,6 +34,10 @@ const DEFAULT_ADMIN_PASSWORD: &str = "rustpanel";
 const TOTP_STEP_SECONDS: u64 = 30;
 const TOTP_DIGITS: u32 = 6;
 const REFRESH_SUBJECT_PREFIX: &str = "refresh:";
+// 面板登录失败激增告警:窗口内累计达阈值且过冷却才推一次(聚合,避免每次失败都发)。
+const LOGIN_FAIL_WINDOW_SECONDS: u64 = 600;
+const LOGIN_FAIL_THRESHOLD: usize = 5;
+const LOGIN_ALERT_COOLDOWN_SECONDS: u64 = 3600;
 
 type HmacSha1 = Hmac<Sha1>;
 
@@ -69,6 +73,9 @@ pub struct AuthServiceImpl {
     credentials: PanelCredentials,
     security: SecurityConfig,
     totp_secret: Option<Vec<u8>>,
+    // 登录失败内存滑窗 + 上次告警时间;用于"登录失败激增"聚合通知(默认关)。
+    recent_failures: Arc<tokio::sync::Mutex<Vec<u64>>>,
+    last_login_alert: Arc<tokio::sync::Mutex<u64>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -212,7 +219,41 @@ impl AuthServiceImpl {
             credentials: PanelCredentials::from_env()?,
             security: SecurityConfig::from_env(),
             totp_secret: totp_secret_from_env()?,
+            recent_failures: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            last_login_alert: Arc::new(tokio::sync::Mutex::new(0)),
         })
+    }
+
+    /// 记一次面板登录失败;窗口内累计达阈值且过了冷却,推送"登录失败激增"告警。
+    /// notify_event 自身按 LOGIN_FAILED 规则开关决定是否真的发(默认关)。
+    async fn note_login_failure(&self) {
+        let now = unix_now().unwrap_or(0);
+        let count = {
+            let mut fails = self.recent_failures.lock().await;
+            fails.push(now);
+            fails.retain(|ts| now.saturating_sub(*ts) <= LOGIN_FAIL_WINDOW_SECONDS);
+            fails.len()
+        };
+        if count < LOGIN_FAIL_THRESHOLD {
+            return;
+        }
+        {
+            let mut last = self.last_login_alert.lock().await;
+            if *last != 0 && now.saturating_sub(*last) < LOGIN_ALERT_COOLDOWN_SECONDS {
+                return;
+            }
+            *last = now;
+        }
+        tokio::spawn(async move {
+            crate::notification::notify_event(
+                crate::proto::rustpanel::v1::NotificationEventKind::LoginFailed,
+                "面板登录失败激增",
+                &format!(
+                    "最近 {LOGIN_FAIL_WINDOW_SECONDS} 秒内出现 {count} 次面板登录失败,可能正在被爆破。"
+                ),
+            )
+            .await;
+        });
     }
 }
 
@@ -234,6 +275,7 @@ impl AuthService for AuthServiceImpl {
                 "grpc",
             )
             .await;
+            self.note_login_failure().await;
             return Err(Status::unauthenticated("invalid username or password"));
         }
 
@@ -258,6 +300,7 @@ impl AuthService for AuthServiceImpl {
                     "grpc",
                 )
                 .await;
+                self.note_login_failure().await;
                 return Ok(GrpcResponse::new(LoginResponse {
                     status: Some(error_response(401, "two factor code required")),
                     access_token: String::new(),
