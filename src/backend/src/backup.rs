@@ -6,7 +6,10 @@ use std::{
 };
 
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncWriteExt;
+use tokio_util::io::ReaderStream;
 use tonic::{Request, Response as GrpcResponse, Status};
 use uuid::Uuid;
 
@@ -345,14 +348,17 @@ async fn webdav_upload(
     archive_name: &str,
     archive_path: &Path,
 ) -> Result<(), String> {
-    let bytes = tokio::fs::read(archive_path)
+    // 流式上传:归档以 stream 喂给 body,不整档读进内存(低配主机备份几百 MB
+    // 也不 OOM)。
+    let file = tokio::fs::File::open(archive_path)
         .await
         .map_err(|error| error.to_string())?;
+    let body = reqwest::Body::wrap_stream(ReaderStream::new(file));
     let client = reqwest::Client::new();
     let response = client
         .put(webdav_url(target, archive_name))
         .basic_auth(&target.username, Some(&target.password))
-        .body(bytes)
+        .body(body)
         .send()
         .await
         .map_err(|error| error.to_string())?;
@@ -378,15 +384,23 @@ async fn webdav_download(
     if !response.status().is_success() {
         return Err(format!("HTTP {}", response.status()));
     }
-    let bytes = response.bytes().await.map_err(|error| error.to_string())?;
     if let Some(parent) = archive_path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
             .map_err(|error| error.to_string())?;
     }
-    tokio::fs::write(archive_path, &bytes)
+    // 流式落盘:逐块写,不把整个下载缓冲进内存。
+    let mut file = tokio::fs::File::create(archive_path)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| error.to_string())?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    file.flush().await.map_err(|error| error.to_string())
 }
 
 async fn webdav_delete(target: &StoredTarget, archive_name: &str) -> Result<(), String> {

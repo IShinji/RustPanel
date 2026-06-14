@@ -35,3 +35,20 @@
 - Docker/GHCR/Compose 资源必须使用 `rustpanel-*` 命名。
 - VPS 目录默认 `/www/wwwroot/rustpanel`。
 - GHCR image 默认 `ghcr.io/ishinji/rustpanel-backend`。
+
+## 架构约束
+
+- **目标环境是低配 / 受限主机**:NAT VPS、OpenVZ、低至 ~128MB 内存、IPv6 多 IP。
+  「装得下、跑得动」优先于「功能多」。每个新功能都按此设计:
+  - **内存**:不要把大对象整体读进内存。文件 / 备份 / 上传下载一律**流式**处理
+    (tar/gz 流式、reqwest 流式 body + `bytes_stream`、分片);禁止 `fs::read` 整文件到 `Vec`
+    再发送 / 落盘。
+  - **进程 / fork**:谨慎起子进程;能用纯 Rust(rcgen / tar / flate2)就别 shell out。
+    重型运行时(nginx/MySQL/PHP)优先容器化或换轻量替代(rpxy / sws / sqlite)。
+  - **依赖**:新增 crate 权衡体积与编译成本,默认 `default-features = false` + rustls,
+    不引 openssl / native-tls。
+  - **后台任务**:周期间隔保守(分钟级),扫描廉价,无消费者时直接跳过。
+  - 尊重 CapabilityService 能力探针与资源预算(min_ram / NAT 端口预算)。
+- **状态持久化**:JSON 状态文件一律 tmp+rename 原子写;同一文件的 load→改→save
+  用进程内 `tokio::sync::Mutex` 串行化,防并发丢更新与半截文件。
+- **机密**:私钥等敏感文件落盘后收紧到 `0600`。
