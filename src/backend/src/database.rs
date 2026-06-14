@@ -12,12 +12,12 @@ use crate::{
     ok_response,
     proto::rustpanel::v1::{
         database_service_server::DatabaseService, BackupDatabaseRequest, BackupDatabaseResponse,
-        CreateDatabaseRequest, CreateDatabaseResponse, CreateDatabaseUserRequest,
-        CreateDatabaseUserResponse, CreateSqliteFileRequest, CreateSqliteFileResponse,
-        DatabaseItem, ExecuteSqlRequest, ExecuteSqlResponse, GetRedisInfoRequest,
-        GetRedisInfoResponse, ListDatabasesRequest, ListDatabasesResponse, ListSqliteFilesRequest,
-        ListSqliteFilesResponse, RedisInfo, SqlRow, SqliteFile, VacuumSqliteRequest,
-        VacuumSqliteResponse,
+        BrowseTableRequest, BrowseTableResponse, CreateDatabaseRequest, CreateDatabaseResponse,
+        CreateDatabaseUserRequest, CreateDatabaseUserResponse, CreateSqliteFileRequest,
+        CreateSqliteFileResponse, DatabaseItem, ExecuteSqlRequest, ExecuteSqlResponse,
+        GetRedisInfoRequest, GetRedisInfoResponse, ListDatabasesRequest, ListDatabasesResponse,
+        ListSqliteFilesRequest, ListSqliteFilesResponse, ListTablesRequest, ListTablesResponse,
+        RedisInfo, SqlRow, SqliteFile, VacuumSqliteRequest, VacuumSqliteResponse,
     },
 };
 
@@ -190,6 +190,85 @@ impl DatabaseService for DatabaseServiceImpl {
                 rows_affected: result.rows_affected(),
             }))
         }
+    }
+
+    async fn list_tables(
+        &self,
+        request: Request<ListTablesRequest>,
+    ) -> Result<GrpcResponse<ListTablesResponse>, Status> {
+        let request = request.into_inner();
+        let pool = connect_any(&request.dsn).await?;
+        let sql = match engine_from_dsn(&request.dsn)? {
+            DatabaseEngineKind::Mysql => "SHOW TABLES",
+            DatabaseEngineKind::Postgres => {
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename"
+            }
+            DatabaseEngineKind::Sqlite => {
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            }
+        };
+        let rows = sqlx::query(sql).fetch_all(&pool).await.map_err(db_status)?;
+        let tables = rows
+            .into_iter()
+            .filter_map(|row| row.try_get::<String, _>(0).ok())
+            .collect::<Vec<_>>();
+        Ok(GrpcResponse::new(ListTablesResponse {
+            status: Some(ok_response("ok")),
+            tables,
+        }))
+    }
+
+    async fn browse_table(
+        &self,
+        request: Request<BrowseTableRequest>,
+    ) -> Result<GrpcResponse<BrowseTableResponse>, Status> {
+        let request = request.into_inner();
+        // 表名严格校验(字母数字 + 下划线)后再带引号拼入 SQL,杜绝注入。
+        validate_identifier(&request.table)?;
+        let engine = engine_from_dsn(&request.dsn)?;
+        let quoted = quote_identifier(engine, &request.table);
+        let limit = request.limit.clamp(1, 500);
+        let offset = request.offset;
+        let pool = connect_any(&request.dsn).await?;
+
+        let count_sql = format!("SELECT COUNT(*) FROM {quoted}");
+        let total_rows = sqlx::query(&count_sql)
+            .fetch_one(&pool)
+            .await
+            .ok()
+            .and_then(|row| row.try_get::<i64, _>(0).ok())
+            .map(|count| count.max(0) as u64)
+            .unwrap_or(0);
+
+        let data_sql = format!("SELECT * FROM {quoted} LIMIT {limit} OFFSET {offset}");
+        let rows = sqlx::query(&data_sql)
+            .fetch_all(&pool)
+            .await
+            .map_err(db_status)?;
+        let columns = rows
+            .first()
+            .map(|row| {
+                row.columns()
+                    .iter()
+                    .map(|column| column.name().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let rows = rows
+            .into_iter()
+            .map(|row| SqlRow {
+                values: (0..row.len())
+                    .map(|index| value_to_string(&row, index))
+                    .collect(),
+            })
+            .collect::<Vec<_>>();
+
+        Ok(GrpcResponse::new(BrowseTableResponse {
+            status: Some(ok_response("ok")),
+            columns,
+            rows,
+            total_rows,
+        }))
     }
 
     async fn backup_database(
@@ -457,6 +536,14 @@ fn engine_from_dsn(dsn: &str) -> Result<DatabaseEngineKind, Status> {
         Err(Status::invalid_argument(
             "DSN must start with mysql://, postgres://, postgresql://, or sqlite:",
         ))
+    }
+}
+
+/// 给已 validate_identifier 校验过的标识符加引擎对应的引号。
+fn quote_identifier(engine: DatabaseEngineKind, ident: &str) -> String {
+    match engine {
+        DatabaseEngineKind::Mysql => format!("`{ident}`"),
+        DatabaseEngineKind::Postgres | DatabaseEngineKind::Sqlite => format!("\"{ident}\""),
     }
 }
 

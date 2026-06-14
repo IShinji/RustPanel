@@ -72,6 +72,33 @@ message ExecuteSqlResponse {
   uint64 rows_affected = 4;
 }
 
+// ListTablesRequest 列出某连接下的表。
+message ListTablesRequest {
+  string dsn = 1;
+}
+
+// ListTablesResponse 返回表名列表。
+message ListTablesResponse {
+  Response status = 1;
+  repeated string tables = 2;
+}
+
+// BrowseTableRequest 分页浏览某张表的数据。
+message BrowseTableRequest {
+  string dsn = 1;
+  string table = 2;
+  uint32 limit = 3;
+  uint32 offset = 4;
+}
+
+// BrowseTableResponse 返回该页数据 + 估算/精确总行数。
+message BrowseTableResponse {
+  Response status = 1;
+  repeated string columns = 2;
+  repeated SqlRow rows = 3;
+  uint64 total_rows = 4;
+}
+
 // BackupDatabaseRequest 表示数据库备份请求。
 message BackupDatabaseRequest {
   string dsn = 1;
@@ -152,6 +179,8 @@ service DatabaseService {
   rpc CreateDatabase(CreateDatabaseRequest) returns (CreateDatabaseResponse);
   rpc CreateDatabaseUser(CreateDatabaseUserRequest) returns (CreateDatabaseUserResponse);
   rpc ExecuteSql(ExecuteSqlRequest) returns (ExecuteSqlResponse);
+  rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
+  rpc BrowseTable(BrowseTableRequest) returns (BrowseTableResponse);
   rpc BackupDatabase(BackupDatabaseRequest) returns (BackupDatabaseResponse);
   // === Phase D: 轻量数据库优先 ===
   rpc ListSqliteFiles(ListSqliteFilesRequest) returns (ListSqliteFilesResponse);

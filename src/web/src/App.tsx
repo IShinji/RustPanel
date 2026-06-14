@@ -7254,6 +7254,13 @@ function DatabasePanel({ clients }: { clients: Clients }) {
   // ====== Phase D: Redis 监控 ======
   const [redisUrl, setRedisUrl] = useState("redis://127.0.0.1:6379");
   const [redisInfo, setRedisInfo] = useState<RedisInfo | undefined>(undefined);
+  // ====== P2: 表浏览 ======
+  const [tables, setTables] = useState<string[]>([]);
+  const [browseName, setBrowseName] = useState("");
+  const [browseColumns, setBrowseColumns] = useState<string[]>([]);
+  const [browseRows, setBrowseRows] = useState<string[][]>([]);
+  const [browseTotal, setBrowseTotal] = useState(0);
+  const [browseOffset, setBrowseOffset] = useState(0);
 
   const refreshSqlite = useCallback(async () => {
     try {
@@ -7369,6 +7376,30 @@ function DatabasePanel({ clients }: { clients: Clients }) {
       setColumns(response.columns);
       setRows(response.rows.map((row) => row.values));
       setMessage(`返回 ${response.rows.length} 行,影响 ${response.rowsAffected} 行`);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const loadTables = async () => {
+    try {
+      const response = await clients.database.listTables({ dsn });
+      setTables(response.tables);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const browse = async (table: string, offset: number) => {
+    try {
+      const response = await clients.database.browseTable({ dsn, table, limit: 50, offset });
+      setBrowseName(table);
+      setBrowseColumns(response.columns);
+      setBrowseRows(response.rows.map((row) => row.values));
+      setBrowseTotal(Number(response.totalRows));
+      setBrowseOffset(offset);
       setError("");
     } catch (err) {
       setError(safeError(err));
@@ -7688,6 +7719,77 @@ function DatabasePanel({ clients }: { clients: Clients }) {
                     </tbody>
                   </table>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle>表浏览</CardTitle>
+              <CardDescription>列出当前 DSN 下的表,分页查看数据(每页 50 行)</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <UIButton variant="outline" size="sm" onClick={() => void loadTables()}>
+                  <RefreshCw className="size-3.5" />
+                  加载表
+                </UIButton>
+                {tables.map((table) => (
+                  <UIButton
+                    key={table}
+                    size="sm"
+                    variant={browseName === table ? "default" : "outline"}
+                    onClick={() => void browse(table, 0)}
+                  >
+                    {table}
+                  </UIButton>
+                ))}
+              </div>
+              {browseName && (
+                <>
+                  <div className="flex items-center justify-between text-sm text-muted-foreground flex-wrap gap-2">
+                    <span>
+                      {browseName} · 共 {browseTotal} 行 · 显示 {browseRows.length ? browseOffset + 1 : 0}-
+                      {browseOffset + browseRows.length}
+                    </span>
+                    <div className="flex gap-2">
+                      <UIButton
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void browse(browseName, Math.max(0, browseOffset - 50))}
+                      >
+                        上一页
+                      </UIButton>
+                      <UIButton
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void browse(browseName, browseOffset + 50)}
+                      >
+                        下一页
+                      </UIButton>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="result-table">
+                      <thead>
+                        <tr>
+                          {browseColumns.map((column) => (
+                            <th key={column}>{column}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {browseRows.map((row, index) => (
+                          <tr key={index}>
+                            {row.map((value, cell) => (
+                              <td key={cell}>{value}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
