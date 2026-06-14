@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// DnsProvider 当前支持的 DNS 服务商。
+enum DnsProvider {
+  DNS_PROVIDER_UNSPECIFIED = 0;
+  DNS_PROVIDER_CLOUDFLARE = 1;
+}
+
+// DnsRecord 一条解析记录。
+message DnsRecord {
+  string id = 1;
+  // A / AAAA / CNAME / TXT / MX ...
+  string type = 2;
+  string name = 3;
+  string content = 4;
+  uint32 ttl = 5;
+  // Cloudflare 橙云代理(仅 A/AAAA/CNAME 有意义)。
+  bool proxied = 6;
+}
+
+// SetDnsConfigRequest 配置 DNS 服务商凭据(token 留空/占位符=保留原值)。
+message SetDnsConfigRequest {
+  DnsProvider provider = 1;
+  string api_token = 2;
+  string zone_id = 3;
+}
+
+message SetDnsConfigResponse {
+  Response status = 1;
+}
+
+message GetDnsConfigRequest {}
+
+message GetDnsConfigResponse {
+  Response status = 1;
+  DnsProvider provider = 2;
+  string zone_id = 3;
+  // 是否已配置可用凭据(token 不回传)。
+  bool configured = 4;
+}
+
+message ListDnsRecordsRequest {}
+
+message ListDnsRecordsResponse {
+  Response status = 1;
+  repeated DnsRecord records = 2;
+}
+
+// UpsertDnsRecordRequest:record.id 为空=新建,否则更新该记录。
+message UpsertDnsRecordRequest {
+  DnsRecord record = 1;
+}
+
+message UpsertDnsRecordResponse {
+  Response status = 1;
+  DnsRecord record = 2;
+}
+
+message DeleteDnsRecordRequest {
+  string id = 1;
+}
+
+message DeleteDnsRecordResponse {
+  Response status = 1;
+}
+
+// DnsService DNS 解析托管(对接服务商 API;亦可服务 ACME DNS-01 自动加 TXT)。
+service DnsService {
+  rpc GetDnsConfig(GetDnsConfigRequest) returns (GetDnsConfigResponse);
+  rpc SetDnsConfig(SetDnsConfigRequest) returns (SetDnsConfigResponse);
+  rpc ListDnsRecords(ListDnsRecordsRequest) returns (ListDnsRecordsResponse);
+  rpc UpsertDnsRecord(UpsertDnsRecordRequest) returns (UpsertDnsRecordResponse);
+  rpc DeleteDnsRecord(DeleteDnsRecordRequest) returns (DeleteDnsRecordResponse);
+}

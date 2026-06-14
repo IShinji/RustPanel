@@ -11,6 +11,7 @@ import { CapabilityService } from "../gen/rustpanel/v1/capability_pb";
 import { ClusterService } from "../gen/rustpanel/v1/cluster_pb";
 import { CronService } from "../gen/rustpanel/v1/cron_pb";
 import { DatabaseService } from "../gen/rustpanel/v1/db_pb";
+import { DnsService } from "../gen/rustpanel/v1/dns_pb";
 import { DockerService } from "../gen/rustpanel/v1/docker_pb";
 import { FileSystemService } from "../gen/rustpanel/v1/fs_pb";
 import { MonitorService } from "../gen/rustpanel/v1/monitor_pb";
@@ -104,6 +105,7 @@ export function createRpcClients(baseUrl = window.location.origin) {
     cluster: createClient(ClusterService, transport),
     cron: createClient(CronService, transport),
     database: createClient(DatabaseService, transport),
+    dns: createClient(DnsService, transport),
     docker: createClient(DockerService, transport),
     files: createClient(FileSystemService, transport),
     monitor: createClient(MonitorService, transport),

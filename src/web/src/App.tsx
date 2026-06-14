@@ -81,6 +81,7 @@ import {
   ResourceBudget
 } from "./gen/rustpanel/v1/capability_pb";
 import { RedisInfo, SqliteFile } from "./gen/rustpanel/v1/db_pb";
+import { DnsProvider, type DnsRecord } from "./gen/rustpanel/v1/dns_pb";
 import { PendingRollbackAction } from "./gen/rustpanel/v1/rollback_pb";
 import { ClusterNode, DistributionRecord } from "./gen/rustpanel/v1/cluster_pb";
 import { CronRunState, CronTask, CronTaskState } from "./gen/rustpanel/v1/cron_pb";
@@ -215,6 +216,7 @@ type TabId =
   | "users"
   | "toolbox"
   | "accesslog"
+  | "dns"
   | "settings";
 type NavGroup = "overview" | "host" | "resource" | "security" | "tools" | "system";
 type NavTab = {
@@ -531,6 +533,7 @@ const tabs: NavTab[] = [
   { id: "backup", label: "备份", icon: Archive, group: "tools" },
   { id: "toolbox", label: "工具箱", icon: HardDrive, group: "tools" },
   { id: "accesslog", label: "访问统计", icon: BarChart3, group: "tools" },
+  { id: "dns", label: "DNS", icon: Globe, group: "tools" },
   { id: "users", label: "用户", icon: UserCircle2, group: "system" },
   { id: "settings", label: "面板设置", icon: SettingsIcon, group: "system" }
 ];
@@ -848,6 +851,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
           {active === "users" && <UserPage clients={clients} />}
           {active === "toolbox" && <ToolboxPage clients={clients} />}
           {active === "accesslog" && <AccessLogPage clients={clients} />}
+          {active === "dns" && <DnsPage clients={clients} />}
           {active === "settings" && <SettingsPage clients={clients} onLogout={onLogout} />}
         </div>
       </main>
@@ -3203,6 +3207,251 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
                         <Trash2 className="size-3.5" />
                         卸载
                       </UIButton>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+type DnsFormState = {
+  id: string;
+  type: string;
+  name: string;
+  content: string;
+  ttl: string;
+  proxied: boolean;
+};
+
+const EMPTY_DNS_FORM: DnsFormState = {
+  id: "",
+  type: "A",
+  name: "",
+  content: "",
+  ttl: "1",
+  proxied: false
+};
+
+function DnsPage({ clients }: { clients: Clients }) {
+  const [zoneId, setZoneId] = useState("");
+  const [apiToken, setApiToken] = useState("");
+  const [configured, setConfigured] = useState(false);
+  const [records, setRecords] = useState<DnsRecord[]>([]);
+  const [form, setForm] = useState<DnsFormState>(EMPTY_DNS_FORM);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const loadConfig = useCallback(async () => {
+    try {
+      const response = await clients.dns.getDnsConfig({});
+      setZoneId(response.zoneId);
+      setConfigured(response.configured);
+      setError("");
+      return response.configured;
+    } catch (err) {
+      setError(safeError(err));
+      return false;
+    }
+  }, [clients]);
+
+  const loadRecords = useCallback(async () => {
+    try {
+      const response = await clients.dns.listDnsRecords({});
+      setRecords(response.records);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void loadConfig().then((ok) => {
+      if (ok) void loadRecords();
+    });
+  }, [loadConfig, loadRecords]);
+
+  const saveConfig = async () => {
+    try {
+      await clients.dns.setDnsConfig({
+        provider: DnsProvider.CLOUDFLARE,
+        zoneId: zoneId.trim(),
+        apiToken: apiToken.trim()
+      });
+      setApiToken("");
+      setMessage("DNS 配置已保存");
+      setError("");
+      const ok = await loadConfig();
+      if (ok) void loadRecords();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const saveRecord = async () => {
+    try {
+      await clients.dns.upsertDnsRecord({
+        record: {
+          id: form.id.trim(),
+          type: form.type.trim(),
+          name: form.name.trim(),
+          content: form.content.trim(),
+          ttl: Number(form.ttl) || 1,
+          proxied: form.proxied
+        }
+      });
+      setForm(EMPTY_DNS_FORM);
+      setMessage("解析记录已保存");
+      setError("");
+      void loadRecords();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const deleteRecord = async (id: string) => {
+    if (!window.confirm("确认删除该解析记录?")) return;
+    try {
+      await clients.dns.deleteDnsRecord({ id });
+      setMessage("解析记录已删除");
+      setError("");
+      void loadRecords();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight m-0">DNS 解析托管</h1>
+        <p className="text-sm text-muted-foreground m-0">
+          对接 Cloudflare API 管理解析记录(亦可服务 ACME DNS-01 自动加 TXT)。API token 仅存于后端,0600 落盘。
+        </p>
+      </header>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive whitespace-pre-line">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success">
+          {message}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>服务商配置</CardTitle>
+          <CardDescription>
+            Cloudflare · {configured ? "已配置(token 留空表示保留原值)" : "未配置"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input label="Zone ID" value={zoneId} onChange={setZoneId} />
+            <Input
+              label="API Token"
+              type="password"
+              value={apiToken}
+              onChange={setApiToken}
+            />
+          </div>
+          <div className="mt-3">
+            <UIButton size="sm" onClick={() => void saveConfig()}>
+              保存配置
+            </UIButton>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{form.id ? "编辑解析记录" : "新增解析记录"}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Input label="类型 (A/AAAA/CNAME/TXT…)" value={form.type} onChange={(v) => setForm({ ...form, type: v })} />
+            <Input label="名称" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
+            <Input label="内容" value={form.content} onChange={(v) => setForm({ ...form, content: v })} />
+            <Input label="TTL (1=自动)" type="number" value={form.ttl} onChange={(v) => setForm({ ...form, ttl: v })} />
+          </div>
+          <label className="flex items-center gap-2 text-sm mt-3 select-none">
+            <input
+              type="checkbox"
+              checked={form.proxied}
+              onChange={(event) => setForm({ ...form, proxied: event.target.checked })}
+            />
+            Cloudflare 代理(橙云,仅 A/AAAA/CNAME)
+          </label>
+          <div className="mt-3 flex gap-2">
+            <UIButton size="sm" disabled={!configured} onClick={() => void saveRecord()}>
+              {form.id ? "更新" : "新增"}
+            </UIButton>
+            {form.id && (
+              <UIButton variant="outline" size="sm" onClick={() => setForm(EMPTY_DNS_FORM)}>
+                取消编辑
+              </UIButton>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>解析记录</CardTitle>
+          <CardDescription>{configured ? `共 ${records.length} 条` : "请先配置服务商"}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {records.length === 0 ? (
+            <div className="empty-state text-sm">无记录</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>类型</TableHead>
+                  <TableHead>名称</TableHead>
+                  <TableHead>内容</TableHead>
+                  <TableHead>TTL</TableHead>
+                  <TableHead>代理</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {records.map((record) => (
+                  <UITableRow key={record.id}>
+                    <TableCell className="font-mono text-xs">{record.type}</TableCell>
+                    <TableCell className="break-all">{record.name}</TableCell>
+                    <TableCell className="font-mono text-xs break-all">{record.content}</TableCell>
+                    <TableCell className="tabular-nums">{record.ttl === 1 ? "自动" : record.ttl}</TableCell>
+                    <TableCell>{record.proxied ? "是" : "否"}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <UIButton
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setForm({
+                              id: record.id,
+                              type: record.type,
+                              name: record.name,
+                              content: record.content,
+                              ttl: String(record.ttl),
+                              proxied: record.proxied
+                            })
+                          }
+                        >
+                          编辑
+                        </UIButton>
+                        <UIButton variant="destructive" size="sm" onClick={() => void deleteRecord(record.id)}>
+                          删除
+                        </UIButton>
+                      </div>
                     </TableCell>
                   </UITableRow>
                 ))}

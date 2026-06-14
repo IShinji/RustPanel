@@ -41,6 +41,7 @@ pub mod cli;
 pub mod cluster;
 pub mod cron;
 pub mod database;
+pub mod dns;
 pub mod docker;
 pub mod files;
 pub mod monitor;
@@ -76,6 +77,7 @@ use proto::rustpanel::v1::{
     cluster_service_server::ClusterServiceServer,
     cron_service_server::CronServiceServer,
     database_service_server::DatabaseServiceServer,
+    dns_service_server::DnsServiceServer,
     docker_service_server::DockerServiceServer,
     file_system_service_server::FileSystemServiceServer,
     monitor_service_server::MonitorServiceServer,
@@ -434,6 +436,10 @@ fn multiplex_service_with_auth(
         ))
         .add_service(AccessLogServiceServer::with_interceptor(
             access_log::AccessLogServiceImpl,
+            auth_interceptor.clone(),
+        ))
+        .add_service(DnsServiceServer::with_interceptor(
+            dns::DnsServiceImpl::new(),
             auth_interceptor.clone(),
         ))
         .add_service(UserServiceServer::with_interceptor(

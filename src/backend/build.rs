@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "../../proto/rustpanel/v1/common.proto",
         "../../proto/rustpanel/v1/cron.proto",
         "../../proto/rustpanel/v1/db.proto",
+        "../../proto/rustpanel/v1/dns.proto",
         "../../proto/rustpanel/v1/docker.proto",
         "../../proto/rustpanel/v1/fs.proto",
         "../../proto/rustpanel/v1/monitor.proto",
