@@ -577,9 +577,21 @@ fn process_memory_bytes(pid: i32) -> u64 {
 }
 
 async fn read_tail(path: &Path, max_bytes: u64) -> Result<String, Status> {
-    let bytes = tokio::fs::read(path).await.unwrap_or_default();
-    let start = bytes.len().saturating_sub(max_bytes as usize);
-    Ok(String::from_utf8_lossy(&bytes[start..]).to_string())
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+    // 只读尾部 max_bytes:seek 到 len-max_bytes 再读,不把整个大日志读进内存
+    // (低配主机日志涨到几十/上百 MB 时整读会 OOM)。
+    let Ok(mut file) = tokio::fs::File::open(path).await else {
+        return Ok(String::new());
+    };
+    let len = file.metadata().await.map(|meta| meta.len()).unwrap_or(0);
+    if len > max_bytes {
+        let _ = file.seek(std::io::SeekFrom::End(-(max_bytes as i64))).await;
+    }
+    let mut buffer = Vec::new();
+    if file.read_to_end(&mut buffer).await.is_err() {
+        return Ok(String::new());
+    }
+    Ok(String::from_utf8_lossy(&buffer).to_string())
 }
 
 async fn trim_log(path: &Path, max_bytes: u64) -> Result<(), Status> {

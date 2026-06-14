@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     env,
     fs::File,
-    io::{Read, Write},
     path::{Component, Path, PathBuf},
     pin::Pin,
     sync::{Arc, Mutex},
@@ -764,9 +763,8 @@ fn append_path_to_zip(
     } else {
         zip.start_file(relative, options)?;
         let mut file = File::open(path)?;
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)?;
-        zip.write_all(&buffer)?;
+        // 流式拷贝进 zip,不把整个文件读进内存(低配主机打包大文件不 OOM)。
+        std::io::copy(&mut file, zip)?;
     }
 
     Ok(())
