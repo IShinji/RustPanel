@@ -201,7 +201,7 @@ impl BackupService for BackupServiceImpl {
         self.store.save(&state).await?;
 
         Ok(GrpcResponse::new(CreateBackupResponse {
-            status: Some(ok_response(&format!("backup created{warning}"))),
+            status: Some(ok_response(format!("backup created{warning}"))),
             record: Some(record.into_proto()),
         }))
     }
