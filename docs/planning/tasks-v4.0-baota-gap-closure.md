@@ -34,7 +34,6 @@ v3.0 已对齐宝塔在「安全 / 站点 / SSL / 文件 / 监控 / Docker / 集
 - `P3` FTP:虚拟用户需 `pure-pw`/`db_load` 外部工具 + 守护进程生命周期 + 暴露文件系统,
   安全敏感且本环境无法端到端验证;与"容器/现代/低配"定位契合度低(v3.0 已留占位页)。
 - `P4` PHP 原生多版本(`@priority: low`):定位为容器化 PHP-FPM,原生多版本暂不做。
-- `P5` 多用户 RBAC:鉴权改造(JWT claims + 逐 RPC 角色校验),改坏=锁死,高风险,需专门设计 + 充分测试。
 - `P6` 访问统计 / 迁移 / Linux 工具箱 / DNS(`@priority: low`):各为独立较大/小众项,按需单独排期。
 
 > 以上"暂缓"项均可应要求**单独立项、带真机验证**地实现;不在本轮自动上线批次内,是质量与低配约束的取舍。
@@ -124,9 +123,12 @@ v3.0 已对齐宝塔在「安全 / 站点 / SSL / 文件 / 监控 / Docker / 集
 
 目标：从单管理员升级为可分配角色的多用户(配合已有集群做团队/多租户)。
 
-- [ ] **P5-01** `UserService`：用户 CRUD、角色(admin/operator/readonly)、按模块授权。
-- [ ] **P5-02** auth 改造：JWT 带 user+role,Interceptor 做 RBAC 校验;保留单管理员兼容模式。
-- [ ] **P5-03** 前端：用户管理页 + 登录态展示当前角色。
+- [x] **P5-01** `UserService`:用户 CRUD + 角色(admin/operator/readonly);PBKDF2-HMAC-SHA256 加盐
+      存储(纯 Rust,RFC 向量验证),原子写+锁。
+- [x] **P5-02** auth 改造:JWT 带 role(serde default 向后兼容旧 token=admin);login 先 env 管理员
+      再查用户库;**RBAC 强制在多路复用层**按角色 vs 方法路径判定(readonly 仅 List/Get/Watch…;
+      operator 除 UserService 外全放行;UserService 仅 admin)。env 单管理员并存不变。
+- [x] **P5-03** 前端:用户管理页(增删改 + 角色)。(登录态展示当前角色 可后续小补。)
 
 ---
 

@@ -128,6 +128,7 @@ import {
   RequestCertificateResponse
 } from "./gen/rustpanel/v1/ssl_pb";
 import { RuntimeModule } from "./gen/rustpanel/v1/system_pb";
+import { User, UserRole } from "./gen/rustpanel/v1/user_pb";
 import { WorkloadItem, WorkloadState } from "./gen/rustpanel/v1/workload_pb";
 import { Badge } from "./components/ui/badge";
 import { Button as UIButton } from "./components/ui/button";
@@ -210,6 +211,7 @@ type TabId =
   | "network"
   | "notifications"
   | "backup"
+  | "users"
   | "settings";
 type NavGroup = "overview" | "host" | "resource" | "security" | "tools" | "system";
 type NavTab = {
@@ -524,6 +526,7 @@ const tabs: NavTab[] = [
   { id: "network", label: "网络与端口", icon: Wifi, group: "system" },
   { id: "notifications", label: "通知", icon: Bell, group: "system" },
   { id: "backup", label: "备份", icon: Archive, group: "tools" },
+  { id: "users", label: "用户", icon: UserCircle2, group: "system" },
   { id: "settings", label: "面板设置", icon: SettingsIcon, group: "system" }
 ];
 
@@ -837,6 +840,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
           {active === "network" && <NetworkPage clients={clients} />}
           {active === "notifications" && <NotificationPage clients={clients} />}
           {active === "backup" && <BackupPage clients={clients} />}
+          {active === "users" && <UserPage clients={clients} />}
           {active === "settings" && <SettingsPage clients={clients} onLogout={onLogout} />}
         </div>
       </main>
@@ -3192,6 +3196,211 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
                         <Trash2 className="size-3.5" />
                         卸载
                       </UIButton>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+const USER_ROLES: Array<{ value: UserRole; label: string }> = [
+  { value: UserRole.ADMIN, label: "管理员 (全权)" },
+  { value: UserRole.OPERATOR, label: "操作员 (读写,除用户管理)" },
+  { value: UserRole.READONLY, label: "只读" }
+];
+
+function userRoleLabel(role: UserRole): string {
+  return USER_ROLES.find((item) => item.value === role)?.label ?? "未知";
+}
+
+type UserForm = { username: string; password: string; role: UserRole; editing: boolean };
+
+const emptyUserForm: UserForm = {
+  username: "",
+  password: "",
+  role: UserRole.OPERATOR,
+  editing: false
+};
+
+function UserPage({ clients }: { clients: Clients }) {
+  const [users, setUsers] = useState<User[]>([]);
+  const [form, setForm] = useState<UserForm>(emptyUserForm);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const response = await clients.user.listUsers({});
+      setUsers(response.users);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const save = async () => {
+    if (!form.username.trim()) {
+      setError("用户名不能为空");
+      return;
+    }
+    if (!form.editing && !form.password.trim()) {
+      setError("新建用户必须设置密码");
+      return;
+    }
+    try {
+      await clients.user.upsertUser({
+        username: form.username.trim(),
+        password: form.password,
+        role: form.role
+      });
+      setMessage(`用户 ${form.username} 已保存`);
+      setForm(emptyUserForm);
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const edit = (user: User) => {
+    setForm({ username: user.username, password: "", role: user.role, editing: true });
+    setError("");
+    setMessage("");
+  };
+
+  const remove = async (user: User) => {
+    try {
+      await clients.user.deleteUser({ username: user.username });
+      setMessage(`用户 ${user.username} 已删除`);
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight m-0">用户管理</h1>
+          <p className="text-sm text-muted-foreground m-0">
+            env 管理员(RUSTPANEL_ADMIN_*)始终可登录且为管理员;这里管理附加用户与角色。
+            管理员=全权,操作员=读写(不含用户管理),只读=仅查询。
+          </p>
+        </div>
+        <UIButton variant="outline" size="sm" onClick={() => void load()}>
+          <RefreshCw className="size-4" />
+          刷新
+        </UIButton>
+      </header>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive whitespace-pre-line">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success whitespace-pre-line">
+          {message}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{form.editing ? "编辑用户" : "添加用户"}</CardTitle>
+          <CardDescription>密码用 PBKDF2-HMAC-SHA256 加盐存储;编辑时留空表示不改密码。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
+            <Input
+              label="用户名"
+              value={form.username}
+              onChange={(username) => setForm((prev) => ({ ...prev, username }))}
+            />
+            <Input
+              label={form.editing ? "密码 (留空不改)" : "密码"}
+              type="password"
+              value={form.password}
+              onChange={(password) => setForm((prev) => ({ ...prev, password }))}
+            />
+            <div className="grid gap-1">
+              <UILabel htmlFor="user-role">角色</UILabel>
+              <Select
+                value={String(form.role)}
+                onValueChange={(value) =>
+                  setForm((prev) => ({ ...prev, role: Number(value) as UserRole }))
+                }
+              >
+                <SelectTrigger id="user-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {USER_ROLES.map((item) => (
+                    <SelectItem key={item.value} value={String(item.value)}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2">
+              {form.editing && (
+                <UIButton size="sm" variant="outline" onClick={() => setForm(emptyUserForm)}>
+                  取消
+                </UIButton>
+              )}
+              <UIButton size="sm" onClick={() => void save()}>
+                <Plus className="size-3.5" />
+                {form.editing ? "更新" : "保存"}
+              </UIButton>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>用户列表</CardTitle>
+          <CardDescription>共 {users.length} 个附加用户</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {users.length === 0 ? (
+            <div className="empty-state text-sm">尚无附加用户(仅 env 管理员)</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>用户名</TableHead>
+                  <TableHead>角色</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {users.map((user) => (
+                  <UITableRow key={user.username}>
+                    <TableCell className="font-medium">{user.username}</TableCell>
+                    <TableCell>
+                      <Badge variant={user.role === UserRole.ADMIN ? "info" : "secondary"}>
+                        {userRoleLabel(user.role)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <UIButton size="sm" variant="outline" onClick={() => edit(user)}>
+                          编辑
+                        </UIButton>
+                        <UIButton size="sm" variant="outline" onClick={() => void remove(user)}>
+                          <Trash2 className="size-3.5" />
+                        </UIButton>
+                      </div>
                     </TableCell>
                   </UITableRow>
                 ))}

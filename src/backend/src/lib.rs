@@ -51,6 +51,7 @@ pub mod security;
 pub mod site;
 pub mod ssl;
 pub mod terminal;
+pub mod user;
 pub mod vsmtp;
 pub mod workload;
 
@@ -83,6 +84,7 @@ use proto::rustpanel::v1::{
     ssl_service_server::SslServiceServer,
     system_service_server::{SystemService, SystemServiceServer},
     terminal_service_server::TerminalServiceServer,
+    user_service_server::UserServiceServer,
     vsmtp_alias_service_server::VsmtpAliasServiceServer,
     workload_service_server::WorkloadServiceServer,
     GetSystemInfoRequest, GetSystemInfoResponse, HealthCheckRequest, HealthCheckResponse,
@@ -335,7 +337,9 @@ fn multiplex_service_with_auth(
         },
         authority.clone(),
     );
-    // AuthService 自身必须公开,login 是无 token 状态下唯一能调用的 RPC;其余 15 个服务一律拦截。
+    // AuthService 自身必须公开,login 是无 token 状态下唯一能调用的 RPC;其余服务一律拦截。
+    // RBAC 强制在多路复用层按"角色 vs 方法路径"判定,这里留一份 authority 克隆给它。
+    let enforce_authority = authority.clone();
     let auth_interceptor = auth::AuthInterceptor::new(authority);
     // RollbackService 需要在 SecurityServiceImpl 之前构造,这样 SecurityService
     // 就能在改面板端口 / 2FA 前调它的 ScheduleRollback 把 30s 计时器排上。
@@ -420,6 +424,10 @@ fn multiplex_service_with_auth(
             notification::NotificationServiceImpl::new(),
             auth_interceptor.clone(),
         ))
+        .add_service(UserServiceServer::with_interceptor(
+            user::UserServiceImpl::new(),
+            auth_interceptor.clone(),
+        ))
         .add_service(RollbackServiceServer::with_interceptor(
             rollback_service,
             auth_interceptor,
@@ -429,9 +437,19 @@ fn multiplex_service_with_auth(
     service_fn(move |request: Request| {
         let grpc = grpc.clone();
         let http = http.clone();
+        let enforce_authority = enforce_authority.clone();
 
         async move {
             if is_grpc_request(&request) {
+                // RBAC:能解出受限角色且该方法不被允许 → 403;解不出(无/坏 token)则放过,
+                // 交给各服务自身的 AuthInterceptor 去拒绝(避免双重拒绝逻辑)。
+                if let Some(token) = extract_http_token(&request) {
+                    if let Ok(claims) = enforce_authority.validate(&token) {
+                        if !role_allows(&claims.role, request.uri().path()) {
+                            return Ok(forbidden_response("权限不足:当前角色不允许此操作"));
+                        }
+                    }
+                }
                 let request = request.map(|body| {
                     body.map_err(|error| Status::internal(error.to_string()))
                         .boxed_unsync()
@@ -1371,6 +1389,36 @@ fn internal_error_response(message: String) -> HttpResponse<Body> {
         .expect("static internal error response must be valid")
 }
 
+fn forbidden_response(message: &str) -> HttpResponse<Body> {
+    HttpResponse::builder()
+        .status(StatusCode::FORBIDDEN)
+        .body(Body::from(message.to_owned()))
+        .unwrap_or_else(|_| HttpResponse::new(Body::empty()))
+}
+
+/// gRPC 方法是否只读(List/Get/Watch 等);用于 readonly 角色放行判断。
+fn is_read_only_method(path: &str) -> bool {
+    let method = path.rsplit('/').next().unwrap_or("");
+    const READ_PREFIXES: [&str; 9] = [
+        "List", "Get", "Watch", "Describe", "Browse", "Export", "Render", "Analyze", "Detect",
+    ];
+    method == "HealthCheck"
+        || READ_PREFIXES
+            .iter()
+            .any(|prefix| method.starts_with(prefix))
+}
+
+/// RBAC 策略:admin / 空("",旧 token)/ 未知角色全放行(向后兼容);
+/// operator 除 UserService 外全放行;readonly 仅只读且非 UserService。
+fn role_allows(role: &str, path: &str) -> bool {
+    let is_user_admin = path.contains("/rustpanel.v1.UserService/");
+    match role {
+        "operator" => !is_user_admin,
+        "readonly" => !is_user_admin && is_read_only_method(path),
+        _ => true,
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct UploadResponse {
     saved: Vec<String>,
@@ -1650,6 +1698,26 @@ mod tests {
             .body(Body::empty())
             .expect("request");
         assert!(extract_http_token(&none_request).is_none());
+    }
+
+    #[test]
+    fn rbac_role_policy() {
+        let firewall_write = "/rustpanel.v1.SecurityService/UpsertFirewallRule";
+        let firewall_read = "/rustpanel.v1.SecurityService/ListFirewallRules";
+        let user_mgmt = "/rustpanel.v1.UserService/UpsertUser";
+
+        // admin / 空(旧 token)/ 未知 → 全放行。
+        for role in ["admin", "", "weird"] {
+            assert!(role_allows(role, firewall_write));
+            assert!(role_allows(role, user_mgmt));
+        }
+        // operator:除 UserService 外全放行。
+        assert!(role_allows("operator", firewall_write));
+        assert!(!role_allows("operator", user_mgmt));
+        // readonly:仅只读且非 UserService。
+        assert!(role_allows("readonly", firewall_read));
+        assert!(!role_allows("readonly", firewall_write));
+        assert!(!role_allows("readonly", user_mgmt));
     }
 
     #[test]

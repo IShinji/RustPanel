@@ -47,6 +47,10 @@ pub struct JwtClaims {
     pub iss: String,
     pub iat: u64,
     pub exp: u64,
+    // RBAC 角色("admin"/"operator"/"readonly")。serde default 让旧 token(无此字段)
+    // 解出空串,enforcement 把空串当 admin(向后兼容)。
+    #[serde(default)]
+    pub role: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -163,7 +167,16 @@ impl JwtAuthority {
     }
 
     pub fn issue(&self, subject: impl Into<String>) -> Result<IssuedToken, AuthError> {
-        self.issue_at(subject, unix_now()?)
+        self.issue_at(subject, unix_now()?, "admin")
+    }
+
+    /// 带角色签发(多用户 RBAC);env 管理员用 "admin"。
+    pub fn issue_with_role(
+        &self,
+        subject: impl Into<String>,
+        role: impl Into<String>,
+    ) -> Result<IssuedToken, AuthError> {
+        self.issue_at(subject, unix_now()?, role)
     }
 
     pub fn validate(&self, token: &str) -> Result<JwtClaims, AuthError> {
@@ -186,6 +199,7 @@ impl JwtAuthority {
         &self,
         subject: impl Into<String>,
         issued_at: u64,
+        role: impl Into<String>,
     ) -> Result<IssuedToken, AuthError> {
         let subject = subject.into();
         if subject.trim().is_empty() {
@@ -200,6 +214,7 @@ impl JwtAuthority {
             iss: self.issuer.clone(),
             iat: issued_at,
             exp: expires_at,
+            role: role.into(),
         };
         let token = encode(
             &Header::new(Algorithm::HS256),
@@ -264,10 +279,16 @@ impl AuthService for AuthServiceImpl {
         request: Request<LoginRequest>,
     ) -> Result<GrpcResponse<LoginResponse>, Status> {
         let request = request.into_inner();
-        if !self
+        // env 单管理员恒为 admin;否则查多用户库(PBKDF2 校验)拿角色。
+        let role = if self
             .credentials
             .matches(&request.username, &request.password)
         {
+            Some("admin".to_owned())
+        } else {
+            crate::user::verify_user(&request.username, &request.password).await
+        };
+        let Some(role) = role else {
             let _ = audit::append_audit_event(
                 "auth",
                 "login_failed",
@@ -277,7 +298,7 @@ impl AuthService for AuthServiceImpl {
             .await;
             self.note_login_failure().await;
             return Err(Status::unauthenticated("invalid username or password"));
-        }
+        };
 
         let requires_two_factor =
             self.security.two_factor_required().await || self.totp_secret.is_some();
@@ -313,11 +334,14 @@ impl AuthService for AuthServiceImpl {
 
         let issued = self
             .authority
-            .issue(&request.username)
+            .issue_with_role(&request.username, &role)
             .map_err(auth_status)?;
         let refresh = self
             .authority
-            .issue(format!("{REFRESH_SUBJECT_PREFIX}{}", request.username))
+            .issue_with_role(
+                format!("{REFRESH_SUBJECT_PREFIX}{}", request.username),
+                &role,
+            )
             .map_err(auth_status)?;
         let _ = audit::append_audit_event(
             "auth",
@@ -358,7 +382,10 @@ impl AuthService for AuthServiceImpl {
             .sub
             .strip_prefix(REFRESH_SUBJECT_PREFIX)
             .ok_or_else(|| Status::unauthenticated("invalid refresh token"))?;
-        let issued = self.authority.issue(subject).map_err(auth_status)?;
+        let issued = self
+            .authority
+            .issue_with_role(subject, claims.role.as_str())
+            .map_err(auth_status)?;
 
         Ok(GrpcResponse::new(TokenRefreshResponse {
             status: Some(ok_response("token refreshed")),
@@ -537,11 +564,14 @@ mod tests {
     fn jwt_round_trip_preserves_subject() {
         let authority = authority();
         let issued_at = unix_now().expect("now");
-        let issued = authority.issue_at("admin", issued_at).expect("token");
+        let issued = authority
+            .issue_at("admin", issued_at, "operator")
+            .expect("token");
         let claims = authority.validate(&issued.token).expect("claims");
 
         assert_eq!(claims.sub, "admin");
         assert_eq!(claims.iss, "rustpanel-test");
+        assert_eq!(claims.role, "operator");
         assert_eq!(issued.expires_at, issued_at + 60);
     }
 

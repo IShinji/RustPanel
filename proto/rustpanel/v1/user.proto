@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// UserRole 面板用户角色。
+enum UserRole {
+  USER_ROLE_UNSPECIFIED = 0;
+  // 全权(含用户管理)。
+  USER_ROLE_ADMIN = 1;
+  // 读写(除用户管理外的全部操作)。
+  USER_ROLE_OPERATOR = 2;
+  // 只读(仅 List/Get/Watch 等查询)。
+  USER_ROLE_READONLY = 3;
+}
+
+// User 一个面板用户(密码不回传)。
+message User {
+  string username = 1;
+  UserRole role = 2;
+  uint64 created_at_seconds = 3;
+}
+
+message ListUsersRequest {}
+
+message ListUsersResponse {
+  Response status = 1;
+  repeated User users = 2;
+}
+
+message UpsertUserRequest {
+  string username = 1;
+  // 新增必填;编辑留空表示不改密码。
+  string password = 2;
+  UserRole role = 3;
+}
+
+message UpsertUserResponse {
+  Response status = 1;
+  User user = 2;
+}
+
+message DeleteUserRequest {
+  string username = 1;
+}
+
+message DeleteUserResponse {
+  Response status = 1;
+}
+
+// UserService 多用户与角色管理(仅 ADMIN 可调用;强制在多路复用层做)。
+// 与 env 单管理员并存:env 管理员恒为 ADMIN,旧 token(无 role)按 ADMIN 处理。
+service UserService {
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc UpsertUser(UpsertUserRequest) returns (UpsertUserResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+}
