@@ -357,12 +357,17 @@ impl SiteService for SiteServiceImpl {
         }
 
         // 5) builtin sites.json 里的记录(engine = builtin 的路径)
-        let mut builtin = self.store.load_builtin_sites().await?;
-        let before = builtin.len();
-        builtin.retain(|item| safe_name(&item.name).ok().as_deref() != Some(&safe));
-        if builtin.len() != before {
-            self.store.save_builtin_sites(&builtin).await?;
-            cleaned.push("builtin sites.json entry".to_owned());
+        //    用 write_lock 串行化,且只圈住 load→save,不把锁握到后面的
+        //    nginx reload 上,避免阻塞其它站点操作。
+        {
+            let _guard = self.store.write_lock.lock().await;
+            let mut builtin = self.store.load_builtin_sites().await?;
+            let before = builtin.len();
+            builtin.retain(|item| safe_name(&item.name).ok().as_deref() != Some(&safe));
+            if builtin.len() != before {
+                self.store.save_builtin_sites(&builtin).await?;
+                cleaned.push("builtin sites.json entry".to_owned());
+            }
         }
 
         // 6) 重载 nginx —— 已删配置文件,需要让 nginx 真正 unregister vhost。
@@ -474,6 +479,8 @@ impl SiteService for SiteServiceImpl {
         request: Request<UpsertReverseProxyRuleRequest>,
     ) -> Result<GrpcResponse<UpsertReverseProxyRuleResponse>, Status> {
         crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
+        // 串行化 load→改→save,防并发 upsert 丢规则。
+        let _guard = self.store.write_lock.lock().await;
         let mut rule = request
             .into_inner()
             .rule
@@ -517,6 +524,7 @@ impl SiteService for SiteServiceImpl {
         request: Request<DeleteReverseProxyRuleRequest>,
     ) -> Result<GrpcResponse<DeleteReverseProxyRuleResponse>, Status> {
         let id = request.into_inner().id;
+        let _guard = self.store.write_lock.lock().await;
         let mut rules = self.store.load_proxy_rules().await?;
         let removed = rules
             .iter()
@@ -801,7 +809,10 @@ pub(crate) fn extract_zip_to_dir(
         {
             use std::os::unix::fs::PermissionsExt;
             if let Some(mode) = entry.unix_mode() {
-                let perm = std::fs::Permissions::from_mode(mode);
+                // 掩到 0o777:剥掉 setuid/setgid/sticky。面板以 root 解压,
+                // 若沿用 zip 里的 04755,会在 webroot 落一个 root 拥有的
+                // setuid 程序,本机非特权用户执行即提权。
+                let perm = std::fs::Permissions::from_mode(mode & 0o777);
                 let _ = std::fs::set_permissions(&out_path, perm);
             }
         }
@@ -930,6 +941,8 @@ fn legacy_site_stub(path: &std::path::Path, stem: String) -> SiteItem {
 #[derive(Clone, Debug)]
 struct SiteStore {
     root: Arc<PathBuf>,
+    // 串行化 proxy rules / builtin sites 的 load→改→save,防并发写丢更新。
+    write_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl SiteStore {
@@ -939,6 +952,7 @@ impl SiteStore {
             .unwrap_or_else(|_| PathBuf::from(DEFAULT_SITE_STATE_ROOT));
         Self {
             root: Arc::new(root),
+            write_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
@@ -955,9 +969,11 @@ impl SiteStore {
             .await
             .map_err(io_status)?;
         let content = serde_json::to_string_pretty(rules).map_err(io_status)?;
-        tokio::fs::write(self.proxy_rules_path(), content)
-            .await
-            .map_err(io_status)
+        // tmp + rename:避免半截 JSON 让 load_proxy_rules 永久 500。
+        let path = self.proxy_rules_path();
+        let tmp = path.with_extension("json.tmp");
+        tokio::fs::write(&tmp, content).await.map_err(io_status)?;
+        tokio::fs::rename(&tmp, &path).await.map_err(io_status)
     }
 
     fn proxy_rules_path(&self) -> PathBuf {
@@ -984,13 +1000,16 @@ impl SiteStore {
             .map(StoredSite::from_proto)
             .collect::<Vec<_>>();
         let content = serde_json::to_string_pretty(&stored).map_err(io_status)?;
-        tokio::fs::write(self.sites_path(), content)
-            .await
-            .map_err(io_status)
+        // tmp + rename:避免半截 JSON 让 load_builtin_sites 永久 500。
+        let path = self.sites_path();
+        let tmp = path.with_extension("json.tmp");
+        tokio::fs::write(&tmp, content).await.map_err(io_status)?;
+        tokio::fs::rename(&tmp, &path).await.map_err(io_status)
     }
 
     async fn upsert_builtin_site(&self, request: CreateSiteRequest) -> Result<SiteItem, Status> {
         crate::runtime::ensure_module_enabled(crate::runtime::MODULE_STATIC_SITES)?;
+        let _guard = self.write_lock.lock().await;
         let name = safe_name(&request.name)?;
         let mut sites = self.load_builtin_sites().await?;
         let site = SiteItem {
@@ -1491,7 +1510,10 @@ fn validate_domain(domain: &str) -> Result<(), Status> {
         && domain
             .chars()
             .all(|char| char.is_ascii_alphanumeric() || matches!(char, '-' | '.'))
-        && domain.contains('.');
+        && domain.contains('.')
+        // 拒绝空 label(".." / 前后导点 / 连续点),与 ssl::validate_domain 对齐:
+        // domain 会原样进 nginx server_name,空 label 既是坏配置也是注入面。
+        && domain.split('.').all(|label| !label.is_empty());
     if valid {
         Ok(())
     } else {
@@ -1500,15 +1522,31 @@ fn validate_domain(domain: &str) -> Result<(), Status> {
 }
 
 fn validate_proxy_target(target: &str) -> Result<(), Status> {
+    // target 会原样进 `proxy_pass`。除了协议前缀和空白,还要挡住会闭合
+    // location 块 / 注入指令的结构字符(`;{}"` 和反斜杠、控制字符)——
+    // 否则 `http://x/;}server{...` 这种无空白串能注入额外 nginx 配置。
     let valid = (target.starts_with("http://") || target.starts_with("https://"))
-        && !target.contains(char::is_whitespace);
+        && !target.contains(char::is_whitespace)
+        && !target.contains(|c: char| c.is_control() || matches!(c, ';' | '{' | '}' | '"' | '\\'));
     if valid {
         Ok(())
     } else {
         Err(Status::invalid_argument(
-            "target url must start with http:// or https://",
+            "target url must start with http:// or https:// and contain no unsafe characters",
         ))
     }
+}
+
+/// 校验将被原样写进 nginx 指令(如 `root <path>;`)的文件系统路径:
+/// 拒绝控制字符与会破坏配置块的结构字符。不限制空格(合法路径可能含),
+/// 重点是挡住注入而非穷举坏路径。
+fn validate_fs_path(path: &str) -> Result<(), Status> {
+    if path.contains(|c: char| c.is_control() || matches!(c, ';' | '{' | '}' | '"')) {
+        return Err(Status::invalid_argument(
+            "path contains characters unsafe for nginx config",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_site_request(request: &CreateSiteRequest) -> Result<(), Status> {
@@ -1517,12 +1555,24 @@ fn validate_site_request(request: &CreateSiteRequest) -> Result<(), Status> {
     if engine != SITE_ENGINE_BUILTIN && request.domains.is_empty() {
         return Err(Status::invalid_argument("at least one domain is required"));
     }
+    // 每个域名都要过校验:domains 原样拼进 nginx `server_name`,不校验则
+    // 换行 / ; / { } 能注入指令或写出坏 vhost,下次任意 reload 让全站挂掉。
+    // (反代规则路径 upsert_reverse_proxy_rule 早有校验,建站路径之前漏了。)
+    for domain in &request.domains {
+        validate_domain(domain)?;
+    }
     if request.root.trim().is_empty()
         && (engine == SITE_ENGINE_BUILTIN || request.proxy_target.trim().is_empty())
     {
         return Err(Status::invalid_argument(
             "either static root or proxy target is required",
         ));
+    }
+    if !request.proxy_target.trim().is_empty() {
+        validate_proxy_target(&request.proxy_target)?;
+    }
+    if !request.root.trim().is_empty() {
+        validate_fs_path(&request.root)?;
     }
     Ok(())
 }
@@ -1728,5 +1778,57 @@ mod tests {
         assert!(config.contains("least_conn"));
         assert!(config.contains("server 127.0.0.1:3000 weight=2"));
         assert!(config.contains("proxy_pass http://rustpanel_api"));
+    }
+
+    #[test]
+    fn validate_domain_rejects_empty_labels() {
+        assert!(validate_domain("example.com").is_ok());
+        assert!(validate_domain("a.b.example.com").is_ok());
+        assert!(validate_domain("..").is_err());
+        assert!(validate_domain(".example.com").is_err());
+        assert!(validate_domain("example.com.").is_err());
+        assert!(validate_domain("a..b").is_err());
+        assert!(validate_domain("no-dot").is_err());
+    }
+
+    #[test]
+    fn validate_proxy_target_rejects_nginx_injection() {
+        assert!(validate_proxy_target("http://127.0.0.1:3000").is_ok());
+        assert!(validate_proxy_target("https://upstream.internal/api").is_ok());
+        // 无空白但含结构字符 → 必须拒,防 proxy_pass 注入额外块。
+        assert!(validate_proxy_target("http://x/;}server{listen 9;}").is_err());
+        assert!(validate_proxy_target("http://x\";return 444;\"").is_err());
+        assert!(validate_proxy_target("ftp://x").is_err());
+        assert!(validate_proxy_target("http://x y").is_err());
+    }
+
+    #[test]
+    fn validate_site_request_validates_domains_and_target() {
+        let base = CreateSiteRequest {
+            name: "demo".to_owned(),
+            domains: vec!["example.com".to_owned()],
+            root: String::new(),
+            proxy_target: "http://127.0.0.1:3000".to_owned(),
+            ssl_enabled: false,
+            engine: SITE_ENGINE_NGINX.to_owned(),
+            listen_addr: String::new(),
+            kind: 0,
+            binding: None,
+            tls_strategy: 0,
+            binary_path: String::new(),
+        };
+        assert!(validate_site_request(&base).is_ok());
+
+        let bad_domain = CreateSiteRequest {
+            domains: vec!["e\nx.com".to_owned()],
+            ..base.clone()
+        };
+        assert!(validate_site_request(&bad_domain).is_err());
+
+        let bad_target = CreateSiteRequest {
+            proxy_target: "http://x/;}server{}".to_owned(),
+            ..base.clone()
+        };
+        assert!(validate_site_request(&bad_target).is_err());
     }
 }

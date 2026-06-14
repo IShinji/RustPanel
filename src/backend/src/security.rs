@@ -138,6 +138,7 @@ impl SecurityService for SecurityServiceImpl {
             .ok_or_else(|| Status::invalid_argument("firewall rule is required"))?;
         validate_rule(&rule)?;
 
+        let _guard = self.store.write_guard().await;
         let mut state = self.store.load().await?;
         let now = current_timestamp();
         let old_rule = state
@@ -175,6 +176,7 @@ impl SecurityService for SecurityServiceImpl {
         if id.trim().is_empty() {
             return Err(Status::invalid_argument("firewall rule id is required"));
         }
+        let _guard = self.store.write_guard().await;
         let mut state = self.store.load().await?;
         let old_rule = state
             .rules
@@ -197,6 +199,7 @@ impl SecurityService for SecurityServiceImpl {
         request: Request<SetFirewallRuleEnabledRequest>,
     ) -> Result<GrpcResponse<SetFirewallRuleEnabledResponse>, Status> {
         let request = request.into_inner();
+        let _guard = self.store.write_guard().await;
         let mut state = self.store.load().await?;
         let index = state
             .rules
@@ -228,6 +231,7 @@ impl SecurityService for SecurityServiceImpl {
             .ok_or_else(|| Status::invalid_argument("security options are required"))?;
         validate_options(&options)?;
 
+        let _guard = self.store.write_guard().await;
         let mut state = self.store.load().await?;
         let old_options = state.options.clone();
         let new_options = StoredSecurityOptions::from_proto(options);
@@ -288,7 +292,11 @@ impl SecurityService for SecurityServiceImpl {
         let request = request.into_inner();
         let imported: StoredSecurityState =
             serde_json::from_str(&request.backup_json).map_err(io_status)?;
+        let _guard = self.store.write_guard().await;
         let mut current = self.store.load().await?;
+        // 旧规则快照:apply 前拿到,apply_imported_state 用它把旧规则从内核
+        // 删掉,避免 import 后"删了但内核还留着"。
+        let old_rules = current.rules.clone();
         let mut imported = imported.with_defaults();
         for rule in &imported.rules {
             validate_rule(&rule.clone().into_proto())?;
@@ -302,7 +310,7 @@ impl SecurityService for SecurityServiceImpl {
             current.options = imported.options;
         }
         let mut options = current.options.clone();
-        apply_imported_state(&current, &mut options).await?;
+        apply_imported_state(&old_rules, &current, &mut options).await?;
         current.options = options;
         self.store.save(&current).await?;
 
@@ -344,6 +352,7 @@ impl SecurityService for SecurityServiceImpl {
             .ok_or_else(|| Status::invalid_argument("waf settings are required"))?;
         validate_waf_settings(&settings)?;
 
+        let _guard = self.store.write_guard().await;
         let mut state = self.store.load().await?;
         state.waf_settings = StoredWafSettings::from_proto(settings);
         apply_waf_config(&mut state.waf_settings, &state.waf_rules).await?;
@@ -367,6 +376,7 @@ impl SecurityService for SecurityServiceImpl {
             .ok_or_else(|| Status::invalid_argument("waf rule is required"))?;
         validate_waf_rule(&rule)?;
 
+        let _guard = self.store.write_guard().await;
         let mut state = self.store.load().await?;
         let now = current_timestamp();
         let existing = state
@@ -402,6 +412,7 @@ impl SecurityService for SecurityServiceImpl {
         request: Request<DeleteWafRuleRequest>,
     ) -> Result<GrpcResponse<DeleteWafRuleResponse>, Status> {
         let id = request.into_inner().id;
+        let _guard = self.store.write_guard().await;
         let mut state = self.store.load().await?;
         let before = state.waf_rules.len();
         state.waf_rules.retain(|rule| rule.id != id);
@@ -463,6 +474,7 @@ impl SecurityService for SecurityServiceImpl {
             .ok_or_else(|| Status::invalid_argument("ssh settings are required"))?;
         validate_ssh_settings(&settings)?;
 
+        let _guard = self.store.write_guard().await;
         let mut state = self.store.load().await?;
         state.ssh_settings = StoredSshSettings::from_proto(settings);
         apply_ssh_config(&mut state.ssh_settings).await?;
@@ -483,6 +495,7 @@ impl SecurityService for SecurityServiceImpl {
         let request = request.into_inner();
         let algorithm = ssh_key_algorithm(request.algorithm)?;
         let key = generate_ssh_key_pair(&request.name, algorithm).await?;
+        let _guard = self.store.write_guard().await;
         let mut state = self.store.load().await?;
         state.ssh_keys.retain(|stored| stored.id != key.id);
         state.ssh_keys.push(key.clone());
@@ -522,6 +535,7 @@ impl SecurityService for SecurityServiceImpl {
             .ok_or_else(|| Status::invalid_argument("ssh login event is required"))?;
         validate_ssh_login_event(&event)?;
 
+        let _guard = self.store.write_guard().await;
         let mut state = self.store.load().await?;
         if event.id.trim().is_empty() {
             event.id = Uuid::new_v4().to_string();
@@ -546,6 +560,10 @@ impl SecurityService for SecurityServiceImpl {
 #[derive(Clone, Debug)]
 struct SecurityStore {
     root: Arc<PathBuf>,
+    // state.json 把 rules/options/waf/ssh 全装在一个文件里,每个 mutator 都是
+    // load 整个文件→改→save 整个文件。必须用一把锁串行化所有写者,否则
+    // 并发的 WAF 更新会拿旧快照覆盖刚加的防火墙规则(共享文件的丢更新)。
+    write_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl SecurityStore {
@@ -559,7 +577,14 @@ impl SecurityStore {
     fn new(root: impl Into<PathBuf>) -> Self {
         Self {
             root: Arc::new(root.into()),
+            write_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
+    }
+
+    /// 取写锁:所有 load→改→save 的 mutator 必须先拿它,串行化对 state.json
+    /// 的读改写。读路径(list/get)不需要,原子写保证它们读到完整文件。
+    async fn write_guard(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.write_lock.lock().await
     }
 
     async fn load(&self) -> Result<StoredSecurityState, Status> {
@@ -579,9 +604,12 @@ impl SecurityStore {
             .await
             .map_err(io_status)?;
         let content = serde_json::to_string_pretty(state).map_err(io_status)?;
-        tokio::fs::write(self.state_path(), content)
-            .await
-            .map_err(io_status)
+        // tmp + rename:崩溃/并发写出半截 JSON 会让 load() 反序列化失败,
+        // 之后每个 security RPC 都 500,直到手工修文件。
+        let path = self.state_path();
+        let tmp = path.with_extension("json.tmp");
+        tokio::fs::write(&tmp, content).await.map_err(io_status)?;
+        tokio::fs::rename(&tmp, &path).await.map_err(io_status)
     }
 
     fn state_path(&self) -> PathBuf {
@@ -1118,16 +1146,30 @@ async fn apply_rule_change(
     };
 
     let mut messages = Vec::new();
+    let mut deleted_old = false;
     if old_rule.is_some_and(|rule| rule.enabled) {
         let rule = old_rule.expect("checked old rule");
         let commands = build_rule_commands(backend, rule, FirewallOperation::Delete)?;
         run_commands(commands).await?;
+        deleted_old = true;
         messages.push(format!("removed old rule via {}", backend_name(backend)));
     }
     if new_rule.is_some_and(|rule| rule.enabled) {
         let rule = new_rule.expect("checked new rule");
         let commands = build_rule_commands(backend, rule, FirewallOperation::Add)?;
-        run_commands(commands).await?;
+        if let Err(error) = run_commands(commands).await {
+            // 加新规则失败:把刚删的旧规则尽力加回去。否则"旧规则没了、新规则
+            // 也没生效",且 save 不会执行 → 面板仍显示旧规则在,内核却已无,
+            // 运维以为某条 deny 还在保护实际已失效。
+            if deleted_old {
+                if let Some(old) = old_rule {
+                    if let Ok(restore) = build_rule_commands(backend, old, FirewallOperation::Add) {
+                        run_commands_best_effort(restore).await;
+                    }
+                }
+            }
+            return Err(error);
+        }
         messages.push(format!("applied rule via {}", backend_name(backend)));
     }
     if messages.is_empty() {
@@ -1214,6 +1256,7 @@ async fn arm_rollback_watchdog(
                 return;
             }
         };
+        let _guard = store.write_guard().await;
         let mut state = match store.load().await {
             Ok(value) => value,
             Err(error) => {
@@ -1317,6 +1360,18 @@ async fn apply_waf_config(
 
 async fn apply_ssh_config(settings: &mut StoredSshSettings) -> Result<(), Status> {
     validate_ssh_settings(&settings.clone().into_proto())?;
+    // 防锁死:要禁用密码登录、且会真的 reload sshd 时,先确认系统里至少有
+    // 一份非空 authorized_keys。否则密码关了又没 key = 下次必定登不进去。
+    // sshd -t 只验语法,验不出"当前管理员还能不能登",所以单靠它不够。
+    if settings.password_login_disabled
+        && should_apply_system_firewall()
+        && !system_has_authorized_key().await
+    {
+        return Err(Status::failed_precondition(
+            "禁用密码登录前,请先为某个账户安装 SSH 公钥(authorized_keys);\
+             否则关闭密码登录后将无法再登录。已阻止本次变更以防被锁在门外。",
+        ));
+    }
     let config_path = PathBuf::from(&settings.config_path);
     if let Some(parent) = config_path.parent() {
         tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
@@ -1353,6 +1408,29 @@ async fn apply_ssh_config(settings: &mut StoredSshSettings) -> Result<(), Status
     }
 
     Ok(())
+}
+
+/// 系统里是否存在至少一份非空 authorized_keys。禁用密码登录前的防锁死
+/// 检查:只要 root 或任意 /home 用户装了公钥就放行,一个都没有才拒绝。
+/// 保守取向 —— 宁可偶尔误挡,也不要把运维锁在门外。
+async fn system_has_authorized_key() -> bool {
+    let mut candidates = vec![PathBuf::from("/root/.ssh/authorized_keys")];
+    if let Ok(mut entries) = tokio::fs::read_dir("/home").await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            candidates.push(entry.path().join(".ssh/authorized_keys"));
+        }
+    }
+    for path in candidates {
+        if let Ok(content) = tokio::fs::read_to_string(&path).await {
+            if content
+                .lines()
+                .any(|line| !line.trim().is_empty() && !line.trim_start().starts_with('#'))
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 async fn maybe_auto_ban_ssh_source(
@@ -1462,6 +1540,7 @@ async fn generate_ssh_key_pair(
 }
 
 async fn apply_imported_state(
+    old_rules: &[StoredFirewallRule],
     state: &StoredSecurityState,
     options: &mut StoredSecurityOptions,
 ) -> Result<(), Status> {
@@ -1473,6 +1552,19 @@ async fn apply_imported_state(
         options.last_apply_message = "imported; no supported firewall backend found".to_owned();
         return Ok(());
     };
+
+    // 先尽力删掉旧的已应用规则,否则 import(尤其 replace 模式)后旧内核规则
+    // 仍生效,UI 显示已删/已改、实际防火墙没变。删不存在的规则会非零退出,
+    // 故走 best-effort 忽略失败。
+    let mut deletes = Vec::new();
+    for rule in old_rules.iter().filter(|rule| rule.enabled) {
+        deletes.extend(build_rule_commands(
+            backend,
+            rule,
+            FirewallOperation::Delete,
+        )?);
+    }
+    run_commands_best_effort(deletes).await;
 
     let mut commands = Vec::new();
     for rule in state.rules.iter().filter(|rule| rule.enabled) {
@@ -1668,6 +1760,31 @@ async fn run_commands(commands: Vec<FirewallCommand>) -> Result<(), Status> {
         }
     }
     Ok(())
+}
+
+/// 像 run_commands,但忽略单条命令的非零退出 / spawn 失败(只 debug log)。
+/// 用于"先删旧规则"这类本就可能不存在的场景:iptables -D / firewalld
+/// --remove-rich-rule 删不存在的规则会非零退出,不该让整个操作失败。
+async fn run_commands_best_effort(commands: Vec<FirewallCommand>) {
+    for command in commands {
+        match Command::new(&command.program)
+            .args(&command.args)
+            .output()
+            .await
+        {
+            Ok(output) if output.status.success() => {}
+            Ok(output) => tracing::debug!(
+                program = %command.program,
+                stderr = %String::from_utf8_lossy(&output.stderr).trim(),
+                "best-effort firewall command exited non-zero (ignored)"
+            ),
+            Err(error) => tracing::debug!(
+                program = %command.program,
+                %error,
+                "best-effort firewall command spawn failed (ignored)"
+            ),
+        }
+    }
 }
 
 async fn detect_backend(preference: FirewallBackend) -> Option<FirewallBackend> {

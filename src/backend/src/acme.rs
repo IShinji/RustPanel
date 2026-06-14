@@ -183,7 +183,11 @@ async fn write_pending(order: &PendingOrder) -> Result<(), AcmeError> {
         tokio::fs::create_dir_all(parent).await?;
     }
     let content = serde_json::to_string_pretty(order)?;
-    tokio::fs::write(path, content).await?;
+    // tmp + rename 保证原子,避免崩溃/并发写出半截 JSON 后 read_pending
+    // 反序列化失败,把该域名永久卡在错误态。
+    let tmp = path.with_extension("json.tmp");
+    tokio::fs::write(&tmp, content).await?;
+    tokio::fs::rename(&tmp, &path).await?;
     Ok(())
 }
 
@@ -434,8 +438,22 @@ pub async fn install_certificate(
     let cert_path = dir.join("fullchain.pem");
     let key_path = dir.join("privkey.pem");
     tokio::fs::write(&cert_path, &cert.certificate_pem).await?;
-    tokio::fs::write(&key_path, &cert.private_key_pem).await?;
+    write_private_key(&key_path, cert.private_key_pem.as_bytes()).await?;
     Ok((cert_path, key_path))
+}
+
+/// 写私钥文件并在 Unix 上收紧到 0600。私钥绝不能世界可读 —— root 默认
+/// umask 下裸 `fs::write` 会落成 0644,本机任意用户/容器都能读走 TLS
+/// 私钥。先写后 chmod 的极小窗口对本威胁模型可接受(目标是不留 0644,
+/// 而非防 TOCTOU)。ssl 模块写私钥也复用此助手。
+pub(crate) async fn write_private_key(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    tokio::fs::write(path, contents).await?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

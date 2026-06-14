@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     env,
-    path::PathBuf,
+    path::{Path, PathBuf},
     pin::Pin,
     sync::{Arc, Mutex},
 };
@@ -257,7 +257,7 @@ impl SslService for SslServiceImpl {
         tokio::fs::write(&cert_path, request.certificate_pem)
             .await
             .map_err(io_status)?;
-        tokio::fs::write(&key_path, request.private_key_pem)
+        crate::acme::write_private_key(&key_path, request.private_key_pem.as_bytes())
             .await
             .map_err(io_status)?;
         if !request.group.trim().is_empty() {
@@ -444,10 +444,7 @@ async fn certificate_item(
     let cert_dir = domain_cert_dir(domain);
     let cert_path = cert_dir.join("fullchain.pem");
     let key_path = cert_dir.join("privkey.pem");
-    let expires_at_seconds = certificate_expiry(&cert_path)
-        .await
-        .unwrap_or_else(|_| current_timestamp() + 90 * 24 * 60 * 60);
-    let days_until_expiry = days_until(expires_at_seconds);
+    let expiry = certificate_expiry(&cert_path).await;
     let group = tokio::fs::read_to_string(cert_dir.join("rustpanel-group"))
         .await
         .unwrap_or_else(|_| "default".to_owned())
@@ -460,15 +457,28 @@ async fn certificate_item(
     let is_bootstrap = tokio::fs::try_exists(&bootstrap_marker_path(domain))
         .await
         .unwrap_or(false);
-    let effective_state = if is_bootstrap {
-        CertificateState::Pending
+    let (expires_at_seconds, days_until_expiry, warning, effective_state) = if is_bootstrap {
+        let exp = expiry.unwrap_or_else(|_| current_timestamp() + 30 * 24 * 60 * 60);
+        (
+            exp,
+            days_until(exp),
+            "self-signed-bootstrap".to_owned(),
+            CertificateState::Pending,
+        )
     } else {
-        state
-    };
-    let warning = if is_bootstrap {
-        "self-signed-bootstrap".to_owned()
-    } else {
-        warning_level(days_until_expiry).to_owned()
+        match expiry {
+            Ok(exp) => (
+                exp,
+                days_until(exp),
+                warning_level(days_until(exp)).to_owned(),
+                state,
+            ),
+            // 解析失败(最小镜像缺 openssl / 证书损坏):绝不能伪造 now+90d
+            // 让 UI 显示绿色"健康剩 90 天"——那会让真在过期的证书也蒙混过关、
+            // 永不触发告警/续签。改成 expires=0 + warning="parse-failed",前端
+            // 把非 "ok"/非 bootstrap 的 warning 一律渲染成红色 destructive。
+            Err(_) => (0, 0, "parse-failed".to_owned(), state),
+        }
     };
 
     Ok(CertificateItem {
@@ -521,8 +531,8 @@ async fn prepare_challenge_root() -> Result<(), Status> {
 
 async fn create_self_signed_certificate(
     domain: &str,
-    cert_path: &PathBuf,
-    key_path: &PathBuf,
+    cert_path: &Path,
+    key_path: &Path,
 ) -> Result<(), Status> {
     // 之前走 `openssl req -x509 ...` CLI,在没装 openssl 的最小镜像上
     // 直接 NotFound(os error 2)。换成纯 Rust 的 rcgen(已经在
@@ -552,7 +562,8 @@ async fn create_self_signed_certificate(
     tokio::fs::write(cert_path, cert.pem())
         .await
         .map_err(io_status)?;
-    tokio::fs::write(key_path, keypair.serialize_pem())
+    let key_pem = keypair.serialize_pem();
+    crate::acme::write_private_key(key_path, key_pem.as_bytes())
         .await
         .map_err(io_status)?;
     Ok(())
@@ -662,7 +673,12 @@ fn validate_domain(domain: &str) -> Result<(), Status> {
         && domain
             .chars()
             .all(|char| char.is_ascii_alphanumeric() || char == '-' || char == '.')
-        && domain.contains('.');
+        && domain.contains('.')
+        // 拒绝空 label(".." / ".x" / "x." / "a..b")。否则 ".." 能通过字符集
+        // 校验,domain_cert_dir("..") = cert_root/..,revoke 的 remove_dir_all
+        // 会删掉证书根的父目录(默认部署下 cert_root=/data/certs → 删空 /data
+        // 全部面板状态)。
+        && domain.split('.').all(|label| !label.is_empty());
     if valid {
         Ok(())
     } else {
@@ -784,7 +800,13 @@ mod tests {
     #[test]
     fn validates_dns_name_shape() {
         assert!(validate_domain("example.com").is_ok());
+        assert!(validate_domain("sub.example.com").is_ok());
         assert!(validate_domain("../example.com").is_err());
+        // 空 label 必须被拒,否则 ".." 会让 revoke 删掉 cert_root 的父目录。
+        assert!(validate_domain("..").is_err());
+        assert!(validate_domain(".example.com").is_err());
+        assert!(validate_domain("example.com.").is_err());
+        assert!(validate_domain("a..b").is_err());
     }
 
     #[test]

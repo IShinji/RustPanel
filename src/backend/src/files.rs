@@ -327,6 +327,9 @@ impl FileSystemService for FileSystemServiceImpl {
 pub struct FileManager {
     root: Arc<PathBuf>,
     state_root: Arc<PathBuf>,
+    // 串行化回收站索引的 load→改→save。否则并发 delete/restore 会各自读到
+    // 同一快照、最后一个 save 覆盖前一个,丢记录。Arc 让 clone 共享同一把锁。
+    recycle_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl FileManager {
@@ -346,6 +349,7 @@ impl FileManager {
         Self {
             root: Arc::new(root),
             state_root: Arc::new(state_root),
+            recycle_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
@@ -392,6 +396,7 @@ impl FileManager {
     }
 
     async fn move_to_recycle_bin(&self, path: &Path) -> Result<(), Status> {
+        let _guard = self.recycle_lock.lock().await;
         let id = Uuid::new_v4().to_string();
         let recycle_dir = self.recycle_dir();
         tokio::fs::create_dir_all(&recycle_dir)
@@ -408,9 +413,9 @@ impl FileManager {
             recycle_path: recycle_path.to_string_lossy().to_string(),
             deleted_at_seconds: current_timestamp(),
         };
-        tokio::fs::rename(path, &recycle_path)
-            .await
-            .map_err(io_status)?;
+        // FS 根(默认 / 或容器里的 /host)与 state_root(/tmp 或 /data/files)
+        // 常不在同一挂载,裸 rename 会 EXDEV 失败 → 删除到回收站直接报错。
+        move_path_cross_device(path, &recycle_path).await?;
         let mut items = self.recycle_items_stored().await?;
         items.push(item);
         self.save_recycle_items(&items).await
@@ -426,6 +431,7 @@ impl FileManager {
     }
 
     async fn restore_recycle_item(&self, id: &str) -> Result<(), Status> {
+        let _guard = self.recycle_lock.lock().await;
         let mut items = self.recycle_items_stored().await?;
         let item = items
             .iter()
@@ -436,14 +442,13 @@ impl FileManager {
         if let Some(parent) = target.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
         }
-        tokio::fs::rename(&item.recycle_path, target)
-            .await
-            .map_err(io_status)?;
+        move_path_cross_device(Path::new(&item.recycle_path), &target).await?;
         items.retain(|stored| stored.id != id);
         self.save_recycle_items(&items).await
     }
 
     async fn empty_recycle_bin(&self) -> Result<(), Status> {
+        let _guard = self.recycle_lock.lock().await;
         let recycle_dir = self.recycle_dir();
         if tokio::fs::try_exists(&recycle_dir)
             .await
@@ -524,9 +529,12 @@ impl FileManager {
             .await
             .map_err(io_status)?;
         let content = serde_json::to_string_pretty(items).map_err(io_status)?;
-        tokio::fs::write(self.recycle_index_path(), content)
-            .await
-            .map_err(io_status)
+        // tmp + rename:避免崩溃/并发写出半截 JSON 后 recycle_items_stored
+        // 反序列化失败,让回收站永久 500。
+        let path = self.recycle_index_path();
+        let tmp = path.with_extension("json.tmp");
+        tokio::fs::write(&tmp, content).await.map_err(io_status)?;
+        tokio::fs::rename(&tmp, &path).await.map_err(io_status)
     }
 
     fn recycle_dir(&self) -> PathBuf {
@@ -834,6 +842,58 @@ fn io_status(error: impl std::fmt::Display) -> Status {
     Status::internal(error.to_string())
 }
 
+/// 移动 from → to:优先 rename(同设备原子);跨设备(EXDEV)回退到
+/// 递归复制 + 删除源。回收站 state_root 与 FS 根常不在同一挂载(容器里
+/// /data vs /host),裸 rename 会 EXDEV 失败,导致"删除到回收站 / 还原"
+/// 在默认部署里直接报错。
+async fn move_path_cross_device(from: &Path, to: &Path) -> Result<(), Status> {
+    match tokio::fs::rename(from, to).await {
+        Ok(()) => Ok(()),
+        Err(error) if is_cross_device(&error) => {
+            let from_buf = from.to_path_buf();
+            let to_buf = to.to_path_buf();
+            tokio::task::spawn_blocking(move || copy_recursive_blocking(&from_buf, &to_buf))
+                .await
+                .map_err(io_status)?
+                .map_err(io_status)?;
+            let meta = tokio::fs::symlink_metadata(from).await.map_err(io_status)?;
+            if meta.is_dir() {
+                tokio::fs::remove_dir_all(from).await.map_err(io_status)?;
+            } else {
+                tokio::fs::remove_file(from).await.map_err(io_status)?;
+            }
+            Ok(())
+        }
+        Err(error) => Err(io_status(error)),
+    }
+}
+
+/// EXDEV(跨设备 link)在 Linux 与 macOS 上都是 18。Windows 不是本面板
+/// 文件管理器的目标平台,不特别处理。
+fn is_cross_device(error: &std::io::Error) -> bool {
+    error.raw_os_error() == Some(18)
+}
+
+/// 递归复制 from → to(文件直接 copy,目录建好再逐项复制)。同步实现,
+/// 由 move_path_cross_device 丢进 spawn_blocking 跑。符号链接按目标内容
+/// 复制(回收站场景可接受)。
+fn copy_recursive_blocking(from: &Path, to: &Path) -> std::io::Result<()> {
+    let meta = std::fs::symlink_metadata(from)?;
+    if meta.is_dir() {
+        std::fs::create_dir_all(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            copy_recursive_blocking(&entry.path(), &to.join(entry.file_name()))?;
+        }
+    } else {
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(from, to)?;
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
 fn file_mode(metadata: &std::fs::Metadata) -> u32 {
     use std::os::unix::fs::PermissionsExt;
@@ -941,6 +1001,25 @@ mod tests {
         let path = manager.resolve_for_write("rustpanel-test-file.txt");
 
         assert!(path.is_ok());
+    }
+
+    #[test]
+    fn copy_recursive_blocking_copies_tree() {
+        let base = env::temp_dir().join(format!("rustpanel-copy-{}", Uuid::new_v4()));
+        let from = base.join("from");
+        let to = base.join("to");
+        std::fs::create_dir_all(from.join("sub")).expect("mkdir");
+        std::fs::write(from.join("a.txt"), b"alpha").expect("a");
+        std::fs::write(from.join("sub/b.txt"), b"beta").expect("b");
+
+        copy_recursive_blocking(&from, &to).expect("copy");
+
+        assert_eq!(std::fs::read(to.join("a.txt")).expect("read a"), b"alpha");
+        assert_eq!(
+            std::fs::read(to.join("sub/b.txt")).expect("read b"),
+            b"beta"
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
