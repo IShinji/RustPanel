@@ -40,9 +40,9 @@ v3.0 已对齐宝塔在「安全 / 站点 / SSL / 文件 / 监控 / Docker / 集
 - [x] **P0-01-4** 触发器：SSH 自动封禁 → `notify_event(SSH_AUTO_BAN)`(spawn，不阻塞封禁路径)。
 
 ### P0-02 更多自动触发器（dispatch 管道已就绪，补扫描器即可）
-- [ ] **P0-02-1** 证书到期扫描：后台周期任务,到期 ≤ 阈值天推送 `CERT_EXPIRY`(复用 ssl 证书列举)。
-- [ ] **P0-02-2** 高负载 / 磁盘将满：复用 monitor collector,超阈值推送 `HIGH_LOAD` / `DISK_FULL`。
-- [ ] **P0-02-3** 异常登录：审计 `login_failed` 聚合后推送 `LOGIN_FAILED`。
+- [x] **P0-02-1** 证书到期扫描：`spawn_alert_scanner` 周期任务,`ssl::cert_expiry_overview()` 剩余 ≤ 阈值即推送 `CERT_EXPIRY`;内存去重 24h。
+- [x] **P0-02-2** 高负载 / 磁盘将满：sysinfo 负载(按核折算%)/各挂载点占用,超阈值推送 `HIGH_LOAD` / `DISK_FULL`;去重 1h。
+- [ ] **P0-02-3** 异常登录：审计 `login_failed` 聚合后推送 `LOGIN_FAILED`(默认关,待做)。
 
 ### P0-03 前端通知设置页
 - [x] **P0-03-1** 新增「通知」页(系统组,独立导航):渠道增删改 + 一键测试 + 事件规则开关/阈值 + 发送历史。
