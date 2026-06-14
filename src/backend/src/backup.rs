@@ -40,12 +40,84 @@ impl BackupServiceImpl {
             store: BackupStore::from_env(),
         }
     }
+
+    /// 保留同一 source_path 的最新 keep 份,其余(本地 + 离站 + 记录)删除。
+    async fn prune_to_keep(&self, source_path: &str, keep: u32) -> Result<(), Status> {
+        let _guard = self.store.write_lock.lock().await;
+        let mut state = self.store.load().await?;
+        let mut same: Vec<&StoredRecord> = state
+            .records
+            .iter()
+            .filter(|record| record.source_path == source_path)
+            .collect();
+        same.sort_by_key(|record| std::cmp::Reverse(record.created_at_seconds));
+        let to_delete: Vec<String> = same
+            .iter()
+            .skip(keep as usize)
+            .map(|record| record.id.clone())
+            .collect();
+        if to_delete.is_empty() {
+            return Ok(());
+        }
+        for id in &to_delete {
+            if let Some(record) = state.records.iter().find(|r| &r.id == id).cloned() {
+                let archive_path = self.store.archive_path(&record.archive_name);
+                let _ = tokio::fs::remove_file(&archive_path).await;
+                if record.offsite_uploaded {
+                    if let Some(target) = state.targets.iter().find(|t| t.id == record.target_id) {
+                        if is_offsite_kind(target.kind) {
+                            let _ = offsite_delete(target, &record.archive_name).await;
+                        }
+                    }
+                }
+            }
+        }
+        state
+            .records
+            .retain(|record| !to_delete.contains(&record.id));
+        self.store.save(&state).await
+    }
 }
 
 impl Default for BackupServiceImpl {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 一次性备份(CLI / cron 定时调度用):跑一次 create_backup,再按 keep 保留同源最新 N 份。
+pub async fn run_oneshot_backup(
+    source_path: String,
+    target_id: String,
+    name: String,
+    keep: u32,
+) -> Result<(), String> {
+    use crate::proto::rustpanel::v1::backup_service_server::BackupService;
+    let service = BackupServiceImpl::new();
+    let response = service
+        .create_backup(Request::new(CreateBackupRequest {
+            source_path: source_path.clone(),
+            name,
+            target_id,
+        }))
+        .await
+        .map_err(|status| status.message().to_owned())?;
+    if let Some(record) = response.into_inner().record {
+        tracing::info!(
+            target = "backup.oneshot",
+            id = %record.id,
+            size = record.size_bytes,
+            offsite = record.offsite_uploaded,
+            "oneshot backup created"
+        );
+    }
+    if keep > 0 {
+        service
+            .prune_to_keep(&source_path, keep)
+            .await
+            .map_err(|status| status.message().to_owned())?;
+    }
+    Ok(())
 }
 
 #[tonic::async_trait]

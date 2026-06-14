@@ -20,6 +20,16 @@ pub struct Cli {
         default_value = "/usr/local/bin/rustpanel-backend"
     )]
     pub bin: PathBuf,
+    // 一次性备份模式(供 cron 定时调度):设了 --backup-source 就跑一次备份后退出,
+    // 不启动服务。--backup-target 留空=仅本地;--backup-keep N=同源只保留最新 N 份。
+    #[arg(long)]
+    pub backup_source: Option<String>,
+    #[arg(long, default_value = "")]
+    pub backup_target: String,
+    #[arg(long, default_value = "")]
+    pub backup_name: String,
+    #[arg(long, default_value_t = 0)]
+    pub backup_keep: u32,
 }
 
 impl Cli {

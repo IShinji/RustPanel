@@ -57,7 +57,9 @@ v3.0 已对齐宝塔在「安全 / 站点 / SSL / 文件 / 监控 / Docker / 集
 - [x] **P1-02** 云存储 target：WebDAV + **S3 兼容(R2/MinIO/OSS/COS,SigV4 + 路径风格 +
       UNSIGNED-PAYLOAD 流式上传)** 均已实现;前端去向表单含 S3 region/bucket。
       (凭据落盘加密 待做,见拓展池;真实 S3 端到端以 MinIO/R2 实测为终检。)
-- [ ] **P1-03** 定时策略：复用 CronService,预设「每日库备份 / 每周站点全量 / 保留 N 份」模板。
+- [x] **P1-03** 定时策略：CLI 一次性备份模式 `rustpanel-backend --backup-source <dir>
+      [--backup-target <id>] [--backup-keep N]`(跑完即退),配 CronService 即可定时;
+      `--backup-keep` 实现"保留同源最新 N 份"。(cron 页一键预设模板 待补。)
 - [ ] **P1-04** 增量与校验：restic 集成(P8 catalog 已含 restic)做增量 + 完整性校验。
 - [x] **P1-05** 前端备份页：去向配置 + 创建备份 + 备份点列表 + 还原(二次确认) + 删除 + 离站标识。
 - [ ] **P1-06** 数据库 dump 备份:mysqldump / pg_dump 落 .sql 后并入归档(扩展 source_kind)。
