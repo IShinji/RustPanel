@@ -242,6 +242,9 @@ pub async fn serve(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + S
         tracing::warn!(?error, "failed to seed panel port reservation");
     }
 
+    // 后台告警扫描器(证书到期 / 高负载 / 磁盘将满 → 通知渠道)。只在此处启动一次。
+    notification::spawn_alert_scanner();
+
     axum::serve(
         listener,
         Shared::new(multiplex_service_with_auth(auth_service, authority)),

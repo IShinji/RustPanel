@@ -1,6 +1,7 @@
-use std::{env, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::HashMap, env, path::PathBuf, sync::Arc, time::Duration};
 
 use serde::{Deserialize, Serialize};
+use sysinfo::{Disks, System};
 use tonic::{Request, Response as GrpcResponse, Status};
 use uuid::Uuid;
 
@@ -602,6 +603,156 @@ fn current_timestamp() -> u64 {
         .unwrap_or_default()
 }
 
+const DEFAULT_ALERT_SCAN_SECONDS: u64 = 300;
+// 证书:同域名一天最多告警一次;负载/磁盘:一小时最多一次。防刷屏。
+const CERT_ALERT_COOLDOWN: u64 = 86_400;
+const RESOURCE_ALERT_COOLDOWN: u64 = 3_600;
+
+/// 启动后台告警扫描器:周期检查证书到期 / 高负载 / 磁盘将满,命中阈值且过了
+/// 冷却就 notify_event。**必须在进程内只调用一次**(在 serve() 里),否则
+/// 多个扫描器各自维护去重表 → 重复告警。
+pub fn spawn_alert_scanner() {
+    if tokio::runtime::Handle::try_current().is_err() {
+        return;
+    }
+    let interval_secs = env::var("RUSTPANEL_ALERT_SCAN_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value >= 30)
+        .unwrap_or(DEFAULT_ALERT_SCAN_SECONDS);
+    tokio::spawn(async move {
+        // 去重表:alert key → 上次告警时间;进程内存,重启后首轮会重新告警一次(可接受)。
+        let mut last_alert: HashMap<String, u64> = HashMap::new();
+        let mut ticker = tokio::time::interval(Duration::from_secs(interval_secs));
+        loop {
+            ticker.tick().await;
+            run_alert_scan(&mut last_alert).await;
+        }
+    });
+}
+
+async fn run_alert_scan(last_alert: &mut HashMap<String, u64>) {
+    let store = NotificationStore::from_env();
+    let state = match store.load().await {
+        Ok(state) => state,
+        Err(_) => return,
+    };
+    // 没有启用渠道就别浪费 ssl / sysinfo 扫描。
+    if !state.channels.iter().any(|channel| channel.enabled) {
+        return;
+    }
+    let settings = &state.settings;
+
+    // 1) 证书到期
+    if event_enabled(settings, NotificationEventKind::CertExpiry) {
+        let threshold = event_threshold(settings, NotificationEventKind::CertExpiry, 14) as i64;
+        for (domain, days) in crate::ssl::cert_expiry_overview().await {
+            if days <= threshold
+                && should_alert(last_alert, &format!("cert:{domain}"), CERT_ALERT_COOLDOWN)
+            {
+                notify_event(
+                    NotificationEventKind::CertExpiry,
+                    "证书即将到期",
+                    &format!("{domain} 的证书剩余 {days} 天,请尽快续签。"),
+                )
+                .await;
+            }
+        }
+    }
+
+    // 2) 高负载(1 分钟负载按 CPU 核数折算成百分比)
+    if event_enabled(settings, NotificationEventKind::HighLoad) {
+        let threshold = event_threshold(settings, NotificationEventKind::HighLoad, 90);
+        if let Some(load_percent) = system_load_percent() {
+            if load_percent >= threshold
+                && should_alert(last_alert, "load", RESOURCE_ALERT_COOLDOWN)
+            {
+                notify_event(
+                    NotificationEventKind::HighLoad,
+                    "系统负载过高",
+                    &format!(
+                        "1 分钟负载约 {load_percent}%(按 CPU 核数折算),超过阈值 {threshold}%。"
+                    ),
+                )
+                .await;
+            }
+        }
+    }
+
+    // 3) 磁盘将满
+    if event_enabled(settings, NotificationEventKind::DiskFull) {
+        let threshold = event_threshold(settings, NotificationEventKind::DiskFull, 90);
+        if let Some((mount, percent)) = max_disk_usage_percent() {
+            if percent >= threshold
+                && should_alert(
+                    last_alert,
+                    &format!("disk:{mount}"),
+                    RESOURCE_ALERT_COOLDOWN,
+                )
+            {
+                notify_event(
+                    NotificationEventKind::DiskFull,
+                    "磁盘空间将满",
+                    &format!("挂载点 {mount} 已用 {percent}%,超过阈值 {threshold}%。"),
+                )
+                .await;
+            }
+        }
+    }
+}
+
+/// 命中且过了冷却返回 true,并记下本次时间;否则 false。
+fn should_alert(last_alert: &mut HashMap<String, u64>, key: &str, cooldown: u64) -> bool {
+    let now = current_timestamp();
+    match last_alert.get(key) {
+        Some(&last) if now.saturating_sub(last) < cooldown => false,
+        _ => {
+            last_alert.insert(key.to_owned(), now);
+            true
+        }
+    }
+}
+
+fn event_threshold(settings: &StoredSettings, event: NotificationEventKind, fallback: u32) -> u32 {
+    let target = event as i32;
+    settings
+        .rules
+        .iter()
+        .find(|rule| rule.event == target)
+        .map(|rule| rule.threshold)
+        .or_else(|| {
+            default_rules()
+                .iter()
+                .find(|rule| rule.event == target)
+                .map(|rule| rule.threshold)
+        })
+        .unwrap_or(fallback)
+}
+
+fn system_load_percent() -> Option<u32> {
+    let load = System::load_average().one;
+    if load < 0.0 {
+        return None;
+    }
+    let mut sys = System::new();
+    sys.refresh_cpu();
+    let cores = sys.cpus().len().max(1);
+    Some(((load / cores as f64) * 100.0).round() as u32)
+}
+
+fn max_disk_usage_percent() -> Option<(String, u32)> {
+    let disks = Disks::new_with_refreshed_list();
+    disks
+        .iter()
+        .filter(|disk| disk.total_space() > 0)
+        .map(|disk| {
+            let used = disk.total_space().saturating_sub(disk.available_space());
+            let percent = ((used as f64 / disk.total_space() as f64) * 100.0).round() as u32;
+            (disk.mount_point().to_string_lossy().to_string(), percent)
+        })
+        .max_by_key(|(_, percent)| *percent)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -641,6 +792,29 @@ mod tests {
         // SSH 自动封禁默认开;登录失败默认关。
         assert!(event_enabled(&empty, NotificationEventKind::SshAutoBan));
         assert!(!event_enabled(&empty, NotificationEventKind::LoginFailed));
+    }
+
+    #[test]
+    fn should_alert_respects_cooldown() {
+        let mut last: HashMap<String, u64> = HashMap::new();
+        // 首次:无记录 → 允许。
+        assert!(should_alert(&mut last, "cert:a.com", CERT_ALERT_COOLDOWN));
+        // 紧接着同 key → 冷却内,拒绝。
+        assert!(!should_alert(&mut last, "cert:a.com", CERT_ALERT_COOLDOWN));
+        // 另一个 key 独立。
+        assert!(should_alert(&mut last, "disk:/", RESOURCE_ALERT_COOLDOWN));
+    }
+
+    #[test]
+    fn event_threshold_falls_back_to_defaults() {
+        let empty = StoredSettings::default();
+        // 默认规则里证书阈值 14。
+        assert_eq!(
+            event_threshold(&empty, NotificationEventKind::CertExpiry, 7),
+            14
+        );
+        // 无默认规则的事件 → 用传入 fallback。
+        assert_eq!(event_threshold(&empty, NotificationEventKind::Test, 42), 42);
     }
 
     #[test]

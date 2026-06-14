@@ -414,6 +414,22 @@ impl SslServiceImpl {
     }
 }
 
+/// 给通知告警扫描器用:列出"真证书"的 (域名, 剩余天数)。过滤掉自签占位
+/// (self-signed-bootstrap)和解析失败(parse-failed),避免误报到期。失败返空。
+pub(crate) async fn cert_expiry_overview() -> Vec<(String, i64)> {
+    match list_certificates().await {
+        Ok(items) => items
+            .into_iter()
+            .filter(|item| {
+                item.warning_level != "self-signed-bootstrap"
+                    && item.warning_level != "parse-failed"
+            })
+            .map(|item| (item.domain, item.days_until_expiry))
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
 async fn list_certificates() -> Result<Vec<CertificateItem>, Status> {
     let mut certificates = Vec::new();
     let mut entries = match tokio::fs::read_dir(cert_root()).await {
