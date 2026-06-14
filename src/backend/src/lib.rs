@@ -34,6 +34,7 @@ pub mod acme;
 pub mod appstore;
 pub mod audit;
 pub mod auth;
+pub mod backup;
 pub mod capability;
 pub mod cli;
 pub mod cluster;
@@ -66,6 +67,7 @@ use proto::rustpanel::v1::{
     app_store_service_server::AppStoreServiceServer,
     audit_service_server::AuditServiceServer,
     auth_service_server::AuthServiceServer,
+    backup_service_server::BackupServiceServer,
     capability_service_server::CapabilityServiceServer,
     cluster_service_server::ClusterServiceServer,
     cron_service_server::CronServiceServer,
@@ -341,6 +343,10 @@ fn multiplex_service_with_auth(
         .add_service(AuthServiceServer::new(auth_service))
         .add_service(AuditServiceServer::with_interceptor(
             audit::AuditServiceImpl,
+            auth_interceptor.clone(),
+        ))
+        .add_service(BackupServiceServer::with_interceptor(
+            backup::BackupServiceImpl::new(),
             auth_interceptor.clone(),
         ))
         .add_service(ClusterServiceServer::with_interceptor(

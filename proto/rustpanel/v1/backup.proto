@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// BackupTargetKind 备份去向类型。
+enum BackupTargetKind {
+  BACKUP_TARGET_KIND_UNSPECIFIED = 0;
+  // 本地目录(RUSTPANEL_BACKUP_ROOT)。归档始终先落本地,再按目标可选上传。
+  BACKUP_TARGET_KIND_LOCAL = 1;
+  // WebDAV(Nextcloud / 坚果云 / 群晖等):离站副本。
+  BACKUP_TARGET_KIND_WEBDAV = 2;
+}
+
+// BackupTarget 一个备份去向配置。
+message BackupTarget {
+  string id = 1;
+  string name = 2;
+  BackupTargetKind kind = 3;
+  // WebDAV:到目录的基础 URL,如
+  // https://dav.example.com/remote.php/dav/files/<user>/rustpanel-backups
+  string endpoint = 4;
+  string username = 5;
+  // 密码 / 应用专用密码;返回时脱敏。
+  string password = 6;
+  bool enabled = 7;
+  uint64 created_at_seconds = 8;
+}
+
+// BackupRecord 一次备份的记录。
+message BackupRecord {
+  string id = 1;
+  string name = 2;
+  // 被备份的目录绝对路径(还原默认回此路径)。
+  string source_path = 3;
+  string target_id = 4;
+  // 本地归档文件名 <id>.tar.gz。
+  string archive_name = 5;
+  uint64 size_bytes = 6;
+  // 是否已成功推送到离站(WebDAV)目标。
+  bool offsite_uploaded = 7;
+  uint64 created_at_seconds = 8;
+}
+
+message ListBackupTargetsRequest {}
+
+message ListBackupTargetsResponse {
+  Response status = 1;
+  repeated BackupTarget targets = 2;
+}
+
+message UpsertBackupTargetRequest {
+  BackupTarget target = 1;
+}
+
+message UpsertBackupTargetResponse {
+  Response status = 1;
+  BackupTarget target = 2;
+}
+
+message DeleteBackupTargetRequest {
+  string id = 1;
+}
+
+message DeleteBackupTargetResponse {
+  Response status = 1;
+}
+
+message CreateBackupRequest {
+  // 要备份的目录绝对路径。
+  string source_path = 1;
+  // 备份显示名(可选,默认取目录名 + 时间)。
+  string name = 2;
+  // 去向目标 id;留空表示仅本地。
+  string target_id = 3;
+}
+
+message CreateBackupResponse {
+  Response status = 1;
+  BackupRecord record = 2;
+}
+
+message ListBackupsRequest {}
+
+message ListBackupsResponse {
+  Response status = 1;
+  repeated BackupRecord records = 2;
+}
+
+message RestoreBackupRequest {
+  string id = 1;
+  // 还原到的目录;留空表示还原回 source_path。
+  string restore_path = 2;
+}
+
+message RestoreBackupResponse {
+  Response status = 1;
+  string restored_path = 2;
+}
+
+message DeleteBackupRequest {
+  string id = 1;
+}
+
+message DeleteBackupResponse {
+  Response status = 1;
+}
+
+// BackupService 备份体系:去向管理 + 目录备份/还原/列表。归档为 tar.gz,
+// 始终先落本地,WebDAV 目标额外上传一份离站副本。
+service BackupService {
+  rpc ListBackupTargets(ListBackupTargetsRequest) returns (ListBackupTargetsResponse);
+  rpc UpsertBackupTarget(UpsertBackupTargetRequest) returns (UpsertBackupTargetResponse);
+  rpc DeleteBackupTarget(DeleteBackupTargetRequest) returns (DeleteBackupTargetResponse);
+  rpc CreateBackup(CreateBackupRequest) returns (CreateBackupResponse);
+  rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse);
+  rpc RestoreBackup(RestoreBackupRequest) returns (RestoreBackupResponse);
+  rpc DeleteBackup(DeleteBackupRequest) returns (DeleteBackupResponse);
+}

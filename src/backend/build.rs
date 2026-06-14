@@ -6,6 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "../../proto/rustpanel/v1/appstore.proto",
         "../../proto/rustpanel/v1/auth.proto",
         "../../proto/rustpanel/v1/audit.proto",
+        "../../proto/rustpanel/v1/backup.proto",
         "../../proto/rustpanel/v1/capability.proto",
         "../../proto/rustpanel/v1/cluster.proto",
         "../../proto/rustpanel/v1/common.proto",

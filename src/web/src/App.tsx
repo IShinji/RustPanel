@@ -93,6 +93,7 @@ import {
   NotificationRecord,
   NotificationRule
 } from "./gen/rustpanel/v1/notification_pb";
+import { BackupRecord, BackupTarget, BackupTargetKind } from "./gen/rustpanel/v1/backup_pb";
 import { ProxyInstance, ProxyState, VpnCapability } from "./gen/rustpanel/v1/proxy_pb";
 import {
   FirewallAction,
@@ -203,6 +204,7 @@ type TabId =
   | "micro"
   | "network"
   | "notifications"
+  | "backup"
   | "settings";
 type NavGroup = "overview" | "host" | "resource" | "security" | "tools" | "system";
 type NavTab = {
@@ -516,6 +518,7 @@ const tabs: NavTab[] = [
   { id: "micro", label: "Micro", icon: Power, group: "tools", modules: ["static-sites", "workloads", "proxy"] },
   { id: "network", label: "网络与端口", icon: Wifi, group: "system" },
   { id: "notifications", label: "通知", icon: Bell, group: "system" },
+  { id: "backup", label: "备份", icon: Archive, group: "tools" },
   { id: "settings", label: "面板设置", icon: SettingsIcon, group: "system" }
 ];
 
@@ -828,6 +831,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
           {active === "micro" && <MicroPanel clients={clients} />}
           {active === "network" && <NetworkPage clients={clients} />}
           {active === "notifications" && <NotificationPage clients={clients} />}
+          {active === "backup" && <BackupPage clients={clients} />}
           {active === "settings" && <SettingsPage clients={clients} onLogout={onLogout} />}
         </div>
       </main>
@@ -3183,6 +3187,428 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
                         <Trash2 className="size-3.5" />
                         卸载
                       </UIButton>
+                    </TableCell>
+                  </UITableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+const BACKUP_TARGET_KINDS: Array<{ value: BackupTargetKind; label: string }> = [
+  { value: BackupTargetKind.LOCAL, label: "本地" },
+  { value: BackupTargetKind.WEBDAV, label: "WebDAV (离站)" }
+];
+
+function backupTargetKindLabel(kind: BackupTargetKind): string {
+  return BACKUP_TARGET_KINDS.find((item) => item.value === kind)?.label ?? "未知";
+}
+
+type BackupTargetForm = {
+  id: string;
+  name: string;
+  kind: BackupTargetKind;
+  endpoint: string;
+  username: string;
+  password: string;
+  enabled: boolean;
+};
+
+const emptyBackupTargetForm: BackupTargetForm = {
+  id: "",
+  name: "",
+  kind: BackupTargetKind.WEBDAV,
+  endpoint: "",
+  username: "",
+  password: "",
+  enabled: true
+};
+
+function BackupPage({ clients }: { clients: Clients }) {
+  const [targets, setTargets] = useState<BackupTarget[]>([]);
+  const [records, setRecords] = useState<BackupRecord[]>([]);
+  const [targetForm, setTargetForm] = useState<BackupTargetForm>(emptyBackupTargetForm);
+  const [backupForm, setBackupForm] = useState({ sourcePath: "", name: "", targetId: "" });
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const [targetsResponse, recordsResponse] = await Promise.all([
+        clients.backup.listBackupTargets({}),
+        clients.backup.listBackups({})
+      ]);
+      setTargets(targetsResponse.targets);
+      setRecords(recordsResponse.records);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const editingTarget = targetForm.id !== "";
+
+  const saveTarget = async () => {
+    if (!targetForm.name.trim()) {
+      setError("去向名称不能为空");
+      return;
+    }
+    try {
+      await clients.backup.upsertBackupTarget({
+        target: {
+          id: targetForm.id,
+          name: targetForm.name.trim(),
+          kind: targetForm.kind,
+          endpoint: targetForm.endpoint.trim(),
+          username: targetForm.username.trim(),
+          password: targetForm.password,
+          enabled: targetForm.enabled,
+          createdAtSeconds: 0n
+        }
+      });
+      setMessage(`去向 ${targetForm.name} 已保存`);
+      setTargetForm(emptyBackupTargetForm);
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const editTarget = (target: BackupTarget) => {
+    setTargetForm({
+      id: target.id,
+      name: target.name,
+      kind: target.kind,
+      endpoint: target.endpoint,
+      username: target.username,
+      password: "",
+      enabled: target.enabled
+    });
+    setError("");
+    setMessage("");
+  };
+
+  const removeTarget = async (target: BackupTarget) => {
+    try {
+      await clients.backup.deleteBackupTarget({ id: target.id });
+      setMessage(`去向 ${target.name} 已删除`);
+      if (targetForm.id === target.id) setTargetForm(emptyBackupTargetForm);
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const createBackup = async () => {
+    if (!backupForm.sourcePath.trim()) {
+      setError("请填写要备份的目录绝对路径");
+      return;
+    }
+    setMessage("正在创建备份...");
+    setError("");
+    try {
+      const response = await clients.backup.createBackup({
+        sourcePath: backupForm.sourcePath.trim(),
+        name: backupForm.name.trim(),
+        targetId: backupForm.targetId
+      });
+      setMessage(response.status?.message || "备份已创建");
+      setBackupForm({ sourcePath: "", name: "", targetId: "" });
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const restoreBackup = async (record: BackupRecord) => {
+    if (
+      !window.confirm(
+        `确定把备份「${record.name}」还原到 ${record.sourcePath}?该目录现有内容会被覆盖。`
+      )
+    ) {
+      return;
+    }
+    setMessage(`正在还原 ${record.name}...`);
+    setError("");
+    try {
+      const response = await clients.backup.restoreBackup({ id: record.id, restorePath: "" });
+      setMessage(`已还原到 ${response.restoredPath}`);
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const removeBackup = async (record: BackupRecord) => {
+    try {
+      await clients.backup.deleteBackup({ id: record.id });
+      setMessage(`备份 ${record.name} 已删除`);
+      void load();
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight m-0">备份与还原</h1>
+          <p className="text-sm text-muted-foreground m-0">
+            把目录打成 tar.gz 归档(始终先落本地),WebDAV 去向额外推一份离站副本;支持一键还原。
+          </p>
+        </div>
+        <UIButton variant="outline" size="sm" onClick={() => void load()}>
+          <RefreshCw className="size-4" />
+          刷新
+        </UIButton>
+      </header>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive whitespace-pre-line">
+          {error}
+        </div>
+      )}
+      {message && !error && (
+        <div className="rounded-md border border-success/40 bg-success/10 px-3 py-2 text-sm text-success whitespace-pre-line">
+          {message}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>备份去向</CardTitle>
+          <CardDescription>本地无需额外配置;WebDAV 填到目录的完整 URL + 账号密码。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
+              label="去向名称"
+              value={targetForm.name}
+              onChange={(name) => setTargetForm((prev) => ({ ...prev, name }))}
+            />
+            <div className="grid gap-1">
+              <UILabel htmlFor="backup-target-kind">类型</UILabel>
+              <Select
+                value={String(targetForm.kind)}
+                onValueChange={(value) =>
+                  setTargetForm((prev) => ({ ...prev, kind: Number(value) as BackupTargetKind }))
+                }
+              >
+                <SelectTrigger id="backup-target-kind">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BACKUP_TARGET_KINDS.map((item) => (
+                    <SelectItem key={item.value} value={String(item.value)}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Input
+              label="WebDAV 目录 URL"
+              value={targetForm.endpoint}
+              onChange={(endpoint) => setTargetForm((prev) => ({ ...prev, endpoint }))}
+            />
+            <Input
+              label="用户名"
+              value={targetForm.username}
+              onChange={(username) => setTargetForm((prev) => ({ ...prev, username }))}
+            />
+            <Input
+              label={editingTarget ? "密码 (留空保持不变)" : "密码"}
+              type="password"
+              value={targetForm.password}
+              onChange={(password) => setTargetForm((prev) => ({ ...prev, password }))}
+            />
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <Switch
+                checked={targetForm.enabled}
+                onCheckedChange={(enabled) => setTargetForm((prev) => ({ ...prev, enabled }))}
+              />
+              启用
+            </label>
+            <div className="flex gap-2">
+              {editingTarget && (
+                <UIButton
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setTargetForm(emptyBackupTargetForm)}
+                >
+                  取消
+                </UIButton>
+              )}
+              <UIButton size="sm" onClick={() => void saveTarget()}>
+                <Plus className="size-3.5" />
+                {editingTarget ? "更新" : "保存"}
+              </UIButton>
+            </div>
+          </div>
+
+          {targets.length > 0 && (
+            <div className="mt-4">
+              <Table>
+                <TableHeader>
+                  <UITableRow>
+                    <TableHead>名称</TableHead>
+                    <TableHead>类型</TableHead>
+                    <TableHead>地址</TableHead>
+                    <TableHead>状态</TableHead>
+                    <TableHead className="text-right">操作</TableHead>
+                  </UITableRow>
+                </TableHeader>
+                <TableBody>
+                  {targets.map((target) => (
+                    <UITableRow key={target.id}>
+                      <TableCell className="font-medium">{target.name}</TableCell>
+                      <TableCell>{backupTargetKindLabel(target.kind)}</TableCell>
+                      <TableCell className="font-mono text-xs max-w-[260px] truncate">
+                        {target.endpoint || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={target.enabled ? "success" : "secondary"}>
+                          {target.enabled ? "启用" : "停用"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <UIButton
+                            size="sm"
+                            variant="outline"
+                            onClick={() => editTarget(target)}
+                          >
+                            编辑
+                          </UIButton>
+                          <UIButton
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void removeTarget(target)}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </UIButton>
+                        </div>
+                      </TableCell>
+                    </UITableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>创建备份</CardTitle>
+          <CardDescription>备份指定目录的绝对路径,如站点 webroot。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
+            <Input
+              label="目录绝对路径"
+              value={backupForm.sourcePath}
+              onChange={(sourcePath) => setBackupForm((prev) => ({ ...prev, sourcePath }))}
+            />
+            <Input
+              label="备份名(可选)"
+              value={backupForm.name}
+              onChange={(name) => setBackupForm((prev) => ({ ...prev, name }))}
+            />
+            <div className="grid gap-1">
+              <UILabel htmlFor="backup-target">去向</UILabel>
+              <Select
+                value={backupForm.targetId}
+                onValueChange={(targetId) => setBackupForm((prev) => ({ ...prev, targetId }))}
+              >
+                <SelectTrigger id="backup-target">
+                  <SelectValue placeholder="仅本地" />
+                </SelectTrigger>
+                <SelectContent>
+                  {targets
+                    .filter((target) => target.enabled)
+                    .map((target) => (
+                      <SelectItem key={target.id} value={target.id}>
+                        {target.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <UIButton size="sm" onClick={() => void createBackup()}>
+              <Plus className="size-3.5" />
+              备份
+            </UIButton>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>备份点</CardTitle>
+          <CardDescription>共 {records.length} 个</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {records.length === 0 ? (
+            <div className="empty-state text-sm">暂无备份</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <UITableRow>
+                  <TableHead>名称</TableHead>
+                  <TableHead>来源</TableHead>
+                  <TableHead>大小</TableHead>
+                  <TableHead>离站</TableHead>
+                  <TableHead>时间</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </UITableRow>
+              </TableHeader>
+              <TableBody>
+                {records.map((record) => (
+                  <UITableRow key={record.id}>
+                    <TableCell className="font-medium">{record.name}</TableCell>
+                    <TableCell className="font-mono text-xs max-w-[220px] truncate">
+                      {record.sourcePath}
+                    </TableCell>
+                    <TableCell className="text-xs">{formatBytes(Number(record.sizeBytes))}</TableCell>
+                    <TableCell>
+                      {record.offsiteUploaded ? (
+                        <Badge variant="success">已离站</Badge>
+                      ) : (
+                        <Badge variant="secondary">仅本地</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {new Date(Number(record.createdAtSeconds) * 1000).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <UIButton
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void restoreBackup(record)}
+                        >
+                          还原
+                        </UIButton>
+                        <UIButton
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void removeBackup(record)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </UIButton>
+                      </div>
                     </TableCell>
                   </UITableRow>
                 ))}
