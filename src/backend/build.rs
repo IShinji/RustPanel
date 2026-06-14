@@ -3,6 +3,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::env::set_var("PROTOC", protoc_path);
 
     let proto_files = [
+        "../../proto/rustpanel/v1/accesslog.proto",
         "../../proto/rustpanel/v1/appstore.proto",
         "../../proto/rustpanel/v1/auth.proto",
         "../../proto/rustpanel/v1/audit.proto",

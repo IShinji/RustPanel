@@ -9,6 +9,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Ban,
+  BarChart3,
   Boxes,
   ChevronDown,
   Clock,
@@ -213,6 +214,7 @@ type TabId =
   | "backup"
   | "users"
   | "toolbox"
+  | "accesslog"
   | "settings";
 type NavGroup = "overview" | "host" | "resource" | "security" | "tools" | "system";
 type NavTab = {
@@ -528,6 +530,7 @@ const tabs: NavTab[] = [
   { id: "notifications", label: "通知", icon: Bell, group: "system" },
   { id: "backup", label: "备份", icon: Archive, group: "tools" },
   { id: "toolbox", label: "工具箱", icon: HardDrive, group: "tools" },
+  { id: "accesslog", label: "访问统计", icon: BarChart3, group: "tools" },
   { id: "users", label: "用户", icon: UserCircle2, group: "system" },
   { id: "settings", label: "面板设置", icon: SettingsIcon, group: "system" }
 ];
@@ -844,6 +847,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
           {active === "backup" && <BackupPage clients={clients} />}
           {active === "users" && <UserPage clients={clients} />}
           {active === "toolbox" && <ToolboxPage clients={clients} />}
+          {active === "accesslog" && <AccessLogPage clients={clients} />}
           {active === "settings" && <SettingsPage clients={clients} onLogout={onLogout} />}
         </div>
       </main>
@@ -3207,6 +3211,139 @@ function SoftwareStorePage({ clients }: { clients: Clients }) {
           )}
         </CardContent>
       </Card>
+    </section>
+  );
+}
+
+function AccessLogPage({ clients }: { clients: Clients }) {
+  const [path, setPath] = useState("/var/log/nginx/access.log");
+  const [result, setResult] = useState<
+    Awaited<ReturnType<Clients["accessLog"]["analyzeAccessLog"]>> | undefined
+  >(undefined);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const analyze = async () => {
+    setLoading(true);
+    try {
+      const response = await clients.accessLog.analyzeAccessLog({ path: path.trim(), topN: 10 });
+      setResult(response);
+      setError("");
+    } catch (err) {
+      setError(safeError(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderTop = (title: string, items: { key: string; count: bigint }[]) => (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {items.length === 0 ? (
+          <div className="empty-state text-sm">无数据</div>
+        ) : (
+          <Table>
+            <TableBody>
+              {items.map((item) => (
+                <UITableRow key={item.key}>
+                  <TableCell className="font-mono text-xs break-all">{item.key}</TableCell>
+                  <TableCell className="text-right tabular-nums">{String(item.count)}</TableCell>
+                </UITableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  return (
+    <section className="flex flex-col gap-5">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight m-0">网站访问统计</h1>
+        <p className="text-sm text-muted-foreground m-0">
+          流式解析 combined 格式访问日志(如 nginx access.log),零外部依赖、有界内存。大日志结果可能为近似。
+        </p>
+      </header>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <Input label="日志文件路径" value={path} onChange={setPath} />
+            <UIButton size="sm" disabled={loading} onClick={() => void analyze()}>
+              <BarChart3 className="size-4" />
+              {loading ? "分析中…" : "分析"}
+            </UIButton>
+          </div>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive whitespace-pre-line">
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <>
+          {result.truncated && (
+            <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+              数据量较大,已达去重/扫描上限,UV 与 Top 榜单为近似值。
+            </div>
+          )}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: "请求数 (PV)", value: String(result.totalRequests) },
+              { label: "独立访客 (UV)", value: String(result.uniqueVisitors) },
+              { label: "总流量", value: formatBytes(result.totalBytes) },
+              { label: "爬虫请求", value: String(result.botRequests) }
+            ].map((tile) => (
+              <Card key={tile.label}>
+                <CardContent className="pt-6">
+                  <div className="text-sm text-muted-foreground">{tile.label}</div>
+                  <div className="text-xl font-semibold tabular-nums mt-1">{tile.value}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>状态码分布</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <div className="text-muted-foreground">2xx 成功</div>
+                  <div className="font-medium tabular-nums">{String(result.status2xx)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">3xx 跳转</div>
+                  <div className="font-medium tabular-nums">{String(result.status3xx)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">4xx 客户端错误</div>
+                  <div className="font-medium tabular-nums">{String(result.status4xx)}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">5xx 服务端错误</div>
+                  <div className="font-medium tabular-nums">{String(result.status5xx)}</div>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3 m-0">
+                已解析 {String(result.parsedLines)} 行,跳过 {String(result.skippedLines)} 行。
+              </p>
+            </CardContent>
+          </Card>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {renderTop("热门 URL", result.topPaths)}
+            {renderTop("Top 来源 IP", result.topIps)}
+            {renderTop("Top User-Agent", result.topUserAgents)}
+          </div>
+        </>
+      )}
     </section>
   );
 }

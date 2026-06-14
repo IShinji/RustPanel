@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// CountItem 通用「键→计数」条目(Top URL / Top IP / Top UA)。
+message CountItem {
+  string key = 1;
+  uint64 count = 2;
+}
+
+// AnalyzeAccessLogRequest 解析一个 combined 格式访问日志文件。
+message AnalyzeAccessLogRequest {
+  // 日志文件绝对路径(如 /var/log/nginx/access.log)。
+  string path = 1;
+  // Top 榜单取前 N(0=默认 10,上限 100)。
+  uint32 top_n = 2;
+}
+
+// AnalyzeAccessLogResponse 返回 PV / UV / 状态码分布 / Top 榜单等概览。
+message AnalyzeAccessLogResponse {
+  Response status = 1;
+  uint64 total_requests = 2;
+  uint64 unique_visitors = 3;
+  uint64 total_bytes = 4;
+  uint64 status_2xx = 5;
+  uint64 status_3xx = 6;
+  uint64 status_4xx = 7;
+  uint64 status_5xx = 8;
+  uint64 bot_requests = 9;
+  uint64 parsed_lines = 10;
+  uint64 skipped_lines = 11;
+  repeated CountItem top_paths = 12;
+  repeated CountItem top_ips = 13;
+  repeated CountItem top_user_agents = 14;
+  // UV / Top 榜单为防低配 OOM 设了去重上限,超过即为近似(true 表示已截断)。
+  bool truncated = 15;
+}
+
+// AccessLogService 网站访问统计:流式解析 access log,零外部依赖、有界内存。
+service AccessLogService {
+  rpc AnalyzeAccessLog(AnalyzeAccessLogRequest) returns (AnalyzeAccessLogResponse);
+}

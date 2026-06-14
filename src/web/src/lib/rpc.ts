@@ -2,6 +2,7 @@ import { Code, ConnectError, type Interceptor } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
 import { createGrpcWebTransport } from "@connectrpc/connect-web";
 
+import { AccessLogService } from "../gen/rustpanel/v1/accesslog_pb";
 import { AppStoreService } from "../gen/rustpanel/v1/appstore_pb";
 import { AuthService } from "../gen/rustpanel/v1/auth_pb";
 import { AuditService } from "../gen/rustpanel/v1/audit_pb";
@@ -94,6 +95,7 @@ export function createRpcClients(baseUrl = window.location.origin) {
   });
 
   return {
+    accessLog: createClient(AccessLogService, transport),
     appStore: createClient(AppStoreService, transport),
     auth: createClient(AuthService, transport),
     audit: createClient(AuditService, transport),

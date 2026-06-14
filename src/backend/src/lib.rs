@@ -30,6 +30,7 @@ use tower::{make::Shared, service_fn, ServiceExt};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+pub mod access_log;
 pub mod acme;
 pub mod appstore;
 pub mod audit;
@@ -66,6 +67,7 @@ pub mod proto {
 }
 
 use proto::rustpanel::v1::{
+    access_log_service_server::AccessLogServiceServer,
     app_store_service_server::AppStoreServiceServer,
     audit_service_server::AuditServiceServer,
     auth_service_server::AuthServiceServer,
@@ -428,6 +430,10 @@ fn multiplex_service_with_auth(
         ))
         .add_service(ToolboxServiceServer::with_interceptor(
             toolbox::ToolboxServiceImpl,
+            auth_interceptor.clone(),
+        ))
+        .add_service(AccessLogServiceServer::with_interceptor(
+            access_log::AccessLogServiceImpl,
             auth_interceptor.clone(),
         ))
         .add_service(UserServiceServer::with_interceptor(

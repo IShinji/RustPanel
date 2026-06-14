@@ -33,9 +33,9 @@ v3.0 已对齐宝塔在「安全 / 站点 / SSL / 文件 / 监控 / Docker / 集
 - `P3` FTP:虚拟用户需 `pure-pw`/`db_load` 外部工具 + 守护进程生命周期 + 暴露文件系统,
   安全敏感且本环境无法端到端验证;与"容器/现代/低配"定位契合度低(v3.0 已留占位页)。
 - `P4` PHP 原生多版本(`@priority: low`):定位为容器化 PHP-FPM,原生多版本暂不做。
-- `P6` 访问统计 / 迁移 / DNS(`@priority: low`):访问统计需 nginx 日志(低配默认 rpxy/sws 无);
-  迁移已被「目录备份 + 异机还原」覆盖;DNS 托管需对接外部 API。均按需单独排期。
-  (Linux 工具箱 P6-03 已做,见上。)
+- `P6-04` DNS 解析托管(`@priority: low`):需对接外部 DNS 服务商 API(Cloudflare/阿里云)+
+  真实 token 端到端验证,且与 ACME DNS-01 自动加 TXT 联动才有最大价值;作为独立 provider
+  集成单独排期。(P6-01 访问统计 / P6-02 迁移 / P6-03 工具箱 均已做,见上。)
 
 > 以上"暂缓"项均可应要求**单独立项、带真机验证**地实现;不在本轮自动上线批次内,是质量与低配约束的取舍。
 
@@ -140,8 +140,13 @@ v3.0 已对齐宝塔在「安全 / 站点 / SSL / 文件 / 监控 / Docker / 集
 
 ## P6 其它对齐项（按需排）
 
-- [ ] **P6-01** 网站访问统计：access log 解析 → PV/UV/状态码/Top URL/蜘蛛 报表。 @priority: low
-- [ ] **P6-02** 一键迁移/搬家：站点 + 库打包导出,目标机导入(可复用集群文件分发 + 备份)。 @priority: low
+- [x] **P6-01** 网站访问统计:`AccessLogService.AnalyzeAccessLog` 流式解析 combined 日志 →
+      PV / UV / 总流量 / 状态码分布(2xx–5xx) / 爬虫数 / Top URL / Top IP / Top UA;
+      spawn_blocking 逐行读不整档进内存,去重容器 5 万 key 上限 + 扫描 500 万行上限防低配 OOM
+      (超限 truncated=true 标近似);前端「访问统计」页。
+- [x] **P6-02** 一键迁移/搬家:**已被 P1 备份体系覆盖**——目录备份(tar.gz)+ 数据库 dump 备份
+      + WebDAV/S3 离站 + 异机指定目录还原,即「源机备份 → 目标机还原」;restic 亦可跨机。
+      不另做专用迁移 RPC。
 - [x] **P6-03** Linux 工具箱:`ToolboxService` —— swap 状态 + 创建(64–4096MB,落 /etc/fstab,留余量)
       + 时区读/设;系统改动经 `RUSTPANEL_TOOLBOX_APPLY` 门禁(默认 no-op,安全上线);前端「工具箱」页。
       (hosts 编辑 / 系统更新 / 内核参数 未做。)
