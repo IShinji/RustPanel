@@ -7233,6 +7233,19 @@ function RewritePanel({ templates }: { templates: RewriteTemplate[] }) {
   );
 }
 
+// 纯前端 CSV 导出:从已加载的结果生成,不经服务器(低配不占后端内存)。
+function downloadCsv(columns: string[], rows: string[][], filename: string) {
+  const escape = (value: string) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const lines = [columns.map(escape).join(","), ...rows.map((row) => row.map(escape).join(","))];
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function DatabasePanel({ clients }: { clients: Clients }) {
   const [dsn, setDsn] = useState("sqlite::memory:");
   const [sql, setSql] = useState("select 1 as value");
@@ -7692,7 +7705,13 @@ function DatabasePanel({ clients }: { clients: Clients }) {
                   options={{ minimap: { enabled: false }, fontSize: 13 }}
                 />
               </div>
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                {columns.length > 0 && (
+                  <UIButton variant="outline" onClick={() => downloadCsv(columns, rows, "query.csv")}>
+                    <Download className="size-4" />
+                    导出 CSV
+                  </UIButton>
+                )}
                 <UIButton onClick={() => void execute()}>
                   <Play className="size-4" />
                   执行
@@ -7753,6 +7772,14 @@ function DatabasePanel({ clients }: { clients: Clients }) {
                       {browseOffset + browseRows.length}
                     </span>
                     <div className="flex gap-2">
+                      <UIButton
+                        size="sm"
+                        variant="outline"
+                        onClick={() => downloadCsv(browseColumns, browseRows, `${browseName}.csv`)}
+                      >
+                        <Download className="size-3.5" />
+                        导出 CSV
+                      </UIButton>
                       <UIButton
                         size="sm"
                         variant="outline"
