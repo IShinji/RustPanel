@@ -1487,6 +1487,20 @@ async fn maybe_auto_ban_ssh_source(
     apply_rule_change(None, Some(&rule), &mut options).await?;
     state.options = options;
     state.rules.push(rule);
+
+    // 推送告警:spawn 出去,不阻塞封禁路径,也不让通知失败影响封禁结果。
+    let notify_source = event.source_ip.trim().to_owned();
+    tokio::spawn(async move {
+        crate::notification::notify_event(
+            crate::proto::rustpanel::v1::NotificationEventKind::SshAutoBan,
+            "SSH 来源已自动封禁",
+            &format!(
+                "来源 {notify_source} 在失败窗口内达到 {failures} 次失败登录,已自动加入防火墙拒绝规则。"
+            ),
+        )
+        .await;
+    });
+
     Ok(true)
 }
 

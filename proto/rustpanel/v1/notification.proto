@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package rustpanel.v1;
+
+import "rustpanel/v1/common.proto";
+
+// NotificationChannelKind 通知渠道类型(均为 HTTP 推送,无 SMTP 依赖)。
+enum NotificationChannelKind {
+  NOTIFICATION_CHANNEL_KIND_UNSPECIFIED = 0;
+  // 通用 Webhook:POST JSON 到 target;secret 非空时作为 Authorization: Bearer <secret>。
+  NOTIFICATION_CHANNEL_KIND_WEBHOOK = 1;
+  // Telegram Bot:target = chat_id,secret = bot token。
+  NOTIFICATION_CHANNEL_KIND_TELEGRAM = 2;
+  // 钉钉群机器人:target = 完整 webhook URL(含 access_token)。
+  NOTIFICATION_CHANNEL_KIND_DINGTALK = 3;
+  // 企业微信群机器人:target = 完整 webhook URL。
+  NOTIFICATION_CHANNEL_KIND_WECOM = 4;
+  // Bark(iOS):target = https://api.day.app/<device-key> 形式的基础 URL。
+  NOTIFICATION_CHANNEL_KIND_BARK = 5;
+}
+
+// NotificationEventKind 触发通知的事件类型。
+enum NotificationEventKind {
+  NOTIFICATION_EVENT_KIND_UNSPECIFIED = 0;
+  // 测试发送(TestNotificationChannel 使用)。
+  NOTIFICATION_EVENT_KIND_TEST = 1;
+  // 证书临近到期。
+  NOTIFICATION_EVENT_KIND_CERT_EXPIRY = 2;
+  // 系统负载过高。
+  NOTIFICATION_EVENT_KIND_HIGH_LOAD = 3;
+  // 磁盘将满。
+  NOTIFICATION_EVENT_KIND_DISK_FULL = 4;
+  // SSH 来源被自动封禁。
+  NOTIFICATION_EVENT_KIND_SSH_AUTO_BAN = 5;
+  // 登录失败(异常登录)。
+  NOTIFICATION_EVENT_KIND_LOGIN_FAILED = 6;
+}
+
+// NotificationChannel 一条通知渠道配置。
+message NotificationChannel {
+  string id = 1;
+  string name = 2;
+  NotificationChannelKind kind = 3;
+  // 目标地址:webhook/钉钉/企业微信/Bark 的 URL,或 Telegram 的 chat_id。
+  string target = 4;
+  // 密钥:Telegram bot token / Webhook Bearer;不需要时留空。返回时后端会脱敏。
+  string secret = 5;
+  bool enabled = 6;
+  uint64 created_at_seconds = 7;
+  uint64 updated_at_seconds = 8;
+}
+
+// NotificationRule 单个事件的开关与阈值。
+message NotificationRule {
+  NotificationEventKind event = 1;
+  bool enabled = 2;
+  // 阈值语义随事件而定:证书=剩余天数,负载=百分比*100,磁盘=占用百分比。
+  uint32 threshold = 3;
+}
+
+// NotificationSettings 全部事件规则。
+message NotificationSettings {
+  repeated NotificationRule rules = 1;
+}
+
+// NotificationRecord 一条通知发送历史。
+message NotificationRecord {
+  string id = 1;
+  NotificationEventKind event = 2;
+  string title = 3;
+  string body = 4;
+  uint64 occurred_at_seconds = 5;
+  repeated string delivered_channels = 6;
+  repeated string failed_channels = 7;
+}
+
+message ListNotificationChannelsRequest {}
+
+message ListNotificationChannelsResponse {
+  Response status = 1;
+  repeated NotificationChannel channels = 2;
+}
+
+message UpsertNotificationChannelRequest {
+  NotificationChannel channel = 1;
+}
+
+message UpsertNotificationChannelResponse {
+  Response status = 1;
+  NotificationChannel channel = 2;
+}
+
+message DeleteNotificationChannelRequest {
+  string id = 1;
+}
+
+message DeleteNotificationChannelResponse {
+  Response status = 1;
+}
+
+message TestNotificationChannelRequest {
+  string id = 1;
+}
+
+message TestNotificationChannelResponse {
+  Response status = 1;
+  NotificationRecord record = 2;
+}
+
+message GetNotificationSettingsRequest {}
+
+message GetNotificationSettingsResponse {
+  Response status = 1;
+  NotificationSettings settings = 2;
+}
+
+message UpdateNotificationSettingsRequest {
+  NotificationSettings settings = 1;
+}
+
+message UpdateNotificationSettingsResponse {
+  Response status = 1;
+  NotificationSettings settings = 2;
+}
+
+message ListNotificationHistoryRequest {
+  uint32 limit = 1;
+}
+
+message ListNotificationHistoryResponse {
+  Response status = 1;
+  repeated NotificationRecord records = 2;
+}
+
+// NotificationService 通知告警中心:渠道管理、事件规则、测试发送与历史。
+service NotificationService {
+  rpc ListNotificationChannels(ListNotificationChannelsRequest) returns (ListNotificationChannelsResponse);
+  rpc UpsertNotificationChannel(UpsertNotificationChannelRequest) returns (UpsertNotificationChannelResponse);
+  rpc DeleteNotificationChannel(DeleteNotificationChannelRequest) returns (DeleteNotificationChannelResponse);
+  rpc TestNotificationChannel(TestNotificationChannelRequest) returns (TestNotificationChannelResponse);
+  rpc GetNotificationSettings(GetNotificationSettingsRequest) returns (GetNotificationSettingsResponse);
+  rpc UpdateNotificationSettings(UpdateNotificationSettingsRequest) returns (UpdateNotificationSettingsResponse);
+  rpc ListNotificationHistory(ListNotificationHistoryRequest) returns (ListNotificationHistoryResponse);
+}

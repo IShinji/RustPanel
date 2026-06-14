@@ -30,6 +30,9 @@ prost-types = "0.13"
 rcgen = "0.13"
 redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
 regex = "1"
+# 通知告警出站 HTTP(Webhook/Telegram/钉钉/企业微信/Bark)。走 rustls + 内置根证书,
+# 不引 openssl,适配最小镜像;复用已在树里的 rustls/hyper。
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 rust-embed = "8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
