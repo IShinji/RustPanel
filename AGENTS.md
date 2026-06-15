@@ -49,6 +49,13 @@
     不引 openssl / native-tls。
   - **后台任务**:周期间隔保守(分钟级),扫描廉价,无消费者时直接跳过。
   - 尊重 CapabilityService 能力探针与资源预算(min_ram / NAT 端口预算)。
+  - **运行形态分层(关键)**:OpenVZ / 极低配大概率**跑不了 Docker**(无 overlayfs、
+    user_namespaces 受限、daemon 本身吃几十~上百 MB);`CapabilityService` 探测
+    `can_run_docker` 并让前端置灰 Docker / AppStore。低配主线必须是**非容器**路径:
+    静态站(sws)+ 反代(rpxy)+ `WorkloadService` 跑原生二进制/脚本。容器化(含容器
+    PHP-FPM)是**能跑 Docker 主机**(KVM + 够内存)的增强,**不能当作低配场景的唯一方案**;
+    动态 PHP 等重型站点在 ~128MB 上不在目标内。凡"用容器解决"的功能,必须确认
+    `can_run_docker=false` 时有非容器后备或已明确置灰,不留"只在能跑 Docker 时才可用"的隐性缺口。
 - **状态持久化**:JSON 状态文件一律 tmp+rename 原子写;同一文件的 load→改→save
   用进程内 `tokio::sync::Mutex` 串行化,防并发丢更新与半截文件。
 - **机密**:私钥等敏感文件落盘后收紧到 `0600`。
