@@ -351,16 +351,10 @@ impl DnsStore {
             .await
             .map_err(io_status)?;
         let content = serde_json::to_string_pretty(config).map_err(io_status)?;
-        let path = self.config_path();
-        let tmp = path.with_extension("json.tmp");
-        tokio::fs::write(&tmp, content).await.map_err(io_status)?;
         // token 是密钥,落盘按 0600。
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = tokio::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600)).await;
-        }
-        tokio::fs::rename(&tmp, &path).await.map_err(io_status)
+        crate::statefile::write_secret_atomic(&self.config_path(), content)
+            .await
+            .map_err(io_status)
     }
 }
 

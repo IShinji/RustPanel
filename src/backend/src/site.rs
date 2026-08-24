@@ -970,10 +970,9 @@ impl SiteStore {
             .map_err(io_status)?;
         let content = serde_json::to_string_pretty(rules).map_err(io_status)?;
         // tmp + rename:避免半截 JSON 让 load_proxy_rules 永久 500。
-        let path = self.proxy_rules_path();
-        let tmp = path.with_extension("json.tmp");
-        tokio::fs::write(&tmp, content).await.map_err(io_status)?;
-        tokio::fs::rename(&tmp, &path).await.map_err(io_status)
+        crate::statefile::write_atomic(&self.proxy_rules_path(), content)
+            .await
+            .map_err(io_status)
     }
 
     fn proxy_rules_path(&self) -> PathBuf {
@@ -1001,10 +1000,9 @@ impl SiteStore {
             .collect::<Vec<_>>();
         let content = serde_json::to_string_pretty(&stored).map_err(io_status)?;
         // tmp + rename:避免半截 JSON 让 load_builtin_sites 永久 500。
-        let path = self.sites_path();
-        let tmp = path.with_extension("json.tmp");
-        tokio::fs::write(&tmp, content).await.map_err(io_status)?;
-        tokio::fs::rename(&tmp, &path).await.map_err(io_status)
+        crate::statefile::write_atomic(&self.sites_path(), content)
+            .await
+            .map_err(io_status)
     }
 
     async fn upsert_builtin_site(&self, request: CreateSiteRequest) -> Result<SiteItem, Status> {

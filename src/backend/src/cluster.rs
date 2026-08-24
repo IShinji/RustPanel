@@ -280,7 +280,8 @@ async fn save_state(state: &StoredClusterState) -> Result<(), Status> {
         .await
         .map_err(io_status)?;
     let content = serde_json::to_string_pretty(state).map_err(io_status)?;
-    tokio::fs::write(state_path(), content)
+    // 之前是裸 write:既非原子(崩溃留半截 JSON),又把 node_secret 写成 0644。
+    crate::statefile::write_secret_atomic(&state_path(), content)
         .await
         .map_err(io_status)
 }

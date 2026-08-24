@@ -317,9 +317,9 @@ async fn write_atomic(path: PathBuf, body: &[u8]) -> Result<(), Status> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
     }
-    let tmp = path.with_extension("rustpanel-tmp");
-    tokio::fs::write(&tmp, body).await.map_err(io_status)?;
-    tokio::fs::rename(&tmp, &path).await.map_err(io_status)
+    crate::statefile::write_atomic(&path, body)
+        .await
+        .map_err(io_status)
 }
 
 /// 把 alias 表同时落到 aliases.json + rules/aliases.rhai。

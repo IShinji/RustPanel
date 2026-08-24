@@ -530,10 +530,9 @@ impl FileManager {
         let content = serde_json::to_string_pretty(items).map_err(io_status)?;
         // tmp + rename:避免崩溃/并发写出半截 JSON 后 recycle_items_stored
         // 反序列化失败,让回收站永久 500。
-        let path = self.recycle_index_path();
-        let tmp = path.with_extension("json.tmp");
-        tokio::fs::write(&tmp, content).await.map_err(io_status)?;
-        tokio::fs::rename(&tmp, &path).await.map_err(io_status)
+        crate::statefile::write_atomic(&self.recycle_index_path(), content)
+            .await
+            .map_err(io_status)
     }
 
     fn recycle_dir(&self) -> PathBuf {

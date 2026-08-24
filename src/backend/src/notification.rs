@@ -454,11 +454,11 @@ impl NotificationStore {
             .await
             .map_err(io_status)?;
         let content = serde_json::to_string_pretty(state).map_err(io_status)?;
-        // tmp + rename:避免半截 JSON 让 load 永久 500。
-        let path = self.state_path();
-        let tmp = path.with_extension("json.tmp");
-        tokio::fs::write(&tmp, content).await.map_err(io_status)?;
-        tokio::fs::rename(&tmp, &path).await.map_err(io_status)
+        // tmp + rename 避免半截 JSON 让 load 永久 500;渠道里是 bot token /
+        // webhook URL(本身即凭据),按机密落盘(0600)。
+        crate::statefile::write_secret_atomic(&self.state_path(), content)
+            .await
+            .map_err(io_status)
     }
 
     fn state_path(&self) -> PathBuf {

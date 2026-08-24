@@ -33,7 +33,7 @@ const DEFAULT_ADMIN_USERNAME: &str = "admin";
 const DEFAULT_ADMIN_PASSWORD: &str = "rustpanel";
 const TOTP_STEP_SECONDS: u64 = 30;
 const TOTP_DIGITS: u32 = 6;
-const REFRESH_SUBJECT_PREFIX: &str = "refresh:";
+pub(crate) const REFRESH_SUBJECT_PREFIX: &str = "refresh:";
 // 面板登录失败激增告警:窗口内累计达阈值且过冷却才推一次(聚合,避免每次失败都发)。
 const LOGIN_FAIL_WINDOW_SECONDS: u64 = 600;
 const LOGIN_FAIL_THRESHOLD: usize = 5;
@@ -80,6 +80,108 @@ pub struct AuthServiceImpl {
     // 登录失败内存滑窗 + 上次告警时间;用于"登录失败激增"聚合通知(默认关)。
     recent_failures: Arc<tokio::sync::Mutex<Vec<u64>>>,
     last_login_alert: Arc<tokio::sync::Mutex<u64>>,
+    // 登录限速:连续失败按账号锁定,拒在 PBKDF2 之前。
+    throttle: Arc<LoginThrottle>,
+}
+
+/// 面板登录限速。
+///
+/// 此前 `login` 对失败只发告警(默认还关着),没有任何锁定 —— 面板端口暴露在公网时
+/// 等于让爆破只受 PBKDF2 计算成本限制;而在 128MB / 单核小鸡上,10 万轮 PBKDF2 被
+/// 刷起来本身就是一次 CPU DoS。因此**锁定判定放在校验口令之前**:锁上了就直接拒,
+/// 不做任何哈希运算。
+///
+/// 没有客户端 IP 可用(多路复用层是 `Shared` service,拿不到 peer addr),所以按
+/// **用户名**计数;撞库换用户名的场景由 `MAX_TRACKED_ACCOUNTS` 上限 + 全局滑窗告警
+/// 兜底。表容量设死,防止用户名喷洒把内存打爆(低配主机的硬约束)。
+#[derive(Debug)]
+struct LoginThrottle {
+    entries: tokio::sync::Mutex<std::collections::HashMap<String, ThrottleEntry>>,
+    max_failures: u32,
+    base_lock_seconds: u64,
+    max_lock_seconds: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct ThrottleEntry {
+    failures: u32,
+    last_failure: u64,
+    locked_until: u64,
+}
+
+/// 同时跟踪的账号数上限;超出后先淘汰已过期条目,仍满则丢最旧的。
+const MAX_TRACKED_ACCOUNTS: usize = 512;
+/// 连续失败计数的遗忘窗口:超过这么久没再失败,计数清零。
+const THROTTLE_FORGET_SECONDS: u64 = 900;
+
+impl LoginThrottle {
+    fn from_env() -> Self {
+        let max_failures = env::var("RUSTPANEL_LOGIN_MAX_FAILURES")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(5);
+        let base_lock_seconds = env::var("RUSTPANEL_LOGIN_LOCK_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(60);
+
+        Self {
+            entries: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+            max_failures,
+            base_lock_seconds,
+            max_lock_seconds: base_lock_seconds.saturating_mul(15),
+        }
+    }
+
+    /// 账号当前是否被锁;锁着时返回剩余秒数。
+    async fn locked_for(&self, username: &str, now: u64) -> Option<u64> {
+        let entries = self.entries.lock().await;
+        entries
+            .get(username)
+            .map(|entry| entry.locked_until)
+            .filter(|until| *until > now)
+            .map(|until| until - now)
+    }
+
+    /// 记一次失败;达到阈值则锁定,锁定时长按超出次数指数退避(封顶)。
+    async fn record_failure(&self, username: &str, now: u64) {
+        let mut entries = self.entries.lock().await;
+        entries.retain(|_, entry| {
+            entry.locked_until > now
+                || now.saturating_sub(entry.last_failure) < THROTTLE_FORGET_SECONDS
+        });
+        if entries.len() >= MAX_TRACKED_ACCOUNTS && !entries.contains_key(username) {
+            if let Some(oldest) = entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_failure)
+                .map(|(key, _)| key.clone())
+            {
+                entries.remove(&oldest);
+            }
+        }
+
+        let entry = entries.entry(username.to_owned()).or_default();
+        if now.saturating_sub(entry.last_failure) >= THROTTLE_FORGET_SECONDS {
+            entry.failures = 0;
+        }
+        entry.failures = entry.failures.saturating_add(1);
+        entry.last_failure = now;
+        if entry.failures >= self.max_failures {
+            let overflow = entry.failures - self.max_failures;
+            let lock = self
+                .base_lock_seconds
+                .saturating_mul(1_u64 << overflow.min(6))
+                .min(self.max_lock_seconds);
+            entry.locked_until = now.saturating_add(lock);
+        }
+    }
+
+    /// 登录成功:清掉该账号的失败记录。
+    async fn record_success(&self, username: &str) {
+        self.entries.lock().await.remove(username);
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -236,6 +338,7 @@ impl AuthServiceImpl {
             totp_secret: totp_secret_from_env()?,
             recent_failures: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             last_login_alert: Arc::new(tokio::sync::Mutex::new(0)),
+            throttle: Arc::new(LoginThrottle::from_env()),
         })
     }
 
@@ -279,6 +382,24 @@ impl AuthService for AuthServiceImpl {
         request: Request<LoginRequest>,
     ) -> Result<GrpcResponse<LoginResponse>, Status> {
         let request = request.into_inner();
+        let now = unix_now().unwrap_or(0);
+        // 限速判定必须在校验口令之前:锁着就直接拒,连 PBKDF2 都不跑
+        // (既挡爆破,也挡"刷登录烧满小鸡 CPU")。
+        if let Some(remaining) = self.throttle.locked_for(&request.username, now).await {
+            let _ = audit::append_audit_event(
+                "auth",
+                "login_locked",
+                format!(
+                    "login temporarily locked for {} ({remaining}s remaining)",
+                    request.username
+                ),
+                "grpc",
+            )
+            .await;
+            return Err(Status::resource_exhausted(format!(
+                "登录失败次数过多,请 {remaining} 秒后再试"
+            )));
+        }
         // env 单管理员恒为 admin;否则查多用户库(PBKDF2 校验)拿角色。
         let role = if self
             .credentials
@@ -296,6 +417,7 @@ impl AuthService for AuthServiceImpl {
                 "grpc",
             )
             .await;
+            self.throttle.record_failure(&request.username, now).await;
             self.note_login_failure().await;
             return Err(Status::unauthenticated("invalid username or password"));
         };
@@ -321,6 +443,8 @@ impl AuthService for AuthServiceImpl {
                     "grpc",
                 )
                 .await;
+                // 2FA 失败同样计数:口令已对但 TOTP 猜错,照样是爆破面。
+                self.throttle.record_failure(&request.username, now).await;
                 self.note_login_failure().await;
                 return Ok(GrpcResponse::new(LoginResponse {
                     status: Some(error_response(401, "two factor code required")),
@@ -332,6 +456,7 @@ impl AuthService for AuthServiceImpl {
             }
         }
 
+        self.throttle.record_success(&request.username).await;
         let issued = self
             .authority
             .issue_with_role(&request.username, &role)
@@ -382,9 +507,18 @@ impl AuthService for AuthServiceImpl {
             .sub
             .strip_prefix(REFRESH_SUBJECT_PREFIX)
             .ok_or_else(|| Status::unauthenticated("invalid refresh token"))?;
+        if crate::user::token_revoked(subject, claims.iat).await {
+            return Err(Status::unauthenticated("token has been revoked"));
+        }
+        // 角色以用户库当前值为准:不能靠 refresh 把降权前的旧角色一路续下去。
+        // 用户库里没有(= env 单管理员或已删号)则沿用 token 里的角色,
+        // 删号场景已被上面的吊销判定拦掉。
+        let role = crate::user::current_role(subject)
+            .await
+            .unwrap_or_else(|| claims.role.clone());
         let issued = self
             .authority
-            .issue_with_role(subject, claims.role.as_str())
+            .issue_with_role(subject, role.as_str())
             .map_err(auth_status)?;
 
         Ok(GrpcResponse::new(TokenRefreshResponse {
@@ -654,5 +788,79 @@ mod tests {
         assert!(constant_time_eq(b"rustpanel", b"rustpanel"));
         assert!(!constant_time_eq(b"rustpanel", b"rustpanel2"));
         assert!(!constant_time_eq(b"rustpanel", b"rustpanic"));
+    }
+
+    fn throttle(max_failures: u32, base_lock_seconds: u64) -> LoginThrottle {
+        LoginThrottle {
+            entries: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+            max_failures,
+            base_lock_seconds,
+            max_lock_seconds: base_lock_seconds * 15,
+        }
+    }
+
+    #[tokio::test]
+    async fn throttle_locks_account_after_threshold_failures() {
+        let throttle = throttle(3, 60);
+        let now = 1_000;
+
+        for _ in 0..2 {
+            throttle.record_failure("admin", now).await;
+        }
+        assert_eq!(throttle.locked_for("admin", now).await, None);
+
+        throttle.record_failure("admin", now).await;
+        assert_eq!(throttle.locked_for("admin", now).await, Some(60));
+        // 锁只针对该账号,不误伤别人。
+        assert_eq!(throttle.locked_for("operator", now).await, None);
+        // 锁到期后自动放行。
+        assert_eq!(throttle.locked_for("admin", now + 60).await, None);
+    }
+
+    #[tokio::test]
+    async fn throttle_backs_off_exponentially_and_caps() {
+        let throttle = throttle(1, 60);
+        let now = 1_000;
+
+        throttle.record_failure("admin", now).await;
+        assert_eq!(throttle.locked_for("admin", now).await, Some(60));
+        throttle.record_failure("admin", now).await;
+        assert_eq!(throttle.locked_for("admin", now).await, Some(120));
+        throttle.record_failure("admin", now).await;
+        assert_eq!(throttle.locked_for("admin", now).await, Some(240));
+
+        for _ in 0..10 {
+            throttle.record_failure("admin", now).await;
+        }
+        assert_eq!(throttle.locked_for("admin", now).await, Some(900));
+    }
+
+    #[tokio::test]
+    async fn throttle_clears_on_success_and_forgets_stale_failures() {
+        let throttle = throttle(3, 60);
+
+        throttle.record_failure("admin", 1_000).await;
+        throttle.record_failure("admin", 1_000).await;
+        throttle.record_success("admin").await;
+        throttle.record_failure("admin", 1_001).await;
+        assert_eq!(throttle.locked_for("admin", 1_001).await, None);
+
+        // 距上次失败超过遗忘窗口 → 计数从头开始,不会攒到锁死。
+        let stale = 1_001 + THROTTLE_FORGET_SECONDS;
+        throttle.record_failure("admin", stale).await;
+        throttle.record_failure("admin", stale).await;
+        assert_eq!(throttle.locked_for("admin", stale).await, None);
+    }
+
+    #[tokio::test]
+    async fn throttle_table_stays_bounded_under_username_spray() {
+        let throttle = throttle(5, 60);
+        for index in 0..(MAX_TRACKED_ACCOUNTS + 200) {
+            throttle
+                .record_failure(&format!("user-{index}"), 1_000 + index as u64)
+                .await;
+        }
+
+        assert!(throttle.entries.lock().await.len() <= MAX_TRACKED_ACCOUNTS);
     }
 }

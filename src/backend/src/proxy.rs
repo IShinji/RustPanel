@@ -319,7 +319,8 @@ impl ProxyStore {
             .map(StoredProxyInstance::from_proto)
             .collect::<Vec<_>>();
         let content = serde_json::to_string_pretty(&stored).map_err(io_status)?;
-        tokio::fs::write(self.instances_path(), content)
+        // 之前是裸 write:崩溃/并发会留半截 JSON,让代理列表永久 500。
+        crate::statefile::write_atomic(&self.instances_path(), content)
             .await
             .map_err(io_status)
     }

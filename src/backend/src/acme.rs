@@ -145,9 +145,7 @@ pub async fn write_settings(settings: &AcmeSettings) -> Result<(), AcmeError> {
     }
     let content = serde_json::to_string_pretty(settings)?;
     // tmp + rename 保证原子,避免半写状态。
-    let tmp = path.with_extension("json.tmp");
-    tokio::fs::write(&tmp, content).await?;
-    tokio::fs::rename(&tmp, &path).await?;
+    crate::statefile::write_atomic(&path, content).await?;
     Ok(())
 }
 
@@ -184,10 +182,9 @@ async fn write_pending(order: &PendingOrder) -> Result<(), AcmeError> {
     }
     let content = serde_json::to_string_pretty(order)?;
     // tmp + rename 保证原子,避免崩溃/并发写出半截 JSON 后 read_pending
-    // 反序列化失败,把该域名永久卡在错误态。
-    let tmp = path.with_extension("json.tmp");
-    tokio::fs::write(&tmp, content).await?;
-    tokio::fs::rename(&tmp, &path).await?;
+    // 反序列化失败,把该域名永久卡在错误态;文件里含 ACME 账号私钥
+    // (AccountCredentials),按机密落盘(0600)。
+    crate::statefile::write_secret_atomic(&path, content).await?;
     Ok(())
 }
 

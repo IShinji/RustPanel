@@ -606,10 +606,9 @@ impl SecurityStore {
         let content = serde_json::to_string_pretty(state).map_err(io_status)?;
         // tmp + rename:崩溃/并发写出半截 JSON 会让 load() 反序列化失败,
         // 之后每个 security RPC 都 500,直到手工修文件。
-        let path = self.state_path();
-        let tmp = path.with_extension("json.tmp");
-        tokio::fs::write(&tmp, content).await.map_err(io_status)?;
-        tokio::fs::rename(&tmp, &path).await.map_err(io_status)
+        crate::statefile::write_atomic(&self.state_path(), content)
+            .await
+            .map_err(io_status)
     }
 
     fn state_path(&self) -> PathBuf {

@@ -52,6 +52,7 @@ pub mod runtime;
 pub mod security;
 pub mod site;
 pub mod ssl;
+pub mod statefile;
 pub mod terminal;
 pub mod toolbox;
 pub mod user;
@@ -463,6 +464,13 @@ fn multiplex_service_with_auth(
                 // 交给各服务自身的 AuthInterceptor 去拒绝(避免双重拒绝逻辑)。
                 if let Some(token) = extract_http_token(&request) {
                     if let Ok(claims) = enforce_authority.validate(&token) {
+                        // 改角色 / 改密码 / 删用户之后签发前的 token 立刻作废,
+                        // 不再等它自己过期(默认 24h)。
+                        if user::token_revoked(&claims.sub, claims.iat).await {
+                            return Ok(unauthorized_response(
+                                "登录状态已失效(账号权限或密码已变更),请重新登录",
+                            ));
+                        }
                         if !role_allows(&claims.role, request.uri().path()) {
                             return Ok(forbidden_response("权限不足:当前角色不允许此操作"));
                         }
@@ -1405,6 +1413,13 @@ fn internal_error_response(message: String) -> HttpResponse<Body> {
         .status(StatusCode::INTERNAL_SERVER_ERROR)
         .body(body)
         .expect("static internal error response must be valid")
+}
+
+fn unauthorized_response(message: &str) -> HttpResponse<Body> {
+    HttpResponse::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .body(Body::from(message.to_owned()))
+        .unwrap_or_else(|_| HttpResponse::new(Body::empty()))
 }
 
 fn forbidden_response(message: &str) -> HttpResponse<Body> {

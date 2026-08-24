@@ -1080,10 +1080,10 @@ impl BackupStore {
             .await
             .map_err(io_status)?;
         let content = serde_json::to_string_pretty(state).map_err(io_status)?;
-        let path = self.state_path();
-        let tmp = path.with_extension("json.tmp");
-        tokio::fs::write(&tmp, content).await.map_err(io_status)?;
-        tokio::fs::rename(&tmp, &path).await.map_err(io_status)
+        // 去向里存着 S3 secret key / WebDAV 口令,按机密落盘(0600)。
+        crate::statefile::write_secret_atomic(&self.state_path(), content)
+            .await
+            .map_err(io_status)
     }
 }
 

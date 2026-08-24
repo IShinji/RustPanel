@@ -119,7 +119,8 @@ impl CapabilityServiceImpl {
             .await
             .map_err(io_status)?;
         let content = serde_json::to_string_pretty(items).map_err(io_status)?;
-        tokio::fs::write(self.reservations_path(), content)
+        // 之前是裸 write:崩溃/并发会留半截 JSON,端口预留表就永久读不出来。
+        crate::statefile::write_atomic(&self.reservations_path(), content)
             .await
             .map_err(io_status)
     }
