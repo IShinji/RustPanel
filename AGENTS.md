@@ -58,4 +58,12 @@
     `can_run_docker=false` 时有非容器后备或已明确置灰,不留"只在能跑 Docker 时才可用"的隐性缺口。
 - **状态持久化**:JSON 状态文件一律 tmp+rename 原子写;同一文件的 load→改→save
   用进程内 `tokio::sync::Mutex` 串行化,防并发丢更新与半截文件。
-- **机密**:私钥等敏感文件落盘后收紧到 `0600`。
+  **不要再手写 tmp+rename**,统一走 `crate::statefile::write_atomic`。
+- **机密**:私钥等敏感文件落盘后收紧到 `0600`。含凭据的状态文件(备份去向、通知渠道、
+  用户库、ACME pending、集群 node_secret 等)一律用 `crate::statefile::write_secret_atomic`
+  —— 它在 rename **之前**把权限打到 tmp 上,目标路径不留 0644 窗口。
+- **认证**:JWT 自包含,改角色 / 改密码 / 删用户必须同时记一次吊销水位
+  (`crate::user::revoke_tokens_in`),否则旧 token 在 TTL 内照样全权有效。
+  新增对外认证入口时,先过限速再做口令校验(PBKDF2 十万轮在低配机上就是 CPU DoS 面)。
+- **单响应体积**:任何「把整个文件/整张表塞进一个 gRPC 响应」的接口都必须自己设上限
+  —— tonic 出站默认不限大小。大对象走已有的分片上传 / 流式下载通道。

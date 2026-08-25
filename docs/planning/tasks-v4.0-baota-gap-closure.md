@@ -181,8 +181,13 @@ v3.0 已对齐宝塔在「安全 / 站点 / SSL / 文件 / 监控 / Docker / 集
 
 - [x] **V-01** `./scripts/verify-all.sh` 通过(每阶段)——本会话每个提交均本地跑绿 + CI 复核。
 - [ ] **V-02** 通知:配置 Webhook(本地 nc/httpbin),触发测试发送与 SSH 封禁,确认收到。
-      *(需真机/外部接收端,非代码任务;留待部署后人工验证。)*
+      *(本地 webhook 派发已在 v4.1 用测试固化,见 `tasks-v4.1-hardening.md` P3-01;
+      剩余真实 Telegram / 钉钉 / 企业微信 / Bark 端点需部署后人工验证。)*
 - [ ] **V-03** 备份:备份站点 → 删除 → 还原,内容一致;云 target 用 MinIO,restic 用真实 repo 验证。
-      *(需真机/MinIO/restic,非代码任务;留待部署后人工验证。)*
+      *(本地 备份→删源→还原 往返已在 v4.1 用测试固化,见 P3-02;剩余 MinIO / R2 /
+      restic 真实 repo 需部署后人工验证。)*
 - [ ] **V-04** DB GUI:建表写数据 → 浏览/导出/导入往返一致。
-      *(需真实数据库实例,非代码任务;留待部署后人工验证。)*
+      *(SQLite 往返已在 v4.1 用测试固化,见 P3-03;剩余 MySQL / PostgreSQL 实例
+      需部署后人工验证。)*
+
+> v4.0 之后的加固与工程质量收口见 [`tasks-v4.1-hardening.md`](tasks-v4.1-hardening.md)。
