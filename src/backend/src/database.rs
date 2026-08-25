@@ -713,4 +713,134 @@ mod tests {
         assert_eq!(quote_identifier(DatabaseEngineKind::Mysql, "t"), "`t`");
         assert_eq!(quote_identifier(DatabaseEngineKind::Postgres, "t"), "\"t\"");
     }
+
+    // ---- SQLite 端到端往返(V-04 在无外部实例下的本地闭环) ----
+
+    fn sqlite_dsn(dir: &std::path::Path) -> String {
+        // mode=rwc 让 sqlx 在文件不存在时建库。
+        format!("sqlite://{}?mode=rwc", dir.join("app.db").to_string_lossy())
+    }
+
+    #[tokio::test]
+    async fn sqlite_import_browse_and_query_round_trip() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let dsn = sqlite_dsn(dir.path());
+        let service = DatabaseServiceImpl;
+
+        let imported = service
+            .import_sql(Request::new(ImportSqlRequest {
+                dsn: dsn.clone(),
+                sql: "-- 建表\nCREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);\n                      INSERT INTO users (id, name) VALUES (1, 'alice');\n                      INSERT INTO users (id, name) VALUES (2, 'bob');\n"
+                    .to_owned(),
+            }))
+            .await
+            .expect("import")
+            .into_inner();
+        // 整行注释与空行会被剔掉,只算真正的三条语句。
+        assert_eq!(imported.statements_executed, 3);
+
+        let tables = service
+            .list_tables(Request::new(ListTablesRequest { dsn: dsn.clone() }))
+            .await
+            .expect("list tables")
+            .into_inner();
+        assert!(tables.tables.contains(&"users".to_owned()));
+
+        let page = service
+            .browse_table(Request::new(BrowseTableRequest {
+                dsn: dsn.clone(),
+                table: "users".to_owned(),
+                limit: 1,
+                offset: 1,
+            }))
+            .await
+            .expect("browse")
+            .into_inner();
+        assert_eq!(page.total_rows, 2);
+        assert_eq!(page.rows.len(), 1);
+        assert!(page.columns.contains(&"name".to_owned()));
+        assert_eq!(page.rows[0].values[1], "bob");
+
+        let queried = service
+            .execute_sql(Request::new(ExecuteSqlRequest {
+                dsn: dsn.clone(),
+                sql: "SELECT name FROM users ORDER BY id".to_owned(),
+                max_rows: 100,
+            }))
+            .await
+            .expect("select")
+            .into_inner();
+        assert_eq!(queried.columns, vec!["name".to_owned()]);
+        assert_eq!(queried.rows.len(), 2);
+        assert_eq!(queried.rows[0].values[0], "alice");
+
+        let deleted = service
+            .execute_sql(Request::new(ExecuteSqlRequest {
+                dsn: dsn.clone(),
+                sql: "DELETE FROM users WHERE id = 2".to_owned(),
+                max_rows: 0,
+            }))
+            .await
+            .expect("delete")
+            .into_inner();
+        assert_eq!(deleted.rows_affected, 1);
+
+        let overview = service
+            .database_overview(Request::new(DatabaseOverviewRequest { dsn }))
+            .await
+            .expect("overview")
+            .into_inner();
+        assert!(!overview.version.is_empty());
+    }
+
+    #[tokio::test]
+    async fn browse_table_rejects_injected_table_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let dsn = sqlite_dsn(dir.path());
+        let service = DatabaseServiceImpl;
+        service
+            .import_sql(Request::new(ImportSqlRequest {
+                dsn: dsn.clone(),
+                sql: "CREATE TABLE users (id INTEGER)".to_owned(),
+            }))
+            .await
+            .expect("create");
+
+        for table in ["users; DROP TABLE users", "users--", "\"users\"", ""] {
+            let error = service
+                .browse_table(Request::new(BrowseTableRequest {
+                    dsn: dsn.clone(),
+                    table: table.to_owned(),
+                    limit: 10,
+                    offset: 0,
+                }))
+                .await
+                .expect_err("must reject");
+            assert_eq!(
+                error.code(),
+                tonic::Code::InvalidArgument,
+                "table={table:?}"
+            );
+        }
+
+        // 表还在:注入串压根没被拼进 SQL。
+        let tables = service
+            .list_tables(Request::new(ListTablesRequest { dsn }))
+            .await
+            .expect("list")
+            .into_inner();
+        assert!(tables.tables.contains(&"users".to_owned()));
+    }
+
+    #[tokio::test]
+    async fn unknown_dsn_scheme_is_rejected_before_connecting() {
+        let error = DatabaseServiceImpl
+            .database_overview(Request::new(DatabaseOverviewRequest {
+                dsn: "redis://127.0.0.1:6379".to_owned(),
+            }))
+            .await
+            .expect_err("unsupported scheme");
+
+        assert_eq!(error.code(), tonic::Code::InvalidArgument);
+    }
 }

@@ -89,6 +89,11 @@ const authInterceptor: Interceptor = (next) => async (req) => {
   }
 };
 
+export type Clients = ReturnType<typeof createRpcClients>;
+
+// 面板全局单例:各页面直接 import,不再从 App.tsx 往下传模块级变量。
+export const clients: Clients = createRpcClients();
+
 export function createRpcClients(baseUrl = window.location.origin) {
   const transport = createGrpcWebTransport({
     baseUrl,
