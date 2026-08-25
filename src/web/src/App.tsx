@@ -1,7 +1,3 @@
-import Editor from "@monaco-editor/react";
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal as XTerm } from "@xterm/xterm";
-import "@xterm/xterm/css/xterm.css";
 import {
   Activity,
   Archive,
@@ -54,16 +50,15 @@ import {
   Wifi,
   Bell
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { CodeEditor as Editor } from "./components/code-editor";
+import type { ChartClickState } from "./components/monitor-chart";
+
+// 首屏不需要的重依赖一律按需加载:图表(recharts+d3)、终端(xterm)、
+// 编辑器(monaco)三块合计约占打包体积的一半,而它们分别只服务一个页面。
+const MonitorChart = lazy(() => import("./components/monitor-chart"));
+const WebTerminal = lazy(() => import("./components/web-terminal"));
 
 import {
   AppCategory,
@@ -227,15 +222,6 @@ type NavTab = {
   modules?: string[];
 };
 type MonitorRange = "1h" | "24h" | "7d" | "custom";
-type ChartPoint = {
-  time: string;
-  timestamp: number;
-  cpu: number;
-  memory: number;
-};
-type ChartClickState = {
-  activePayload?: Array<{ payload?: ChartPoint }>;
-};
 type DockerQuotaForm = {
   containerId: string;
   cpuLimitCores: string;
@@ -1258,33 +1244,11 @@ function Dashboard({ clients }: { clients: Clients }) {
                 />
               </div>
             )}
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={chartData} onClick={(state) => handleChartClick(state as ChartClickState)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="time" minTickGap={24} stroke="var(--muted-foreground)" fontSize={12} />
-                <YAxis
-                  domain={[0, 100]}
-                  stroke="var(--muted-foreground)"
-                  fontSize={12}
-                  tickFormatter={(value) => `${Math.round(Number(value))}%`}
-                  width={40}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--popover)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    color: "var(--popover-foreground)"
-                  }}
-                  formatter={(value) => {
-                    const num = typeof value === "number" ? value : Number(value);
-                    return Number.isFinite(num) ? `${num.toFixed(1)}%` : String(value);
-                  }}
-                />
-                <Line dataKey="cpu" dot={false} stroke="var(--chart-1)" strokeWidth={2} name="CPU" />
-                <Line dataKey="memory" dot={false} stroke="var(--chart-2)" strokeWidth={2} name="内存" />
-              </LineChart>
-            </ResponsiveContainer>
+            <Suspense
+              fallback={<div className="h-[260px] flex items-center justify-center text-xs text-muted-foreground">图表加载中…</div>}
+            >
+              <MonitorChart data={chartData} onPointClick={handleChartClick} />
+            </Suspense>
           </CardContent>
         </Card>
 
@@ -2780,76 +2744,12 @@ function SecurityPanel({ clients }: { clients: Clients }) {
 }
 
 function TerminalPanel({ cwd }: { cwd: string }) {
-  const terminalRef = useRef<HTMLDivElement | null>(null);
-  const socketRef = useRef<WebSocket | null>(null);
-
-  useEffect(() => {
-    const terminal = new XTerm({
-      cursorBlink: true,
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-      fontSize: 13,
-      // 没显式设置 allowProposedApi 时 fit 用默认窗口大小;让 xterm 跑成 256 色 + 终端响应
-      allowProposedApi: true,
-      convertEol: false,
-      scrollback: 5000,
-      theme: {
-        background: "#101418",
-        foreground: "#eef2f3",
-        cursor: "#eef2f3"
-      }
-    });
-    const fit = new FitAddon();
-    terminal.loadAddon(fit);
-    terminal.open(terminalRef.current as HTMLDivElement);
-    fit.fit();
-
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    // 浏览器无法给 WebSocket 设置自定义 header,只能用 ?token= 把 JWT 一起发出去
-    const wsUrl = appendAuthQuery(`/api/terminal/ws?cwd=${encodeURIComponent(cwd)}`);
-    const socket = new WebSocket(`${protocol}//${window.location.host}${wsUrl}`);
-    socket.binaryType = "arraybuffer";
-    socketRef.current = socket;
-
-    // PTY 初始尺寸是 120x30,fit 算完真实尺寸后必须显式同步给后端,
-    // 否则 top/htop 这种全屏 TUI 会按 PTY 默认尺寸渲染,不匹配可视区
-    const sendResize = (cols: number, rows: number) => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: "resize", cols, rows }));
-      }
-    };
-    socket.onopen = () => {
-      sendResize(terminal.cols, terminal.rows);
-      terminal.focus();
-    };
-    socket.onmessage = (event) => {
-      const text =
-        typeof event.data === "string"
-          ? event.data
-          : new TextDecoder().decode(new Uint8Array(event.data));
-      terminal.write(text);
-    };
-    terminal.onData((data) => socket.readyState === WebSocket.OPEN && socket.send(data));
-    terminal.onResize((size) => sendResize(size.cols, size.rows));
-    const resize = () => fit.fit();
-    window.addEventListener("resize", resize);
-
-    return () => {
-      window.removeEventListener("resize", resize);
-      socket.close();
-      terminal.dispose();
-    };
-  }, [cwd]);
-
   return (
-    <section className="page-grid terminal-layout">
-      <header className="section-header full-span">
-        <div>
-          <h1>Web 终端</h1>
-          <p>{cwd} · PTY 会话</p>
-        </div>
-      </header>
-      <div className="terminal-surface full-span" ref={terminalRef} />
-    </section>
+    <Suspense
+      fallback={<section className="page-grid terminal-layout"><p className="text-xs text-muted-foreground">终端加载中…</p></section>}
+    >
+      <WebTerminal cwd={cwd} />
+    </Suspense>
   );
 }
 

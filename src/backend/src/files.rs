@@ -11,7 +11,9 @@ use flate2::{write::GzEncoder, Compression};
 use futures_core::Stream;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::io::BufRead;
 use tar::Builder as TarBuilder;
+
 use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
@@ -38,6 +40,14 @@ use crate::{
 const ARCHIVE_CHANNEL_SIZE: usize = 16;
 const DEFAULT_FILE_ROOT: &str = "/";
 const DEFAULT_FILE_STATE_ROOT: &str = "/tmp/rustpanel/files";
+/// 在线编辑器单文件读取上限。ReadFile 是把整个文件塞进一个 gRPC 响应的,
+/// 128MB 小鸡上点开一个几百 MB 的日志足以直接 OOM;超限一律走 /api/fs/download
+/// 的流式下载。tonic 出站默认不限大小,所以这道闸必须自己把。
+const MAX_EDITABLE_FILE_BYTES: u64 = 2 * 1024 * 1024;
+/// 内容检索时跳过的大文件阈值:超过就不读了(日志/镜像/备份包不该被逐行 grep)。
+const MAX_SEARCHABLE_FILE_BYTES: u64 = 4 * 1024 * 1024;
+/// 检索时最多遍历的条目数,防止在 / 上跑全盘扫描把 CPU 占死。
+const MAX_SEARCH_ENTRIES: usize = 200_000;
 
 #[derive(Clone)]
 pub struct FileSystemServiceImpl {
@@ -257,6 +267,16 @@ impl FileSystemService for FileSystemServiceImpl {
         request: Request<ReadFileRequest>,
     ) -> Result<GrpcResponse<ReadFileResponse>, Status> {
         let path = self.manager.resolve_existing(&request.into_inner().path)?;
+        let metadata = tokio::fs::metadata(&path).await.map_err(io_status)?;
+        if metadata.is_dir() {
+            return Err(Status::invalid_argument("path is a directory"));
+        }
+        if metadata.len() > MAX_EDITABLE_FILE_BYTES {
+            return Err(Status::failed_precondition(format!(
+                "文件超过在线编辑上限({} MB),请改用下载功能获取",
+                MAX_EDITABLE_FILE_BYTES / 1024 / 1024
+            )));
+        }
         let content = tokio::fs::read(path).await.map_err(io_status)?;
 
         Ok(GrpcResponse::new(ReadFileResponse {
@@ -285,7 +305,13 @@ impl FileSystemService for FileSystemServiceImpl {
         &self,
         request: Request<SearchFilesRequest>,
     ) -> Result<GrpcResponse<SearchFilesResponse>, Status> {
-        let matches = self.manager.search_files(request.into_inner())?;
+        // 内容检索是同步 walkdir + 逐个读文件:必须丢到 spawn_blocking,
+        // 否则一次全盘检索会把 reactor 线程占住,整个面板跟着卡死。
+        let manager = self.manager.clone();
+        let request = request.into_inner();
+        let matches = tokio::task::spawn_blocking(move || manager.search_files(request))
+            .await
+            .map_err(|error| Status::internal(format!("search task failed: {error}")))??;
 
         Ok(GrpcResponse::new(SearchFilesResponse {
             status: Some(ok_response("ok")),
@@ -468,15 +494,36 @@ impl FileManager {
         let matcher = SearchMatcher::new(&request.query, request.regex)?;
         let max_results = request.max_results.clamp(1, 500) as usize;
         let mut matches = Vec::new();
-        for entry in WalkDir::new(root).into_iter().filter_map(Result::ok) {
-            if matches.len() >= max_results || !entry.file_type().is_file() {
+        for (visited, entry) in WalkDir::new(root)
+            .into_iter()
+            .filter_map(Result::ok)
+            .enumerate()
+        {
+            if matches.len() >= max_results || visited >= MAX_SEARCH_ENTRIES {
+                break;
+            }
+            if !entry.file_type().is_file() {
                 continue;
             }
-            let Ok(content) = std::fs::read_to_string(entry.path()) else {
+            // 大文件直接跳过:日志/镜像/备份包逐行 grep 一遍,低配机的 IO 和 CPU
+            // 都扛不住,它们本来也不是"在文件管理器里搜代码"的目标。
+            if entry
+                .metadata()
+                .map(|metadata| metadata.len() > MAX_SEARCHABLE_FILE_BYTES)
+                .unwrap_or(true)
+            {
+                continue;
+            }
+            // 逐行读:不再 read_to_string 把整档塞进内存;读到非 UTF-8(二进制)即停。
+            let Ok(file) = File::open(entry.path()) else {
                 continue;
             };
-            for (index, line) in content.lines().enumerate() {
-                if matcher.is_match(line) {
+            let reader = std::io::BufReader::new(file);
+            for (index, line) in reader.lines().enumerate() {
+                let Ok(line) = line else {
+                    break;
+                };
+                if matcher.is_match(&line) {
                     matches.push(SearchMatch {
                         path: self.public_path(entry.path()),
                         line_number: (index + 1) as u32,
@@ -1045,5 +1092,85 @@ mod tests {
 
         assert_eq!(plain.len(), 1);
         assert_eq!(regex[0].line_number, 2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn search_skips_oversized_files() {
+        let root = env::temp_dir().join(format!("rustpanel-files-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("root");
+        // 命中行埋在超限文件里:跳过之后应该一条都搜不到。
+        let mut huge = String::from("needle\n");
+        huge.push_str(&"x".repeat(MAX_SEARCHABLE_FILE_BYTES as usize + 1));
+        std::fs::write(root.join("huge.log"), huge).expect("huge");
+        std::fs::write(root.join("small.log"), "needle\n").expect("small");
+        let manager = FileManager::new(&root);
+
+        let hits = manager
+            .search_files(SearchFilesRequest {
+                root_path: "/".to_owned(),
+                query: "needle".to_owned(),
+                regex: false,
+                max_results: 10,
+            })
+            .expect("search");
+
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].path.ends_with("small.log"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn search_tolerates_binary_files() {
+        let root = env::temp_dir().join(format!("rustpanel-files-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("root");
+        std::fs::write(root.join("blob.bin"), [0xff, 0xfe, 0x00, 0x01]).expect("blob");
+        std::fs::write(root.join("app.log"), "needle\n").expect("log");
+        let manager = FileManager::new(&root);
+
+        let hits = manager
+            .search_files(SearchFilesRequest {
+                root_path: "/".to_owned(),
+                query: "needle".to_owned(),
+                regex: false,
+                max_results: 10,
+            })
+            .expect("search");
+
+        assert_eq!(hits.len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn read_file_refuses_oversized_file() {
+        let root = env::temp_dir().join(format!("rustpanel-files-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("root");
+        std::fs::write(
+            root.join("big.log"),
+            vec![b'x'; MAX_EDITABLE_FILE_BYTES as usize + 1],
+        )
+        .expect("big");
+        std::fs::write(root.join("small.txt"), b"ok").expect("small");
+        let service = FileSystemServiceImpl {
+            manager: FileManager::new(&root),
+            archives: ArchiveManager::default(),
+        };
+
+        let refused = service
+            .read_file(Request::new(ReadFileRequest {
+                path: "/big.log".to_owned(),
+            }))
+            .await
+            .expect_err("oversized read must be refused");
+        assert_eq!(refused.code(), tonic::Code::FailedPrecondition);
+
+        let allowed = service
+            .read_file(Request::new(ReadFileRequest {
+                path: "/small.txt".to_owned(),
+            }))
+            .await
+            .expect("small read");
+        assert_eq!(allowed.into_inner().content, b"ok");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

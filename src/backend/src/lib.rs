@@ -1402,7 +1402,7 @@ async fn static_fallback(State(state): State<HttpState>, request: Request) -> Ax
     };
 
     asset_path
-        .map(|path| assets::static_response(path).into_response())
+        .map(|path| assets::static_response(path, request.headers()).into_response())
         .unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
 }
 
