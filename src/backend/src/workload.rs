@@ -640,4 +640,85 @@ mod tests {
         assert_eq!(workload.restart_limit, DEFAULT_RESTART_LIMIT);
         assert!(!workload.id.is_empty());
     }
+
+    #[test]
+    fn normalize_rejects_missing_name_or_command() {
+        let mut nameless = WorkloadItem {
+            command: "echo ok".to_owned(),
+            ..Default::default()
+        };
+        assert_eq!(
+            normalize_workload(&mut nameless).expect_err("name").code(),
+            tonic::Code::InvalidArgument
+        );
+
+        let mut commandless = WorkloadItem {
+            name: "crawler".to_owned(),
+            ..Default::default()
+        };
+        assert_eq!(
+            normalize_workload(&mut commandless)
+                .expect_err("command")
+                .code(),
+            tonic::Code::InvalidArgument
+        );
+    }
+
+    #[test]
+    fn normalize_keeps_explicit_values() {
+        let mut workload = WorkloadItem {
+            id: "fixed-id".to_owned(),
+            name: "crawler".to_owned(),
+            command: "echo ok".to_owned(),
+            cwd: "/srv/app".to_owned(),
+            memory_limit_mb: 32,
+            log_limit_bytes: 4096,
+            restart_limit: 2,
+            log_path: "/tmp/custom.log".to_owned(),
+            state: WorkloadState::Running.into(),
+            ..Default::default()
+        };
+
+        normalize_workload(&mut workload).expect("normalized");
+
+        assert_eq!(workload.id, "fixed-id");
+        assert_eq!(workload.cwd, "/srv/app");
+        assert_eq!(workload.memory_limit_mb, 32);
+        assert_eq!(workload.log_limit_bytes, 4096);
+        assert_eq!(workload.restart_limit, 2);
+        assert_eq!(workload.log_path, "/tmp/custom.log");
+        assert_eq!(workload.state, WorkloadState::Running as i32);
+    }
+
+    #[tokio::test]
+    async fn read_tail_returns_only_the_last_bytes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("app.log");
+        std::fs::write(&path, "0123456789").expect("write");
+
+        // 大日志只读尾巴,不整档进内存(低配主机的硬要求)。
+        assert_eq!(read_tail(&path, 4).await.expect("tail"), "6789");
+        // 文件比上限小就整段返回。
+        assert_eq!(read_tail(&path, 100).await.expect("tail"), "0123456789");
+        // 日志还不存在时不报错,给空串。
+        assert_eq!(
+            read_tail(&dir.path().join("missing.log"), 100)
+                .await
+                .expect("missing"),
+            ""
+        );
+    }
+
+    #[tokio::test]
+    async fn trim_log_truncates_only_when_over_limit() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("app.log");
+        std::fs::write(&path, "0123456789").expect("write");
+
+        trim_log(&path, 100).await.expect("no trim");
+        assert_eq!(std::fs::read_to_string(&path).expect("read"), "0123456789");
+
+        trim_log(&path, 4).await.expect("trim");
+        assert_eq!(std::fs::read_to_string(&path).expect("read"), "6789");
+    }
 }

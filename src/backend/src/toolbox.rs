@@ -149,3 +149,95 @@ fn read_timezone() -> String {
 fn io_status(error: impl std::fmt::Display) -> Status {
     Status::internal(error.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 这些用例刻意不设 RUSTPANEL_TOOLBOX_APPLY:验证「参数校验先行、门禁兜底」,
+    // 全程不碰宿主机的 swap / 时区。
+    #[tokio::test]
+    async fn create_swap_rejects_out_of_range_size_before_touching_the_host() {
+        let service = ToolboxServiceImpl;
+
+        for size_mb in [0, 63, 4097, 1_000_000] {
+            let error = service
+                .create_swap(Request::new(CreateSwapRequest { size_mb }))
+                .await
+                .expect_err("out of range");
+            assert_eq!(
+                error.code(),
+                tonic::Code::InvalidArgument,
+                "size_mb={size_mb}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn create_swap_needs_the_apply_gate() {
+        let service = ToolboxServiceImpl;
+
+        let error = service
+            .create_swap(Request::new(CreateSwapRequest { size_mb: 512 }))
+            .await
+            .expect_err("gate closed");
+
+        // 尺寸合法但门禁没开 → 明确拒绝,而不是默默动手。
+        assert_eq!(error.code(), tonic::Code::FailedPrecondition);
+    }
+
+    #[tokio::test]
+    async fn set_timezone_rejects_hostile_input() {
+        let service = ToolboxServiceImpl;
+
+        for timezone in [
+            "",
+            "   ",
+            "../../etc/passwd",
+            "Asia/Shanghai;rm -rf /",
+            "Asia Shanghai",
+        ] {
+            let error = service
+                .set_timezone(Request::new(SetTimezoneRequest {
+                    timezone: timezone.to_owned(),
+                }))
+                .await
+                .expect_err("invalid timezone");
+            assert_eq!(
+                error.code(),
+                tonic::Code::InvalidArgument,
+                "timezone={timezone:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn set_timezone_rejects_unknown_zone_even_when_charset_is_valid() {
+        let service = ToolboxServiceImpl;
+
+        let error = service
+            .set_timezone(Request::new(SetTimezoneRequest {
+                timezone: "Mars/Olympus_Mons".to_owned(),
+            }))
+            .await
+            .expect_err("unknown zone");
+
+        assert_eq!(error.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[test]
+    fn read_timezone_always_returns_something() {
+        // 读不到 /etc/timezone 也读不到软链时兜底 UTC,不会返回空串。
+        assert!(!read_timezone().is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_toolbox_reports_state_without_apply_gate() {
+        let response = ToolboxServiceImpl
+            .get_toolbox(Request::new(GetToolboxRequest {}))
+            .await
+            .expect("read-only overview must always work");
+
+        assert!(!response.into_inner().timezone.is_empty());
+    }
+}

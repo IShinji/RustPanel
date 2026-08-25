@@ -42,11 +42,3 @@ if [[ -f "$root_dir/src/web/package.json" ]]; then
   bun test
   bun run build
 fi
-
-if [[ -f "$root_dir/src/admin/package.json" ]]; then
-  cd "$root_dir/src/admin"
-  bun install --frozen-lockfile
-  bun lint
-  bun test
-  bun run build
-fi

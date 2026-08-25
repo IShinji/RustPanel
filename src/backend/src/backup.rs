@@ -1357,4 +1357,190 @@ mod tests {
         );
         assert!(sqlite_path("sqlite::memory:").is_none());
     }
+
+    // ---- 端到端:备份 → 删源 → 还原(V-03 的本地闭环,不依赖真机/MinIO) ----
+
+    fn service_with_root(root: &std::path::Path) -> BackupServiceImpl {
+        BackupServiceImpl {
+            store: BackupStore {
+                root: Arc::new(root.to_path_buf()),
+                write_lock: Arc::new(tokio::sync::Mutex::new(())),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn backup_restore_round_trip_preserves_tree() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let source = dir.path().join("site");
+        std::fs::create_dir_all(source.join("nested")).expect("mkdir");
+        std::fs::write(source.join("index.html"), b"<h1>hi</h1>").expect("index");
+        std::fs::write(source.join("nested/app.js"), b"console.log(1)").expect("nested");
+        let service = service_with_root(&dir.path().join("state"));
+
+        let created = service
+            .create_backup(Request::new(CreateBackupRequest {
+                source_path: source.to_string_lossy().to_string(),
+                name: "site-backup".to_owned(),
+                target_id: String::new(),
+                source_kind: BackupSourceKind::Directory as i32,
+                source_dsn: String::new(),
+            }))
+            .await
+            .expect("create backup")
+            .into_inner();
+        let record = created.record.expect("record");
+        assert!(record.size_bytes > 0);
+
+        let listed = service
+            .list_backups(Request::new(ListBackupsRequest {}))
+            .await
+            .expect("list")
+            .into_inner();
+        assert_eq!(listed.records.len(), 1);
+
+        // 源目录整个删掉,再还原回原位。
+        std::fs::remove_dir_all(&source).expect("drop source");
+        assert!(!source.exists());
+
+        service
+            .restore_backup(Request::new(RestoreBackupRequest {
+                id: record.id.clone(),
+                restore_path: String::new(),
+            }))
+            .await
+            .expect("restore");
+
+        assert_eq!(
+            std::fs::read(source.join("index.html")).expect("index restored"),
+            b"<h1>hi</h1>"
+        );
+        assert_eq!(
+            std::fs::read(source.join("nested/app.js")).expect("nested restored"),
+            b"console.log(1)"
+        );
+
+        // 删除备份点应同时清掉归档文件与记录。
+        service
+            .delete_backup(Request::new(DeleteBackupRequest {
+                id: record.id.clone(),
+            }))
+            .await
+            .expect("delete");
+        let after = service
+            .list_backups(Request::new(ListBackupsRequest {}))
+            .await
+            .expect("list after delete")
+            .into_inner();
+        assert!(after.records.is_empty());
+        assert!(!dir
+            .path()
+            .join("state/archives")
+            .join(format!("{}.tar.gz", record.id))
+            .exists());
+    }
+
+    #[tokio::test]
+    async fn restore_can_target_another_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let source = dir.path().join("site");
+        std::fs::create_dir_all(&source).expect("mkdir");
+        std::fs::write(source.join("a.txt"), b"alpha").expect("a");
+        let service = service_with_root(&dir.path().join("state"));
+
+        let record = service
+            .create_backup(Request::new(CreateBackupRequest {
+                source_path: source.to_string_lossy().to_string(),
+                name: String::new(),
+                target_id: String::new(),
+                source_kind: BackupSourceKind::Directory as i32,
+                source_dsn: String::new(),
+            }))
+            .await
+            .expect("create")
+            .into_inner()
+            .record
+            .expect("record");
+
+        // 异机还原的等价路径:还原到另一个目录,原目录保持不动。
+        let elsewhere = dir.path().join("restored");
+        let restored = service
+            .restore_backup(Request::new(RestoreBackupRequest {
+                id: record.id,
+                restore_path: elsewhere.to_string_lossy().to_string(),
+            }))
+            .await
+            .expect("restore")
+            .into_inner();
+
+        assert_eq!(restored.restored_path, elsewhere.to_string_lossy());
+        assert_eq!(std::fs::read(elsewhere.join("a.txt")).expect("a"), b"alpha");
+        assert_eq!(
+            std::fs::read(source.join("a.txt")).expect("source"),
+            b"alpha"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_backup_rejects_unknown_target() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let source = dir.path().join("site");
+        std::fs::create_dir_all(&source).expect("mkdir");
+        let service = service_with_root(&dir.path().join("state"));
+
+        let error = service
+            .create_backup(Request::new(CreateBackupRequest {
+                source_path: source.to_string_lossy().to_string(),
+                name: String::new(),
+                target_id: "does-not-exist".to_owned(),
+                source_kind: BackupSourceKind::Directory as i32,
+                source_dsn: String::new(),
+            }))
+            .await
+            .expect_err("unknown target");
+
+        assert_eq!(error.code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn database_backup_restore_requires_explicit_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let service = service_with_root(&dir.path().join("state"));
+        let sqlite_file = dir.path().join("app.db");
+        std::fs::write(&sqlite_file, b"SQLite format 3\0").expect("db");
+
+        let record = service
+            .create_backup(Request::new(CreateBackupRequest {
+                source_path: String::new(),
+                name: "db".to_owned(),
+                target_id: String::new(),
+                source_kind: BackupSourceKind::Database as i32,
+                source_dsn: format!("sqlite:{}", sqlite_file.to_string_lossy()),
+            }))
+            .await
+            .expect("create db backup")
+            .into_inner()
+            .record
+            .expect("record");
+
+        // 数据库备份不许"还原回原位"(那是脱敏 DSN,不是路径),必须显式给目录。
+        let error = service
+            .restore_backup(Request::new(RestoreBackupRequest {
+                id: record.id.clone(),
+                restore_path: String::new(),
+            }))
+            .await
+            .expect_err("must require explicit directory");
+        assert_eq!(error.code(), tonic::Code::InvalidArgument);
+
+        let out = dir.path().join("dump-out");
+        service
+            .restore_backup(Request::new(RestoreBackupRequest {
+                id: record.id,
+                restore_path: out.to_string_lossy().to_string(),
+            }))
+            .await
+            .expect("restore dump");
+        assert!(out.exists());
+    }
 }

@@ -136,8 +136,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
-  DialogTrigger
+  DialogTitle
 } from "./components/ui/dialog";
 import {
   DropdownMenu,
@@ -6437,7 +6436,8 @@ function SmartSiteForm({
             });
           } catch (installErr) {
             throw new Error(
-              `rpxy 二进制安装失败:${safeError(installErr)}\n站点未创建。请在软件商店 → rpxy 看具体报错,排掉后再来一次。`
+              `rpxy 二进制安装失败:${safeError(installErr)}\n站点未创建。请在软件商店 → rpxy 看具体报错,排掉后再来一次。`,
+              { cause: installErr }
             );
           }
         }
@@ -6451,7 +6451,8 @@ function SmartSiteForm({
             });
           } catch (installErr) {
             throw new Error(
-              `static-web-server 安装失败:${safeError(installErr)}\n静态站需要 SWS 作为 rpxy 的上游,**未装则反代到空端口**。站点未创建,请处理后重试或换 nginx 引擎。`
+              `static-web-server 安装失败:${safeError(installErr)}\n静态站需要 SWS 作为 rpxy 的上游,**未装则反代到空端口**。站点未创建,请处理后重试或换 nginx 引擎。`,
+              { cause: installErr }
             );
           }
         }
@@ -9801,16 +9802,6 @@ function auditLevelVariant(level: string): "destructive" | "warning" | "info" | 
   if (normalized === "warn" || normalized === "warning") return "warning";
   if (normalized === "info" || normalized === "notice") return "info";
   return "muted";
-}
-
-function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-card p-5 flex flex-col gap-1.5 shadow-sm transition-colors hover:border-border">
-      <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">{label}</span>
-      <span className="text-2xl font-semibold tracking-tight tabular-nums">{value}</span>
-      <span className="text-xs text-muted-foreground">{detail}</span>
-    </div>
-  );
 }
 
 function StatusPill({ label, tone }: { label: string; tone: "good" | "danger" | "muted" }) {

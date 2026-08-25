@@ -54,7 +54,6 @@ function parseArgs(argv: string[]): ParsedArgs {
 function readProductVersion(app: string): string {
   if (app === 'backend') return readCargoTomlVersion(path.resolve('src/backend/Cargo.toml'))
   if (app === 'web') return readPackageVersionWithBackendFallback(path.resolve('src/web/package.json'))
-  if (app === 'admin') return readPackageVersionWithBackendFallback(path.resolve('src/admin/package.json'))
   if (app === 'root') return readPackageJsonVersion(path.resolve('package.json'))
   fail(`Unknown app: ${app}`)
 }

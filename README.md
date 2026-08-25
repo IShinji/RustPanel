@@ -8,15 +8,19 @@ RustPanel 是一款对标宝塔免费功能、但底层全面现代化的新一�
 - **极简部署**：利用 `rust-embed` 将前端打包内联进单一二进制文件，只需一个文件即可运行整个控制面板。
 - **实时监控与极速终端**：内嵌基于 `xterm.js` + `portable-pty` 的 Web SSH，并实时推流展示系统状态指标。
 - **现代化文件管理**：非阻塞的深层文件遍历、大文件流式传输，以及集成 Monaco Editor 的在线源码编辑。
-- **Docker-First 应用商店**：抛弃易污染宿主机的源码编译模式，直接对接 Docker API，全面容器化管理（支持 MySQL, Redis 等一键拉起与 Compose 编排）。
+- **Docker-First 应用商店**：抛弃易污染宿主机的源码编译模式，直接对接 Docker API，全面容器化管理（支持 MySQL, Redis 等一键拉起与 Compose 编排）。跑不了 Docker 的低配机（OpenVZ / ~128MB）走静态站 + 反代 + 原生进程的非容器主线，能力探针会自动置灰不可用模块。
 - **极简 Web Server 与自动 SSL**：化繁为简的 Nginx 反代配置，结合 `acme-lib` 自动化 Let's Encrypt 证书签发与后台静默续期。
-- **现代化运维与安全**：v3.0 正在对齐宝塔免费版核心功能，包含可视化防火墙、进阶 Nginx 配置及历史监控。
+- **运维闭环**：通知告警中心（Webhook / Telegram / 钉钉 / 企业微信 / Bark）、备份与还原（本地 / WebDAV / S3 兼容 / restic 增量）、数据库可视化、多用户 RBAC、访问统计、DNS 托管、Linux 工具箱。
+- **面向低配主机的安全默认值**：登录失败按账号指数退避锁定，机密状态文件一律 0600 落盘，改角色 / 改密码 / 删用户即刻吊销旧令牌。
 
 ## 架构演进路线图
 
 关于 RustPanel 的路线图与各个阶段的详细任务：
-- [v2.0 架构演进路线](docs/planning/tasks-v2.0-architecture-evolution.md)（已基本完成）
-- [v3.0 宝塔免费版功能对齐](docs/planning/tasks-v3.0-free-version-alignment.md)（进行中）
+- [v2.0 架构演进路线](docs/planning/tasks-v2.0-architecture-evolution.md)（已完成）
+- [v3.0 宝塔免费版功能对齐](docs/planning/tasks-v3.0-free-version-alignment.md)（已完成）
+- [v4.0 宝塔功能补齐](docs/planning/tasks-v4.0-baota-gap-closure.md)（编码任务已全部收口；FTP 与原生多版本运行时经评估决定不做，理由见文档内结论段）
+
+v4.0 的验证计划中 V-02 / V-03 / V-04（通知、备份还原、数据库 GUI 的端到端验证）需要真机 + MinIO / restic / 真实数据库实例，属于部署后人工验证项，尚未执行。
 
 ## 快速开始
 
@@ -57,7 +61,7 @@ sudo bash rustpanel-install.sh --assume-recommended --profile micro \
 sudo bash rustpanel-install.sh --dry-run
 ```
 
-请参阅完整使用指南：[入门指南 (Getting Started)](docs/guide/getting-started.md)
+请参阅完整使用指南：[入门指南 (Getting Started)](docs/guides/getting-started.md)、[NAT VPS 部署](docs/guides/nat-vps-deployment.md)
 
 ## 开发与协作规范
 

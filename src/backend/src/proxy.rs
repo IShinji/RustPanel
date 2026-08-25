@@ -603,4 +603,84 @@ mod tests {
         assert_eq!(instance.listen_host, "0.0.0.0");
         assert_eq!(instance.method, DEFAULT_SS_METHOD);
     }
+
+    #[test]
+    fn normalize_rejects_bad_port_password_and_template() {
+        let base = ProxyInstance {
+            name: "edge".to_owned(),
+            listen_port: 8388,
+            password: "secret".to_owned(),
+            ..Default::default()
+        };
+
+        let mut zero_port = ProxyInstance {
+            listen_port: 0,
+            ..base.clone()
+        };
+        assert_eq!(
+            normalize_instance(&mut zero_port).expect_err("port").code(),
+            tonic::Code::InvalidArgument
+        );
+
+        let mut huge_port = ProxyInstance {
+            listen_port: 70_000,
+            ..base.clone()
+        };
+        assert_eq!(
+            normalize_instance(&mut huge_port).expect_err("port").code(),
+            tonic::Code::InvalidArgument
+        );
+
+        let mut no_password = ProxyInstance {
+            password: String::new(),
+            ..base.clone()
+        };
+        assert_eq!(
+            normalize_instance(&mut no_password)
+                .expect_err("password")
+                .code(),
+            tonic::Code::InvalidArgument
+        );
+
+        let mut unknown_template = ProxyInstance {
+            template_id: "v2ray".to_owned(),
+            ..base.clone()
+        };
+        assert_eq!(
+            normalize_instance(&mut unknown_template)
+                .expect_err("template")
+                .code(),
+            tonic::Code::InvalidArgument
+        );
+
+        let mut nameless = ProxyInstance {
+            name: String::new(),
+            ..base
+        };
+        assert_eq!(
+            normalize_instance(&mut nameless).expect_err("name").code(),
+            tonic::Code::InvalidArgument
+        );
+    }
+
+    #[test]
+    fn templates_expose_the_supported_engine() {
+        let templates = proxy_templates();
+        assert!(templates.iter().any(|t| t.id == "shadowsocks-rust"));
+    }
+
+    #[tokio::test]
+    async fn read_tail_returns_only_the_last_bytes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("proxy.log");
+        std::fs::write(&path, "0123456789").expect("write");
+
+        assert_eq!(read_tail(&path, 4).await.expect("tail"), "6789");
+        assert_eq!(
+            read_tail(&dir.path().join("missing.log"), 10)
+                .await
+                .expect("missing"),
+            ""
+        );
+    }
 }

@@ -835,4 +835,134 @@ mod tests {
         // 最旧的被丢弃,保留尾部。
         assert_eq!(history.first().map(|r| r.id.as_str()), Some("5"));
     }
+
+    // ---- 本地 webhook 端到端(V-02 的代码闭环,不依赖外部接收端) ----
+
+    /// 起一个最小 HTTP 接收端:读一个请求,按 `status` 应答,把请求原文回传。
+    async fn spawn_webhook_sink(status: u16) -> (String, tokio::sync::oneshot::Receiver<String>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut raw = Vec::new();
+            let mut buffer = [0u8; 1024];
+            // 读到 header 结束 + Content-Length 指定的 body 长度为止。
+            while let Ok(read) = socket.read(&mut buffer).await {
+                if read == 0 {
+                    break;
+                }
+                raw.extend_from_slice(&buffer[..read]);
+                let text = String::from_utf8_lossy(&raw).to_string();
+                if let Some(head_end) = text.find("\r\n\r\n") {
+                    let length = text
+                        .lines()
+                        .find_map(|line| {
+                            line.strip_prefix("content-length: ")
+                                .or_else(|| line.strip_prefix("Content-Length: "))
+                        })
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if raw.len() >= head_end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let _ = socket
+                .write_all(
+                    format!("HTTP/1.1 {status} OK\r\ncontent-length: 2\r\n\r\nok").as_bytes(),
+                )
+                .await;
+            let _ = socket.flush().await;
+            let _ = tx.send(String::from_utf8_lossy(&raw).to_string());
+        });
+
+        (format!("http://{addr}/hook"), rx)
+    }
+
+    fn webhook_channel(name: &str, url: &str, secret: &str, enabled: bool) -> StoredChannel {
+        StoredChannel {
+            id: format!("id-{name}"),
+            name: name.to_owned(),
+            kind: NotificationChannelKind::Webhook as i32,
+            target: url.to_owned(),
+            secret: secret.to_owned(),
+            enabled,
+            created_at_seconds: 0,
+            updated_at_seconds: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn webhook_delivery_posts_expected_payload_with_bearer_auth() {
+        let (url, received) = spawn_webhook_sink(200).await;
+        let channels = vec![webhook_channel("ops", &url, "hook-token", true)];
+
+        let (delivered, failed) = dispatch(&channels, "面板告警", "磁盘将满", false).await;
+
+        assert_eq!(delivered, vec!["ops".to_owned()]);
+        assert!(failed.is_empty());
+
+        let raw = received.await.expect("request captured");
+        assert!(raw.contains("POST /hook"));
+        assert!(raw.contains("authorization: Bearer hook-token"));
+        assert!(raw.contains("\"title\":\"面板告警\""));
+        assert!(raw.contains("\"body\":\"磁盘将满\""));
+        // text 字段是 title+body 拼接,给纯文本渠道用。
+        assert!(raw.contains("磁盘将满"));
+    }
+
+    #[tokio::test]
+    async fn webhook_without_secret_sends_no_authorization_header() {
+        let (url, received) = spawn_webhook_sink(200).await;
+        let channels = vec![webhook_channel("ops", &url, "", true)];
+
+        let (delivered, _) = dispatch(&channels, "t", "b", false).await;
+        assert_eq!(delivered.len(), 1);
+
+        let raw = received.await.expect("request captured");
+        assert!(!raw.to_ascii_lowercase().contains("authorization:"));
+    }
+
+    #[tokio::test]
+    async fn non_2xx_response_marks_channel_failed() {
+        let (url, _received) = spawn_webhook_sink(500).await;
+        let channels = vec![webhook_channel("ops", &url, "", true)];
+
+        let (delivered, failed) = dispatch(&channels, "t", "b", false).await;
+
+        assert!(delivered.is_empty());
+        assert_eq!(failed, vec!["ops".to_owned()]);
+    }
+
+    #[tokio::test]
+    async fn disabled_channels_are_skipped_unless_testing() {
+        let channels = vec![webhook_channel("ops", "http://127.0.0.1:9/hook", "", false)];
+
+        // 常规派发:关掉的渠道压根不碰(端口 9 discard,连上就会失败)。
+        let (delivered, failed) = dispatch(&channels, "t", "b", false).await;
+        assert!(delivered.is_empty());
+        assert!(failed.is_empty());
+
+        // 「测试发送」显式带上关掉的渠道,连不上就记失败。
+        let (delivered, failed) = dispatch(&channels, "t", "b", true).await;
+        assert!(delivered.is_empty());
+        assert_eq!(failed, vec!["ops".to_owned()]);
+    }
+
+    #[tokio::test]
+    async fn empty_target_fails_fast_without_network() {
+        let channels = vec![webhook_channel("ops", "   ", "", true)];
+
+        let (delivered, failed) = dispatch(&channels, "t", "b", false).await;
+
+        assert!(delivered.is_empty());
+        assert_eq!(failed, vec!["ops".to_owned()]);
+    }
 }

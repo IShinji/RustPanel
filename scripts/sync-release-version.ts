@@ -31,7 +31,6 @@ const CARGO_LOCK = path.resolve('Cargo.lock')
 const PACKAGE_JSON_TARGETS = [
   path.resolve('package.json'),
   path.resolve('src/web/package.json'),
-  path.resolve('src/admin/package.json'),
 ]
 
 const args = parseArgs(process.argv.slice(2))

@@ -345,4 +345,62 @@ mod tests {
         task.command.clear();
         assert!(validate_task(&task).is_err());
     }
+
+    fn sample_task() -> CronTask {
+        CronTask {
+            id: String::new(),
+            name: "backup".to_owned(),
+            cron_expression: "0 0 * * * *".to_owned(),
+            command: "echo ok".to_owned(),
+            state: CronTaskState::Enabled.into(),
+            timeout_seconds: 30,
+            next_run_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn validate_rejects_blank_name_and_expression() {
+        // 只有空白字符也算空:否则会存下一个永远跑不起来的任务。
+        let mut blank_name = sample_task();
+        blank_name.name = "   ".to_owned();
+        assert_eq!(
+            validate_task(&blank_name).expect_err("name").code(),
+            tonic::Code::InvalidArgument
+        );
+
+        let mut blank_expression = sample_task();
+        blank_expression.cron_expression = "  ".to_owned();
+        assert_eq!(
+            validate_task(&blank_expression)
+                .expect_err("expression")
+                .code(),
+            tonic::Code::InvalidArgument
+        );
+
+        let mut blank_command = sample_task();
+        blank_command.command = "\t".to_owned();
+        assert_eq!(
+            validate_task(&blank_command).expect_err("command").code(),
+            tonic::Code::InvalidArgument
+        );
+    }
+
+    #[tokio::test]
+    async fn store_round_trips_tasks_atomically() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = CronStore {
+            root: Arc::new(dir.path().to_path_buf()),
+        };
+
+        assert!(store.load().await.expect("empty load").is_empty());
+
+        let task = StoredCronTask::from_proto(sample_task());
+        store.save(std::slice::from_ref(&task)).await.expect("save");
+
+        let loaded = store.load().await.expect("load");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].name, "backup");
+        // 原子写:落盘后不该留下临时文件。
+        assert!(!dir.path().join("tasks.json.tmp").exists());
+    }
 }
