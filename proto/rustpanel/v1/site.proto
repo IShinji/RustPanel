@@ -68,6 +68,43 @@ message SiteItem {
   // 上一版部署的备份目录(<root>.previous)如果存在,这里填路径。
   // 前端据此显示"回滚"按钮。无备份留空。
   string previous_backup_path = 16;
+  // 站点关联的 systemd 单元(*.service / *.timer),面板里可看状态、启停、看日志。
+  // 适合"应用自带 systemd 服务、站点只做反代"的场景(类似宝塔的项目管理)。
+  repeated string service_units = 17;
+  // 站点关联的日志文件(绝对路径),面板里只读查看尾部。
+  repeated string log_paths = 18;
+}
+
+// SiteServiceAction 是对站点关联单元的操作。
+enum SiteServiceAction {
+  SITE_SERVICE_ACTION_UNSPECIFIED = 0;
+  SITE_SERVICE_ACTION_START = 1;
+  SITE_SERVICE_ACTION_STOP = 2;
+  SITE_SERVICE_ACTION_RESTART = 3;
+}
+
+// SiteServiceStatus 是一个关联单元的运行快照(来自 systemctl show)。
+message SiteServiceStatus {
+  string unit = 1;
+  string description = 2;
+  // active / inactive / failed / activating ...
+  string active_state = 3;
+  // running / dead / exited / waiting ...
+  string sub_state = 4;
+  // enabled / disabled / static ...
+  string unit_file_state = 5;
+  uint32 main_pid = 6;
+  // 主进程常驻内存(/proc/<pid>/status 的 VmRSS);未运行为 0
+  uint64 memory_rss_bytes = 7;
+  // 最近一次进入 active 的时间(systemd 原样格式)
+  string active_since = 8;
+  // 上次运行结果:success / exit-code / timeout ...
+  string result = 9;
+  // timer 专用:下次 / 上次触发时间(systemd 原样格式)
+  string next_trigger = 10;
+  string last_trigger = 11;
+  // 单元不存在或查询失败时的原因
+  string error = 12;
 }
 
 // RewriteTemplate 描述内置伪静态模板。
@@ -272,4 +309,55 @@ service SiteService {
   rpc ListSiteArchives(ListSiteArchivesRequest) returns (ListSiteArchivesResponse);
   // 删一份归档(用户腾空间时用)
   rpc DeleteSiteArchive(DeleteSiteArchiveRequest) returns (DeleteSiteArchiveResponse);
+  // 站点关联的 systemd 单元与日志文件:设置 / 查状态 / 启停 / 看日志
+  rpc UpdateSiteServices(UpdateSiteServicesRequest) returns (UpdateSiteServicesResponse);
+  rpc GetSiteServices(GetSiteServicesRequest) returns (GetSiteServicesResponse);
+  rpc ControlSiteService(ControlSiteServiceRequest) returns (ControlSiteServiceResponse);
+  rpc GetSiteServiceLog(GetSiteServiceLogRequest) returns (GetSiteServiceLogResponse);
+}
+
+message UpdateSiteServicesRequest {
+  string name = 1;
+  repeated string service_units = 2;
+  repeated string log_paths = 3;
+}
+
+message UpdateSiteServicesResponse {
+  Response status = 1;
+  SiteItem site = 2;
+}
+
+message GetSiteServicesRequest {
+  string name = 1;
+}
+
+message GetSiteServicesResponse {
+  Response status = 1;
+  repeated SiteServiceStatus services = 2;
+}
+
+message ControlSiteServiceRequest {
+  string name = 1;
+  string unit = 2;
+  SiteServiceAction action = 3;
+}
+
+message ControlSiteServiceResponse {
+  Response status = 1;
+  SiteServiceStatus service = 2;
+}
+
+// source 是站点已关联的单元名(读 journal)或日志文件路径(读文件尾部)。
+message GetSiteServiceLogRequest {
+  string name = 1;
+  string source = 2;
+  // 返回最后多少行,默认 200,上限 1000
+  uint32 lines = 3;
+}
+
+message GetSiteServiceLogResponse {
+  Response status = 1;
+  string content = 2;
+  // 内容被截断(超过单次返回上限)时为 true
+  bool truncated = 3;
 }

@@ -9,19 +9,24 @@ use tera::{Context, Tera};
 use tonic::{Request, Response as GrpcResponse, Status};
 use uuid::Uuid;
 
+#[path = "site_service.rs"]
+mod service;
+
 use crate::{
     ok_response,
     proto::rustpanel::v1::{
-        site_service_server::SiteService, CreateSiteRequest, CreateSiteResponse,
-        DeleteReverseProxyRuleRequest, DeleteReverseProxyRuleResponse, DeleteSiteArchiveRequest,
-        DeleteSiteArchiveResponse, DeleteSiteRequest, DeleteSiteResponse,
-        ListReverseProxyRulesRequest, ListReverseProxyRulesResponse, ListRewriteTemplatesRequest,
-        ListRewriteTemplatesResponse, ListSiteArchivesRequest, ListSiteArchivesResponse,
-        ListSitesRequest, ListSitesResponse, ReloadNginxRequest, ReloadNginxResponse,
-        RenderRewriteTemplateRequest, RenderRewriteTemplateResponse, ReverseProxyRule,
-        RewriteTemplate, RollbackSiteRequest, RollbackSiteResponse, SiteArchive, SiteBindKind,
-        SiteBinding, SiteItem, SiteKind, SiteTlsStrategy, UpsertReverseProxyRuleRequest,
-        UpsertReverseProxyRuleResponse, UpstreamTarget,
+        site_service_server::SiteService, ControlSiteServiceRequest, ControlSiteServiceResponse,
+        CreateSiteRequest, CreateSiteResponse, DeleteReverseProxyRuleRequest,
+        DeleteReverseProxyRuleResponse, DeleteSiteArchiveRequest, DeleteSiteArchiveResponse,
+        DeleteSiteRequest, DeleteSiteResponse, GetSiteServiceLogRequest, GetSiteServiceLogResponse,
+        GetSiteServicesRequest, GetSiteServicesResponse, ListReverseProxyRulesRequest,
+        ListReverseProxyRulesResponse, ListRewriteTemplatesRequest, ListRewriteTemplatesResponse,
+        ListSiteArchivesRequest, ListSiteArchivesResponse, ListSitesRequest, ListSitesResponse,
+        ReloadNginxRequest, ReloadNginxResponse, RenderRewriteTemplateRequest,
+        RenderRewriteTemplateResponse, ReverseProxyRule, RewriteTemplate, RollbackSiteRequest,
+        RollbackSiteResponse, SiteArchive, SiteBindKind, SiteBinding, SiteItem, SiteKind,
+        SiteServiceAction, SiteTlsStrategy, UpdateSiteServicesRequest, UpdateSiteServicesResponse,
+        UpsertReverseProxyRuleRequest, UpsertReverseProxyRuleResponse, UpstreamTarget,
     },
 };
 
@@ -76,6 +81,19 @@ impl SiteServiceImpl {
         Self {
             store: SiteStore::from_env(),
         }
+    }
+
+    /// 关联服务只支持有 sidecar 元数据的站点(nginx / rpxy 引擎)。
+    async fn linked_site(&self, name: &str) -> Result<SiteItem, Status> {
+        let safe = safe_name(name)?;
+        self.store
+            .load_nginx_site_metadata(&safe)
+            .await
+            .ok_or_else(|| {
+                Status::not_found(format!(
+                    "站点 `{name}` 不存在,或是内置静态站(不支持关联服务)"
+                ))
+            })
     }
 }
 
@@ -226,6 +244,8 @@ impl SiteService for SiteServiceImpl {
             internal_port,
             disk_bytes: 0,
             previous_backup_path: String::new(),
+            service_units: Vec::new(),
+            log_paths: Vec::new(),
         };
 
         // 落 sidecar 元数据:list_site_configs 之后回到详情抽屉能拿到
@@ -606,6 +626,79 @@ impl SiteService for SiteServiceImpl {
         }))
     }
 
+    async fn update_site_services(
+        &self,
+        request: Request<UpdateSiteServicesRequest>,
+    ) -> Result<GrpcResponse<UpdateSiteServicesResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
+        let request = request.into_inner();
+        let (units, log_paths) =
+            service::normalize_links(request.service_units, request.log_paths)?;
+        // load → 改 → save 串行化,防并发保存互相覆盖
+        let _guard = self.store.write_lock.lock().await;
+        let mut site = self.linked_site(&request.name).await?;
+        site.service_units = units;
+        site.log_paths = log_paths;
+        self.store.save_nginx_site_metadata(&site).await?;
+        Ok(GrpcResponse::new(UpdateSiteServicesResponse {
+            status: Some(ok_response("站点关联的服务已更新")),
+            site: Some(site),
+        }))
+    }
+
+    async fn get_site_services(
+        &self,
+        request: Request<GetSiteServicesRequest>,
+    ) -> Result<GrpcResponse<GetSiteServicesResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
+        let site = self.linked_site(&request.into_inner().name).await?;
+        let mut services = Vec::with_capacity(site.service_units.len());
+        for unit in &site.service_units {
+            services.push(service::unit_status(unit).await);
+        }
+        Ok(GrpcResponse::new(GetSiteServicesResponse {
+            status: Some(ok_response("ok")),
+            services,
+        }))
+    }
+
+    async fn control_site_service(
+        &self,
+        request: Request<ControlSiteServiceRequest>,
+    ) -> Result<GrpcResponse<ControlSiteServiceResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
+        let request = request.into_inner();
+        let site = self.linked_site(&request.name).await?;
+        service::ensure_linked_unit(&site, &request.unit)?;
+        let action = SiteServiceAction::try_from(request.action).unwrap_or_default();
+        service::control_unit(&request.unit, action).await?;
+        Ok(GrpcResponse::new(ControlSiteServiceResponse {
+            status: Some(ok_response("操作已提交")),
+            service: Some(service::unit_status(&request.unit).await),
+        }))
+    }
+
+    async fn get_site_service_log(
+        &self,
+        request: Request<GetSiteServiceLogRequest>,
+    ) -> Result<GrpcResponse<GetSiteServiceLogResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
+        let request = request.into_inner();
+        let site = self.linked_site(&request.name).await?;
+        let lines = service::clamp_lines(request.lines);
+        let (content, truncated) = if site.log_paths.contains(&request.source) {
+            service::file_tail(&request.source, lines).await?
+        } else {
+            service::ensure_linked_unit(&site, &request.source)?;
+            service::journal_tail(&request.source, lines).await?
+        };
+        Ok(GrpcResponse::new(GetSiteServiceLogResponse {
+            status: Some(ok_response("ok")),
+            content,
+            truncated,
+        }))
+    }
+
     async fn delete_site_archive(
         &self,
         request: Request<DeleteSiteArchiveRequest>,
@@ -935,6 +1028,8 @@ fn legacy_site_stub(path: &std::path::Path, stem: String) -> SiteItem {
         internal_port: 0,
         disk_bytes: 0,
         previous_backup_path: String::new(),
+        service_units: Vec::new(),
+        log_paths: Vec::new(),
     }
 }
 
@@ -1027,6 +1122,8 @@ impl SiteStore {
             internal_port: 0,
             disk_bytes: 0,
             previous_backup_path: String::new(),
+            service_units: Vec::new(),
+            log_paths: Vec::new(),
         };
         sites.retain(|stored| stored.name != site.name);
         sites.push(site.clone());
@@ -1058,10 +1155,9 @@ impl SiteStore {
         let path = self.nginx_metadata_path(&safe);
         let stored = StoredSite::from_proto(site.clone());
         let body = serde_json::to_vec_pretty(&stored).map_err(io_status)?;
-        let tmp = path.with_extension("json.rustpanel-tmp");
-        tokio::fs::write(&tmp, body).await.map_err(io_status)?;
-        tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
-        Ok(())
+        crate::statefile::write_atomic(&path, body)
+            .await
+            .map_err(io_status)
     }
 
     async fn load_nginx_site_metadata(&self, safe_name: &str) -> Option<SiteItem> {
@@ -1098,6 +1194,10 @@ struct StoredSite {
     systemd_unit: String,
     #[serde(default)]
     internal_port: u32,
+    #[serde(default)]
+    service_units: Vec<String>,
+    #[serde(default)]
+    log_paths: Vec<String>,
 }
 
 impl StoredSite {
@@ -1124,6 +1224,8 @@ impl StoredSite {
             tls_strategy: site.tls_strategy,
             systemd_unit: site.systemd_unit,
             internal_port: site.internal_port,
+            service_units: site.service_units,
+            log_paths: site.log_paths,
         }
     }
 
@@ -1156,6 +1258,8 @@ impl StoredSite {
             // 在返回前填充,sidecar JSON 不存这俩(状态而非配置)
             disk_bytes: 0,
             previous_backup_path: String::new(),
+            service_units: self.service_units,
+            log_paths: self.log_paths,
         }
     }
 }

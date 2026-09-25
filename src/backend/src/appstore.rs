@@ -2740,6 +2740,8 @@ mod tests {
             internal_port: 0,
             disk_bytes: 0,
             previous_backup_path: String::new(),
+            service_units: Vec::new(),
+            log_paths: Vec::new(),
         }
     }
 

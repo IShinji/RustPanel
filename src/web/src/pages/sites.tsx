@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow as UITabl
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { InstalledApp } from "../gen/rustpanel/v1/appstore_pb";
 import { Capabilities, Ipv6Address, ReservedPort, ResourceBudget } from "../gen/rustpanel/v1/capability_pb";
-import { ReverseProxyRule, RewriteTemplate, SiteArchive, SiteBindKind, SiteItem, SiteKind, SiteTlsStrategy } from "../gen/rustpanel/v1/site_pb";
+import { ReverseProxyRule, RewriteTemplate, SiteArchive, SiteBindKind, SiteItem, SiteKind, SiteServiceAction, SiteServiceStatus, SiteTlsStrategy } from "../gen/rustpanel/v1/site_pb";
 import { AcmeChallengeType, CertificateItem, RequestCertificateResponse } from "../gen/rustpanel/v1/ssl_pb";
 import { formatBytes, safeError } from "../lib/format";
 import { appendAuthQuery, type Clients } from "../lib/rpc";
@@ -714,6 +714,9 @@ function SiteDetailSheet(props: SiteSheetProps) {
               <TabsTrigger value="rp" disabled={mode === "new"}>
                 反向代理
               </TabsTrigger>
+              <TabsTrigger value="services" disabled={mode === "new"}>
+                服务
+              </TabsTrigger>
               <TabsTrigger value="rewrite">伪静态</TabsTrigger>
             </TabsList>
             <TabsContent value="basic" className="pt-3">
@@ -738,6 +741,13 @@ function SiteDetailSheet(props: SiteSheetProps) {
                 <PerSiteReverseProxyPanel {...props} site={site} />
               ) : (
                 <p className="text-sm text-muted-foreground">保存站点后可配置反向代理</p>
+              )}
+            </TabsContent>
+            <TabsContent value="services" className="pt-3">
+              {mode === "edit" && site ? (
+                <SiteServicesPanel {...props} site={site} />
+              ) : (
+                <p className="text-sm text-muted-foreground">保存站点后可关联服务</p>
               )}
             </TabsContent>
             <TabsContent value="rewrite" className="pt-3">
@@ -2248,6 +2258,233 @@ function DeployPanel({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function serviceStateVariant(service: SiteServiceStatus): "success" | "destructive" | "warning" | "muted" {
+  if (service.error) return "destructive";
+  switch (service.activeState) {
+    case "active":
+      return "success";
+    case "failed":
+      return "destructive";
+    case "activating":
+    case "deactivating":
+    case "reloading":
+      return "warning";
+    default:
+      return "muted";
+  }
+}
+
+const splitLines = (text: string) =>
+  text
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+// 站点关联的 systemd 单元 / 日志文件:看状态、启停重启、看日志尾部(类似宝塔项目管理)。
+function SiteServicesPanel({
+  site,
+  clients,
+  onChanged,
+  onMessage,
+  onError
+}: SiteSheetProps & { site: SiteItem }) {
+  const [units, setUnits] = useState(site.serviceUnits.join("\n"));
+  const [logPaths, setLogPaths] = useState(site.logPaths.join("\n"));
+  const [services, setServices] = useState<SiteServiceStatus[]>([]);
+  const [busyUnit, setBusyUnit] = useState("");
+  const [logSource, setLogSource] = useState("");
+  const [log, setLog] = useState({ content: "", truncated: false });
+
+  const refresh = useCallback(async () => {
+    if (site.serviceUnits.length === 0) {
+      setServices([]);
+      return;
+    }
+    try {
+      const response = await clients.site.getSiteServices({ name: site.name });
+      setServices(response.services);
+    } catch (err) {
+      onError(safeError(err));
+    }
+  }, [clients, site.name, site.serviceUnits.length, onError]);
+
+  useEffect(() => {
+    setUnits(site.serviceUnits.join("\n"));
+    setLogPaths(site.logPaths.join("\n"));
+    void refresh();
+  }, [site.serviceUnits, site.logPaths, refresh]);
+
+  const saveLinks = async () => {
+    try {
+      await clients.site.updateSiteServices({
+        name: site.name,
+        serviceUnits: splitLines(units),
+        logPaths: splitLines(logPaths)
+      });
+      onMessage(`${site.name} 关联的服务已保存`);
+      onChanged();
+    } catch (err) {
+      onError(safeError(err));
+    }
+  };
+
+  const control = async (unit: string, action: SiteServiceAction, label: string) => {
+    setBusyUnit(unit);
+    try {
+      await clients.site.controlSiteService({ name: site.name, unit, action });
+      onMessage(`${unit} 已${label}`);
+      // systemctl 用 --no-block 提交,稍等再刷新才能看到新状态
+      window.setTimeout(() => void refresh(), 1500);
+    } catch (err) {
+      onError(safeError(err));
+    } finally {
+      setBusyUnit("");
+    }
+  };
+
+  const loadLog = async (source: string) => {
+    setLogSource(source);
+    try {
+      const response = await clients.site.getSiteServiceLog({ name: site.name, source, lines: 200 });
+      setLog({ content: response.content, truncated: response.truncated });
+    } catch (err) {
+      setLog({ content: "", truncated: false });
+      onError(safeError(err));
+    }
+  };
+
+  const isTimer = (unit: string) => unit.endsWith(".timer");
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">关联服务({services.length})</div>
+        <UIButton variant="outline" size="sm" onClick={() => void refresh()}>
+          <RefreshCw className="size-3.5" />
+          刷新
+        </UIButton>
+      </div>
+      {services.length === 0 ? (
+        <div className="empty-state text-xs">还没关联 systemd 单元;在下方填写后保存</div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {services.map((service) => (
+            <div key={service.unit} className="rounded border border-border p-2 text-xs flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-mono font-medium truncate">{service.unit}</span>
+                  <Badge variant={serviceStateVariant(service)}>
+                    {service.error || `${service.activeState}${service.subState ? ` · ${service.subState}` : ""}`}
+                  </Badge>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <UIButton
+                    variant="outline"
+                    size="sm"
+                    disabled={busyUnit === service.unit}
+                    onClick={() => void control(service.unit, SiteServiceAction.START, isTimer(service.unit) ? "启用" : "启动")}
+                  >
+                    启动
+                  </UIButton>
+                  <UIButton
+                    variant="outline"
+                    size="sm"
+                    disabled={busyUnit === service.unit}
+                    onClick={() => void control(service.unit, SiteServiceAction.RESTART, "重启")}
+                  >
+                    <RotateCw className="size-3.5" />
+                    重启
+                  </UIButton>
+                  <UIButton
+                    variant="outline"
+                    size="sm"
+                    disabled={busyUnit === service.unit}
+                    onClick={() => void control(service.unit, SiteServiceAction.STOP, "停止")}
+                  >
+                    停止
+                  </UIButton>
+                  {!isTimer(service.unit) && (
+                    <UIButton variant="outline" size="sm" onClick={() => void loadLog(service.unit)}>
+                      日志
+                    </UIButton>
+                  )}
+                </div>
+              </div>
+              <div className="text-muted-foreground flex flex-wrap gap-x-3">
+                {service.description && <span>{service.description}</span>}
+                {service.mainPid > 0 && <span>PID {service.mainPid}</span>}
+                {service.memoryRssBytes > 0n && <span>内存 {formatBytes(Number(service.memoryRssBytes))}</span>}
+                {service.activeSince && <span>启动于 {service.activeSince}</span>}
+                {service.result && service.result !== "success" && <span>上次结果 {service.result}</span>}
+                {service.nextTrigger && <span>下次触发 {service.nextTrigger}</span>}
+                {service.lastTrigger && <span>上次触发 {service.lastTrigger}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {site.logPaths.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-xs text-muted-foreground">日志文件:</span>
+          {site.logPaths.map((path) => (
+            <UIButton key={path} variant="outline" size="sm" onClick={() => void loadLog(path)}>
+              <span className="font-mono">{path}</span>
+            </UIButton>
+          ))}
+        </div>
+      )}
+      {logSource && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-mono">
+              {logSource}
+              {log.truncated && <span className="text-muted-foreground">(仅显示末尾)</span>}
+            </span>
+            <UIButton variant="outline" size="sm" onClick={() => void loadLog(logSource)}>
+              <RefreshCw className="size-3.5" />
+              刷新日志
+            </UIButton>
+          </div>
+          <pre className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs whitespace-pre-wrap font-mono overflow-x-auto m-0 max-h-80 overflow-y-auto">
+            {log.content || "(空)"}
+          </pre>
+        </div>
+      )}
+
+      <div className="text-sm font-medium pt-2">关联设置</div>
+      <UILabel htmlFor="site-service-units" className="text-xs">
+        systemd 单元(每行一个,*.service / *.timer)
+      </UILabel>
+      <textarea
+        id="site-service-units"
+        className="pem-input w-full"
+        rows={3}
+        placeholder={"jobwatch-serve.service\njobwatch-collect.service\njobwatch-collect.timer"}
+        value={units}
+        onChange={(event) => setUnits(event.target.value)}
+      />
+      <UILabel htmlFor="site-service-logs" className="text-xs">
+        日志文件(每行一个绝对路径,可选)
+      </UILabel>
+      <textarea
+        id="site-service-logs"
+        className="pem-input w-full"
+        rows={2}
+        placeholder="/opt/jobwatch/data/log.txt"
+        value={logPaths}
+        onChange={(event) => setLogPaths(event.target.value)}
+      />
+      <div>
+        <UIButton size="sm" onClick={() => void saveLinks()}>
+          <Save className="size-3.5" />
+          保存关联
+        </UIButton>
+      </div>
     </div>
   );
 }
