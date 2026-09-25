@@ -863,6 +863,13 @@ if [[ "$RUSTPANEL_INSTALL_MODE" == "binary" && -z "$RUSTPANEL_SYSTEM_CRONTAB" ]]
   log "/etc/cron.d not found; install cron to let panel cron tasks run on schedule"
 fi
 
+# 下载 / 解压中转文件:无论成功、失败还是 Ctrl-C 都清掉,别在小鸡的 /tmp 留几十 MB
+cleanup_install_scratch() {
+  rm -rf /tmp/rustpanel-backend.tar.gz /tmp/rustpanel-shadowsocks.tar.xz \
+    /tmp/rustpanel-shadowsocks /tmp/rustpanel-get-docker.sh
+}
+trap cleanup_install_scratch EXIT
+
 RUSTPANEL_ADMIN_PASSWORD="${RUSTPANEL_ADMIN_PASSWORD:-$(random_hex 12)}"
 RUSTPANEL_JWT_SECRET="${RUSTPANEL_JWT_SECRET:-$(random_hex 32)}"
 

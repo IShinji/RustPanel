@@ -2168,6 +2168,9 @@ async fn execute_binary_install(
     let work_root = appstore_root().join(slug);
     let cache_dir = work_root.join("cache");
     let work_dir = work_root.join("work");
+    // 下载包 + 解压目录只是中转:成功、失败、或调用方放弃(future 被丢弃)都要清掉,
+    // 否则每次装一个包就在 /tmp 留几十 MB。work_root 本身还放着已装应用的元数据,不能删。
+    let _scratch = ScratchDirs(vec![cache_dir.clone(), work_dir.clone()]);
     tokio::fs::create_dir_all(&cache_dir)
         .await
         .map_err(io_status)?;
@@ -2211,6 +2214,57 @@ async fn execute_binary_install(
     systemctl(&["daemon-reload"]).await?;
     systemctl(&["enable", "--now", &format!("{slug}.service")]).await?;
     Ok(())
+}
+
+/// 安装中转目录的 RAII 清理器。Drop 时在阻塞线程池里删,不卡 async worker;
+/// 没有 runtime(进程退出路径)时就地同步删。
+struct ScratchDirs(Vec<PathBuf>);
+
+impl Drop for ScratchDirs {
+    fn drop(&mut self) {
+        let dirs = std::mem::take(&mut self.0);
+        let remove = move || {
+            for dir in dirs {
+                if let Err(error) = std::fs::remove_dir_all(&dir) {
+                    if error.kind() != std::io::ErrorKind::NotFound {
+                        tracing::warn!(dir = %dir.display(), %error, "failed to remove appstore scratch dir");
+                    }
+                }
+            }
+        };
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn_blocking(remove);
+            }
+            Err(_) => remove(),
+        }
+    }
+}
+
+/// 启动时清一遍上次进程崩溃 / 被杀时没来得及删的安装中转目录。
+/// 安装不会跨进程重启,所以此刻所有 `<appstore_root>/*/{cache,work}` 都是残留。
+pub async fn sweep_install_scratch() {
+    let root = appstore_root();
+    let _ = tokio::task::spawn_blocking(move || sweep_install_scratch_in(&root)).await;
+}
+
+fn sweep_install_scratch_in(root: &Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            continue;
+        }
+        for scratch in ["cache", "work"] {
+            let dir = entry.path().join(scratch);
+            if dir.is_dir() {
+                if let Err(error) = std::fs::remove_dir_all(&dir) {
+                    tracing::warn!(dir = %dir.display(), %error, "failed to sweep appstore scratch dir");
+                }
+            }
+        }
+    }
 }
 
 /// 卸载:停服务、disable、删 unit、删二进制;config / 数据保留。
@@ -2521,6 +2575,52 @@ const TUIC_CONFIG: &str = r#"{
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sweep_removes_only_install_scratch() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let app = root.path().join("rpxy");
+        std::fs::create_dir_all(app.join("cache")).expect("cache");
+        std::fs::create_dir_all(app.join("work/nested")).expect("work");
+        std::fs::write(app.join("cache/rpxy.tar.gz"), b"x").expect("archive");
+        std::fs::write(app.join("rustpanel-app.json"), b"{}").expect("metadata");
+
+        sweep_install_scratch_in(root.path());
+
+        assert!(!app.join("cache").exists());
+        assert!(!app.join("work").exists());
+        assert!(
+            app.join("rustpanel-app.json").exists(),
+            "metadata must survive"
+        );
+    }
+
+    #[tokio::test]
+    async fn scratch_guard_cleans_up_when_install_is_abandoned() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let cache = root.path().join("cache");
+        let work = root.path().join("work");
+        std::fs::create_dir_all(&cache).expect("cache");
+        std::fs::create_dir_all(&work).expect("work");
+        let keep = root.path().join("rustpanel-app.json");
+        std::fs::write(&keep, b"{}").expect("metadata");
+
+        // 模拟调用方中途放弃:持有 guard 的 future 被丢弃
+        let install = async {
+            let _scratch = ScratchDirs(vec![cache.clone(), work.clone()]);
+            std::future::pending::<()>().await;
+        };
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(10), install).await;
+
+        for _ in 0..100 {
+            if !cache.exists() && !work.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(!cache.exists() && !work.exists());
+        assert!(keep.exists());
+    }
+
     use super::*;
 
     #[test]

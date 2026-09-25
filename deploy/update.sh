@@ -40,6 +40,7 @@ if [[ "${RUSTPANEL_INSTALL_MODE:-docker}" == "binary" ]]; then
     sed -i "s|^RUSTPANEL_BINARY_URL=.*|RUSTPANEL_BINARY_URL='$MICRO_BINARY_URL'|" "$PROJECT_ROOT/.env"
   fi
   archive="/tmp/rustpanel-backend.tar.gz"
+  trap 'rm -f "$archive"' EXIT
   bin_dir="$PROJECT_ROOT/bin"
   mkdir -p "$bin_dir"
   download_file "${RUSTPANEL_BINARY_URL:?RUSTPANEL_BINARY_URL is required}" "$archive"

@@ -274,6 +274,9 @@ pub async fn serve_with_listener(
     // 后台告警扫描器(证书到期 / 高负载 / 磁盘将满 → 通知渠道)。只在此处启动一次。
     notification::spawn_alert_scanner();
 
+    // 上次进程被杀 / 崩溃时残留的应用商店安装中转目录。
+    appstore::sweep_install_scratch().await;
+
     // 计划任务交给系统 cron:启动时按已存任务重写一次 crontab(配置了才写)。
     if let Err(error) = cron::sync_system_crontab_from_store().await {
         tracing::warn!(%error, "failed to sync system crontab");
