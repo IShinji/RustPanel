@@ -65,6 +65,7 @@ Type=simple\n\
 ExecStart={} --port {}\n\
 Environment=RUSTPANEL_ENV=production\n\
 Environment=RUSTPANEL_JWT_SECRET=replace-with-at-least-32-random-bytes\n\
+Environment=MALLOC_ARENA_MAX=2\n\
 Restart=always\n\
 RestartSec=3\n\
 NoNewPrivileges=true\n\n\
@@ -113,5 +114,6 @@ mod tests {
 
         assert!(service.contains("ExecStart=/usr/local/bin/rustpanel-backend --port 18080"));
         assert!(service.contains("RUSTPANEL_JWT_SECRET=replace-with-at-least-32-random-bytes"));
+        assert!(service.contains("Environment=MALLOC_ARENA_MAX=2"));
     }
 }

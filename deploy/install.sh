@@ -760,6 +760,8 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=$INSTALL_DIR
 EnvironmentFile=$INSTALL_DIR/.env
+# glibc 默认每核 8 个 malloc arena,多线程下 RSS 虚胖;2 个足够面板用
+Environment=MALLOC_ARENA_MAX=2
 ExecStart=$INSTALL_DIR/bin/rustpanel-backend
 Restart=always
 RestartSec=3
@@ -779,6 +781,7 @@ start_binary_backend() {
   fi
 
   log "systemd not found, starting RustPanel with daemon mode"
+  export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
   set -a
   # shellcheck disable=SC1091
   source "$INSTALL_DIR/.env"

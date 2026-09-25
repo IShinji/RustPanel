@@ -138,9 +138,7 @@ impl RuntimeModules {
             .ok()
             .map(|value| parse_module_set(&value))
             .unwrap_or_default();
-        let profile = env::var("RUSTPANEL_INSTALL_PROFILE")
-            .or_else(|_| env::var("RUSTPANEL_PROFILE"))
-            .unwrap_or_else(|_| "custom".to_owned());
+        let profile = install_profile();
 
         // modules.json override 优先于 env:用户在面板 toggle 后立刻反映,
         // 不需要重启 / 改 .env。文件不存在或读失败时退回 env。
@@ -337,6 +335,42 @@ fn is_required_module(module_id: &str) -> bool {
     matches!(module_id, MODULE_CORE | MODULE_AUDIT)
 }
 
+/// 安装档位(micro/lite/standard/full);都没设时为 "custom"。
+pub fn install_profile() -> String {
+    env::var("RUSTPANEL_INSTALL_PROFILE")
+        .or_else(|_| env::var("RUSTPANEL_PROFILE"))
+        .unwrap_or_else(|_| "custom".to_owned())
+}
+
+pub fn is_micro_profile() -> bool {
+    install_profile().trim().eq_ignore_ascii_case("micro")
+}
+
+/// micro 档 tokio 工作线程上限:每个 worker 都有自己的栈与任务队列,
+/// 128MB 小鸡上 2 个足够面板并发,又不会随宿主核数膨胀(单核机仍只开 1 个)。
+pub const MICRO_TOKIO_WORKER_THREADS: usize = 2;
+
+/// 需要显式设置的 tokio worker 数;None = 交给 tokio 默认(它自己会读
+/// TOKIO_WORKER_THREADS,否则按 CPU 核数)。显式 TOKIO_WORKER_THREADS 永远优先。
+pub fn tokio_worker_threads() -> Option<usize> {
+    let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+    worker_threads_for(
+        &install_profile(),
+        env::var("TOKIO_WORKER_THREADS").ok().as_deref(),
+        cores,
+    )
+}
+
+fn worker_threads_for(profile: &str, override_value: Option<&str>, cores: usize) -> Option<usize> {
+    if override_value.is_some_and(|value| !value.trim().is_empty()) {
+        return None;
+    }
+    profile
+        .trim()
+        .eq_ignore_ascii_case("micro")
+        .then(|| MICRO_TOKIO_WORKER_THREADS.min(cores.max(1)))
+}
+
 fn parse_module_set(value: &str) -> HashSet<String> {
     value
         .split(',')
@@ -378,5 +412,15 @@ mod tests {
         assert!(modules.is_enabled(MODULE_FILES));
         assert!(!modules.is_enabled(MODULE_DOCKER));
         assert!(modules.is_enabled(MODULE_AUDIT));
+    }
+
+    #[test]
+    fn micro_profile_caps_workers_at_two_unless_overridden() {
+        assert_eq!(worker_threads_for("micro", None, 8), Some(2));
+        assert_eq!(worker_threads_for("MICRO", Some("  "), 8), Some(2));
+        assert_eq!(worker_threads_for("micro", None, 1), Some(1));
+        assert_eq!(worker_threads_for("micro", Some("4"), 8), None);
+        assert_eq!(worker_threads_for("standard", None, 8), None);
+        assert_eq!(worker_threads_for("custom", None, 8), None);
     }
 }

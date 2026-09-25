@@ -51,6 +51,7 @@ if [[ "${RUSTPANEL_INSTALL_MODE:-docker}" == "binary" ]]; then
     if [[ -f "$PROJECT_ROOT/rustpanel.pid" ]]; then
       kill "$(cat "$PROJECT_ROOT/rustpanel.pid")" >/dev/null 2>&1 || true
     fi
+    export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
     set -a
     # shellcheck disable=SC1091
     source "$PROJECT_ROOT/.env"

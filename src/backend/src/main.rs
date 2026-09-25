@@ -4,9 +4,28 @@ use rustpanel_backend::{
     init_tracing, serve,
 };
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+fn main() -> Result<(), BoxError> {
     let cli = Cli::parse();
+    // fork 必须发生在 tokio 起线程之前:fork 后子进程里只剩调用线程,
+    // 之前在 runtime 内 daemonize 会让 worker 线程全部"消失"。
+    let serving = !cli.setup && cli.backup_source.is_none() && cli.restic_source.is_none();
+    if serving && cli.daemon {
+        daemonize()?;
+    }
+
+    // micro 档默认只开 2 个 worker(TOKIO_WORKER_THREADS 可覆盖,tokio 自己读);
+    // 其它档位交给 tokio 按核数决定。
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+    builder.enable_all();
+    if let Some(workers) = rustpanel_backend::runtime::tokio_worker_threads() {
+        builder.worker_threads(workers);
+    }
+    builder.build()?.block_on(run(cli))
+}
+
+async fn run(cli: Cli) -> Result<(), BoxError> {
     if cli.setup {
         println!("{}", cli.systemd_service());
         return Ok(());
@@ -39,9 +58,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     init_tracing();
-    if cli.daemon {
-        daemonize()?;
-    }
-
     serve(cli.listen_addr()).await
 }

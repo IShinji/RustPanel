@@ -5,6 +5,7 @@ services:
     restart: always
     environment:
       RUSTPANEL_ENV: production
+      MALLOC_ARENA_MAX: "2"
       RUSTPANEL_BACKEND_ADDR: 0.0.0.0:8080
       RUSTPANEL_ADMIN_USERNAME: ${RUSTPANEL_ADMIN_USERNAME:-admin}
       RUSTPANEL_ADMIN_PASSWORD: ${RUSTPANEL_ADMIN_PASSWORD:?RUSTPANEL_ADMIN_PASSWORD is required}
