@@ -1,3 +1,13 @@
 [workspace]
 members = ["src/backend"]
 resolver = "2"
+
+# 低配主机优先:体积 > 峰值吞吐。opt-level="s" + 全量 LTO + 单 codegen unit
+# 换更小的 .text(常驻 RSS 里的 file-backed 页也跟着少);panic="abort" 去掉
+# unwind 表与 landing pad —— 进程级 panic 由 systemd Restart 兜底;strip 去符号。
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
