@@ -701,6 +701,28 @@ const RPXY_FRAGMENT_DIR: &str = "/etc/rpxy/sites.d";
 /// 同一 site 多 domain 时,**只取第一个作为 server_name** —— rpxy
 /// 单个 app 块只支持一个 SNI;多域名要在调用方为每个 domain 生成
 /// 独立的 app 块。
+/// 站点的反代目标是 `http(s)://host:port[/path]`(nginx proxy_pass 格式);
+/// rpxy 的 upstream `location` 只收 `host:port`,HTTPS 上游另写 `tls = true`。
+/// 之前原样写进去,rpxy 会把 `http://...` 当成主机名,反代站全部 502。
+fn rpxy_upstream_entry(target: &str) -> Option<String> {
+    let (rest, tls) = if let Some(rest) = target.strip_prefix("https://") {
+        (rest, true)
+    } else if let Some(rest) = target.strip_prefix("http://") {
+        (rest, false)
+    } else {
+        (target, false)
+    };
+    let authority = rest.split('/').next().unwrap_or_default();
+    if authority.is_empty() {
+        return None;
+    }
+    Some(if tls {
+        format!("location = \"{authority}\", tls = true")
+    } else {
+        format!("location = \"{authority}\"")
+    })
+}
+
 pub(crate) fn site_to_rpxy_app_block(site: &SiteItem) -> Option<String> {
     let kind = SiteKind::try_from(site.kind).unwrap_or(SiteKind::Unspecified);
     let primary_domain = site.domains.first()?;
@@ -713,13 +735,13 @@ pub(crate) fn site_to_rpxy_app_block(site: &SiteItem) -> Option<String> {
             if target.is_empty() {
                 return None;
             }
-            target.to_owned()
+            rpxy_upstream_entry(target)?
         }
         SiteKind::RustBinary => {
             if site.internal_port == 0 {
                 return None;
             }
-            format!("127.0.0.1:{}", site.internal_port)
+            format!("location = \"127.0.0.1:{}\"", site.internal_port)
         }
         SiteKind::Static => {
             // 静态站本身没有进程,但 RustPanel 在 create_site 时给它在
@@ -730,7 +752,7 @@ pub(crate) fn site_to_rpxy_app_block(site: &SiteItem) -> Option<String> {
             if site.internal_port == 0 {
                 return None;
             }
-            format!("127.0.0.1:{}", site.internal_port)
+            format!("location = \"127.0.0.1:{}\"", site.internal_port)
         }
         // Unspecified:站点 kind 未设置(legacy / 异常)→ 不写片段,
         // 避免 rpxy 配置脏污。
@@ -751,7 +773,7 @@ pub(crate) fn site_to_rpxy_app_block(site: &SiteItem) -> Option<String> {
         String::new()
     };
     Some(format!(
-        "[apps.\"{name}\"]\nserver_name = \"{domain}\"\nreverse_proxy = [{{ location = \"/\", upstream = [{{ location = \"{upstream}\" }}] }}]\n{tls}",
+        "[apps.\"{name}\"]\nserver_name = \"{domain}\"\nreverse_proxy = [{{ location = \"/\", upstream = [{{ {upstream} }}] }}]\n{tls}",
         name = site.name,
         domain = primary_domain,
         upstream = upstream,
@@ -2743,6 +2765,23 @@ mod tests {
             service_units: Vec::new(),
             log_paths: Vec::new(),
         }
+    }
+
+    #[test]
+    fn rpxy_upstream_strips_scheme_and_path() {
+        assert_eq!(
+            rpxy_upstream_entry("http://127.0.0.1:1201").as_deref(),
+            Some("location = \"127.0.0.1:1201\"")
+        );
+        assert_eq!(
+            rpxy_upstream_entry("https://backend.internal:8443/api").as_deref(),
+            Some("location = \"backend.internal:8443\", tls = true")
+        );
+        assert_eq!(
+            rpxy_upstream_entry("127.0.0.1:8080").as_deref(),
+            Some("location = \"127.0.0.1:8080\"")
+        );
+        assert_eq!(rpxy_upstream_entry("http://"), None);
     }
 
     #[test]
