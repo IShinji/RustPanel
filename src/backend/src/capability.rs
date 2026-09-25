@@ -446,6 +446,10 @@ fn probe_capabilities() -> Capabilities {
         can_run_docker = false;
         docker_block_reason = "OpenVZ 上 user_namespaces 已禁用".to_owned();
     }
+    if !cfg!(feature = "docker") {
+        can_run_docker = false;
+        docker_block_reason = "当前为 micro 构建,未编译 Docker 支持".to_owned();
+    }
 
     // 推荐 ACME challenge:
     // - OpenVZ NAT VPS:80 端口通常没在 NAT mapping 里,HTTP-01 进不来 → DNS-01

@@ -42,6 +42,7 @@ pub mod cluster;
 pub mod cron;
 pub mod database;
 pub mod dns;
+#[cfg(feature = "docker")]
 pub mod docker;
 pub mod files;
 pub mod frugal;
@@ -80,7 +81,6 @@ use proto::rustpanel::v1::{
     cron_service_server::CronServiceServer,
     database_service_server::DatabaseServiceServer,
     dns_service_server::DnsServiceServer,
-    docker_service_server::DockerServiceServer,
     file_system_service_server::FileSystemServiceServer,
     monitor_service_server::MonitorServiceServer,
     notification_service_server::NotificationServiceServer,
@@ -418,10 +418,6 @@ fn multiplex_service_with_auth(
             file_service,
             auth_interceptor.clone(),
         ))
-        .add_service(DockerServiceServer::with_interceptor(
-            docker::DockerServiceImpl,
-            auth_interceptor.clone(),
-        ))
         .add_service(AppStoreServiceServer::with_interceptor(
             appstore::AppStoreServiceImpl,
             auth_interceptor.clone(),
@@ -480,9 +476,20 @@ fn multiplex_service_with_auth(
         ))
         .add_service(RollbackServiceServer::with_interceptor(
             rollback_service,
+            auth_interceptor.clone(),
+        ));
+    // micro 构建不编译 Docker API 客户端(bollard):不注册该服务,调用方拿到
+    // Unimplemented;能力探针同时报 can_run_docker=false 让前端置灰。
+    #[cfg(feature = "docker")]
+    let grpc = grpc.add_service(
+        proto::rustpanel::v1::docker_service_server::DockerServiceServer::with_interceptor(
+            docker::DockerServiceImpl,
             auth_interceptor,
-        ))
-        .into_service();
+        ),
+    );
+    #[cfg(not(feature = "docker"))]
+    drop(auth_interceptor);
+    let grpc = grpc.into_service();
 
     service_fn(move |request: Request| {
         let grpc = grpc.clone();

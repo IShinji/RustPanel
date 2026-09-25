@@ -33,6 +33,9 @@ if [[ -f src/backend/Cargo.toml ]]; then
   cargo fmt --check
   cargo clippy --all-targets -- -D warnings
   cargo test --all-targets -- --quiet
+  # micro 构建(--no-default-features)也必须能编过、测过,防止 feature 门控腐烂
+  cargo clippy --no-default-features --all-targets -- -D warnings
+  cargo test --no-default-features --all-targets -- --quiet
 fi
 
 if [[ -f "$root_dir/src/web/package.json" ]]; then

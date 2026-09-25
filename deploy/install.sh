@@ -6,7 +6,10 @@ INSTALL_DIR="${RUSTPANEL_INSTALL_DIR:-/www/wwwroot/rustpanel}"
 DATA_DIR="${RUSTPANEL_DATA_DIR:-$INSTALL_DIR/data}"
 DATA_DIR_EXPLICIT=0
 BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/ishinji/rustpanel-backend:latest}"
-BINARY_URL="${RUSTPANEL_BINARY_URL:-https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-linux-amd64.tar.gz}"
+FULL_BINARY_URL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-linux-amd64.tar.gz"
+# micro 档默认用精简构建(--no-default-features:无 Docker API / MySQL / Postgres / Redis)
+MICRO_BINARY_URL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-micro-linux-amd64.tar.gz"
+BINARY_URL="${RUSTPANEL_BINARY_URL:-$FULL_BINARY_URL}"
 RUSTPANEL_API_PORT="${RUSTPANEL_API_PORT:-18080}"
 RUSTPANEL_BIND_HOST="${RUSTPANEL_BIND_HOST:-0.0.0.0}"
 RUSTPANEL_ALLOWED_ORIGINS="${RUSTPANEL_ALLOWED_ORIGINS:-}"
@@ -56,6 +59,7 @@ Options:
   --nat-port-range RANGE   NAT-opened port range (e.g. 1200-1219); panel port must fall inside
   --image IMAGE            Backend image (default: ghcr.io/ishinji/rustpanel-backend:latest)
   --binary-url URL         Backend binary tar.gz URL for binary/micro mode
+                           (micro profile defaults to the slim build without Docker/MySQL/Postgres/Redis)
   --profile PROFILE        auto, micro, lite, standard, or full (default: auto)
   --install-mode MODE      auto, docker, or binary (default: auto)
   --modules LIST           Comma-separated enabled modules
@@ -834,6 +838,10 @@ write_env_var() {
   printf "%s" "$value" | sed "s/'/'\\\\''/g"
   printf "'\n"
 }
+
+if [[ "$RUSTPANEL_INSTALL_PROFILE" == "micro" && "$BINARY_URL" == "$FULL_BINARY_URL" ]]; then
+  BINARY_URL="$MICRO_BINARY_URL"
+fi
 
 # 节俭模式只对 systemd 二进制安装有意义(要靠 socket 单元按需唤醒)
 if [[ "$RUSTPANEL_FRUGAL" == "auto" ]]; then

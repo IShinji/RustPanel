@@ -55,6 +55,14 @@ sudo bash rustpanel-install.sh --assume-recommended --profile micro \
 
 `micro` 档位面向 128MB RAM、2GB 磁盘、NAT IPv4、OpenVZ 这类极限小鸡。安装器会先做磁盘/内存硬门禁（<500MB / <80MB 直接 fail），再探测虚拟化和 Docker 能力，在低配或 OpenVZ 环境下推荐二进制裸跑模式，默认启用内置静态托管、轻量任务托管和用户态代理，禁用 Docker、应用商店、Nginx 站点和 SSL 自动化。128MB 实在紧时可在交互流程末尾启用、或直接加 `--ultra-low` 再禁掉 proxy 和 workloads。
 
+micro 档还默认启用**节俭模式**:
+- 下载精简构建 `rustpanel-backend-micro-linux-amd64.tar.gz`(`cargo build --release --no-default-features`,不含 Docker API / MySQL / Postgres / Redis / portable-pty,终端用内置 openpty,数据库仅 SQLite);
+- tokio 最多 2 个工作线程(`TOKIO_WORKER_THREADS` 可覆盖),systemd 单元带 `MALLOC_ARENA_MAX=2`;
+- 端口交给 `rustpanel-backend.socket`,面板空闲 `RUSTPANEL_IDLE_EXIT_MINUTES`(默认 10)分钟后退出,下一个请求由 systemd 按需拉起;有 WS 终端、上传部署、托管进程或回滚计时器时不会退出;
+- 计划任务写进 `/etc/cron.d/rustpanel` 由系统 cron 调 `--run-cron-task`,证书续签由 `rustpanel-cert-renew.timer` 每天调一次 `--renew-certs`。
+
+不想要节俭模式可加 `--no-frugal`;其它档位也可用 `--frugal` 强制开启。
+
 安装前可先查看建议：
 
 ```bash

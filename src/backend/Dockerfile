@@ -52,18 +52,21 @@ RUN --mount=type=cache,id=rust-sccache-v1,target=/sccache,sharing=locked \
     sccache --show-stats || true
 
 FROM chef AS builder
+# micro 二进制:--build-arg BACKEND_CARGO_FLAGS=--no-default-features
+# (去掉 bollard / MySQL / Postgres / Redis / portable-pty,见 src/backend/Cargo.toml)
+ARG BACKEND_CARGO_FLAGS=""
 COPY --from=planner /app/recipe.json recipe.json
 RUN --mount=type=cache,id=rust-sccache-v1,target=/sccache,sharing=locked \
     --mount=type=cache,id=rust-cargo-registry-v1,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=rust-cargo-git-v1,target=/usr/local/cargo/git,sharing=locked \
-    cargo chef cook --release --locked --recipe-path recipe.json
+    cargo chef cook --release --locked --recipe-path recipe.json $BACKEND_CARGO_FLAGS
 COPY . .
 COPY --from=web-builder /app/src/web/dist /app/src/web/dist
 WORKDIR /app/src/backend
 RUN --mount=type=cache,id=rust-sccache-v1,target=/sccache,sharing=locked \
     --mount=type=cache,id=rust-cargo-registry-v1,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=rust-cargo-git-v1,target=/usr/local/cargo/git,sharing=locked \
-    cargo build --release --locked --bins
+    cargo build --release --locked --bins $BACKEND_CARGO_FLAGS
 RUN --mount=type=cache,id=rust-sccache-v1,target=/sccache,sharing=locked \
     sccache --show-stats || true
 

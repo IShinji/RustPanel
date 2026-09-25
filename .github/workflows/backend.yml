@@ -185,6 +185,19 @@ jobs:
             --output type=local,dest=dist/backend-binary \
             -f src/backend/Dockerfile .
           tar -C dist/backend-binary -czf dist/release/rustpanel-backend-linux-amd64.tar.gz rustpanel-backend
+      - name: Build linux/amd64 micro backend binary
+        run: |
+          rm -rf dist/backend-binary-micro
+          mkdir -p dist/backend-binary-micro
+          docker buildx build \
+            --builder rustpanel-backend-binary-builder \
+            --platform linux/amd64 \
+            --target binary-export \
+            --build-arg BACKEND_CARGO_FLAGS=--no-default-features \
+            --output type=local,dest=dist/backend-binary-micro \
+            -f src/backend/Dockerfile .
+          tar -C dist/backend-binary-micro -czf dist/release/rustpanel-backend-micro-linux-amd64.tar.gz rustpanel-backend
+          ls -l dist/backend-binary/rustpanel-backend dist/backend-binary-micro/rustpanel-backend
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -195,4 +208,8 @@ jobs:
       - name: Publish micro binary release
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node dist/node-scripts/scripts/publish-micro-release.js --asset dist/release/rustpanel-backend-linux-amd64.tar.gz
+        run: |
+          node dist/node-scripts/scripts/publish-micro-release.js --asset dist/release/rustpanel-backend-linux-amd64.tar.gz
+          node dist/node-scripts/scripts/publish-micro-release.js \
+            --asset dist/release/rustpanel-backend-micro-linux-amd64.tar.gz \
+            --asset-name rustpanel-backend-micro-linux-amd64.tar.gz

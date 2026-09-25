@@ -8,9 +8,21 @@ build = "build.rs"
 name = "rustpanel-backend"
 path = "src/main.rs"
 
+# 按需编译:默认 = 全功能。micro 构建(128MB 小鸡)用
+#   cargo build --release --no-default-features
+# 去掉 Docker API(bollard)、MySQL/Postgres 驱动、Redis 客户端和 portable-pty;
+# 终端改走内置的 openpty 实现,数据库只留 SQLite。
+[features]
+default = ["docker", "mysql", "postgres", "redis", "pty"]
+docker = ["dep:bollard"]
+mysql = ["sqlx/mysql"]
+postgres = ["sqlx/postgres"]
+redis = ["dep:redis"]
+pty = ["dep:portable-pty"]
+
 [dependencies]
 axum = { version = "0.7", features = ["multipart", "ws"] }
-bollard = "0.17"
+bollard = { version = "0.17", optional = true }
 bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4", features = ["derive", "env"] }
@@ -26,11 +38,11 @@ http-body-util = "0.1"
 instant-acme = "0.8"
 jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
 mime_guess = "2"
-portable-pty = "0.8"
+portable-pty = { version = "0.8", optional = true }
 prost = "0.13"
 prost-types = "0.13"
 rcgen = "0.13"
-redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
+redis = { version = "0.27", default-features = false, features = ["tokio-comp"], optional = true }
 regex = "1"
 # 通知告警出站 HTTP(Webhook/Telegram/钉钉/企业微信/Bark)。走 rustls + 内置根证书,
 # 不引 openssl,适配最小镜像;复用已在树里的 rustls/hyper。
@@ -41,7 +53,7 @@ serde_json = "1"
 serde_yaml = "0.9"
 sha1 = "0.10"
 sha2 = "0.10"
-sqlx = { version = "0.8", default-features = false, features = ["any", "json", "mysql", "postgres", "runtime-tokio", "sqlite"] }
+sqlx = { version = "0.8", default-features = false, features = ["any", "json", "runtime-tokio", "sqlite"] }
 sysinfo = "0.30"
 tar = "0.4"
 tera = "1"

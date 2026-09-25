@@ -535,6 +535,12 @@ async fn is_sqlite_file(path: &Path) -> bool {
     &buf == b"SQLite format 3\x00"
 }
 
+#[cfg(not(feature = "redis"))]
+async fn probe_redis_info(_url: &str) -> Result<RedisInfo, &'static str> {
+    Err("此构建未编译 Redis 支持(micro 构建),请换用完整版二进制")
+}
+
+#[cfg(feature = "redis")]
 async fn probe_redis_info(url: &str) -> Result<RedisInfo, redis::RedisError> {
     let client = redis::Client::open(url)?;
     let mut conn = client.get_multiplexed_async_connection().await?;
@@ -576,12 +582,30 @@ fn io_status(error: impl std::fmt::Display) -> Status {
 }
 
 async fn connect_any(dsn: &str) -> Result<sqlx::AnyPool, Status> {
+    ensure_driver_compiled(engine_from_dsn(dsn)?)?;
     SQLX_DRIVERS.call_once(sqlx::any::install_default_drivers);
     AnyPoolOptions::new()
         .max_connections(5)
         .connect(dsn)
         .await
         .map_err(db_status)
+}
+
+/// micro 构建只编译 SQLite 驱动;连 MySQL/Postgres 时给出可读原因,
+/// 而不是 sqlx 的 "no driver found"。
+fn ensure_driver_compiled(engine: DatabaseEngineKind) -> Result<(), Status> {
+    let compiled = match engine {
+        DatabaseEngineKind::Mysql => cfg!(feature = "mysql"),
+        DatabaseEngineKind::Postgres => cfg!(feature = "postgres"),
+        DatabaseEngineKind::Sqlite => true,
+    };
+    if compiled {
+        Ok(())
+    } else {
+        Err(Status::failed_precondition(
+            "此构建未编译该数据库驱动(micro 构建仅含 SQLite),请换用完整版二进制",
+        ))
+    }
 }
 
 fn engine_from_dsn(dsn: &str) -> Result<DatabaseEngineKind, Status> {

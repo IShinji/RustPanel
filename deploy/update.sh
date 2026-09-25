@@ -30,7 +30,15 @@ download_file() {
   exit 1
 }
 
+FULL_BINARY_URL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-linux-amd64.tar.gz"
+MICRO_BINARY_URL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-micro-linux-amd64.tar.gz"
+
 if [[ "${RUSTPANEL_INSTALL_MODE:-docker}" == "binary" ]]; then
+  # 老 micro 安装还指着完整版二进制:切到精简构建并写回 .env
+  if [[ "${RUSTPANEL_INSTALL_PROFILE:-}" == "micro" && "${RUSTPANEL_BINARY_URL:-}" == "$FULL_BINARY_URL" ]]; then
+    RUSTPANEL_BINARY_URL="$MICRO_BINARY_URL"
+    sed -i "s|^RUSTPANEL_BINARY_URL=.*|RUSTPANEL_BINARY_URL='$MICRO_BINARY_URL'|" "$PROJECT_ROOT/.env"
+  fi
   archive="/tmp/rustpanel-backend.tar.gz"
   bin_dir="$PROJECT_ROOT/bin"
   mkdir -p "$bin_dir"
