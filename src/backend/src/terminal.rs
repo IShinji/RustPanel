@@ -331,7 +331,8 @@ mod pty_backend {
                 &mut slave,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-                &mut size,
+                // winp 在 Linux 是 *const、macOS 是 *mut;裸指针两边都能隐式转换
+                std::ptr::addr_of_mut!(size),
             )
         };
         if rc == -1 {
