@@ -25,6 +25,7 @@ import {
   type DistributionForm,
   type SecurityOptionsForm
 } from "../lib/forms";
+import { useMountEffect } from "../lib/hooks";
 
 export function ClusterAudit({ clients }: { clients: Clients }) {
   const [nodes, setNodes] = useState<ClusterNode[]>([]);
@@ -53,9 +54,7 @@ export function ClusterAudit({ clients }: { clients: Clients }) {
     }
   };
 
-  useEffect(() => {
-    void load();
-  }, []);
+  useMountEffect(() => load());
 
   const pairNode = async () => {
     try {

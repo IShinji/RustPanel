@@ -15,6 +15,7 @@ import { Archive, Boxes, Download, FileText, Globe, Pause, Play, Power, RefreshC
 import { useCallback, useEffect, useState } from "react";
 import { SoftwareStore } from "../components/software-store";
 import { appStateVariant } from "../lib/labels";
+import { useMountEffect } from "../lib/hooks";
 
 export function SoftwareStorePage({ clients }: { clients: Clients }) {
   const [templates, setTemplates] = useState<AppTemplate[]>([]);
@@ -209,9 +210,7 @@ export function DockerApps({ clients }: { clients: Clients }) {
     setError(failures.length ? failures.join("; ") : "");
   };
 
-  useEffect(() => {
-    void load();
-  }, []);
+  useMountEffect(() => load());
 
   const action = async (containerId: string, kind: "start" | "stop" | "restart" | "pause" | "remove") => {
     const payload = { containerId };
@@ -523,9 +522,7 @@ export function MicroPanel({ clients }: { clients: Clients }) {
     }
   };
 
-  useEffect(() => {
-    void load();
-  }, []);
+  useMountEffect(() => load());
 
   const createSite = async () => {
     try {

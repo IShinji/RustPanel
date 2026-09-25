@@ -13,6 +13,7 @@ import { formatBytes, formatDuration, safeError } from "../lib/format";
 import { type Clients } from "../lib/rpc";
 import { Clock, Download, FileText, Play, Plus, RefreshCw, RotateCw, Save } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useMountEffect } from "../lib/hooks";
 
 function downloadCsv(columns: string[], rows: string[][], filename: string) {
   const escape = (value: string) => `"${String(value ?? "").replace(/"/g, '""')}"`;
@@ -784,9 +785,7 @@ export function CronPanel({ clients }: { clients: Clients }) {
     setTasks(response.tasks);
   };
 
-  useEffect(() => {
-    void load();
-  }, []);
+  useMountEffect(() => load());
 
   const createTask = async () => {
     await clients.cron.createCronTask({

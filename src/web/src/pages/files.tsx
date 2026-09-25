@@ -5,7 +5,8 @@ import { formatBytes } from "../lib/format";
 import { languageForPath, parentPath } from "../lib/labels";
 import { appendAuthQuery, authFetch, type Clients } from "../lib/rpc";
 import { Archive, Download, FileText, Folder, FolderPlus, RefreshCw, RotateCw, Save, TerminalSquare, Trash2, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useMountEffect } from "../lib/hooks";
 
 export function FileManager({ clients, openTerminal }: { clients: Clients; openTerminal: (cwd: string) => void }) {
   const [path, setPath] = useState("/");
@@ -26,9 +27,7 @@ export function FileManager({ clients, openTerminal }: { clients: Clients; openT
     setRecycleItems(recycle.items);
   };
 
-  useEffect(() => {
-    void load("/");
-  }, []);
+  useMountEffect(() => load("/"));
 
   const openItem = async (item: FileItem) => {
     setSelected(item);

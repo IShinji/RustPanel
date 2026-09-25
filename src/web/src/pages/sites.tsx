@@ -1467,8 +1467,6 @@ function SslPanel({
   const [challengeMode, setChallengeMode] = useState<"http01" | "dns01">("dns01");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // 把推荐值映射成实际可用值:不支持 webroot 时强制 DNS-01
-  const effectiveDefault = (mode: "http01" | "dns01") =>
-    mode === "http01" && !supportsHttp01 ? "dns01" : mode;
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -1480,7 +1478,8 @@ function SslPanel({
         const reason =
           resp.capabilities?.acmeChallengeReason?.trim() ||
           (mode === "http01" ? "公网环境,推荐 HTTP-01 一键完成。" : "受限环境,推荐 DNS-01 更稳。");
-        const eff = effectiveDefault(mode);
+        // 站点不支持 HTTP-01 时,推荐值再好也只能落到 DNS-01
+        const eff = mode === "http01" && !supportsHttp01 ? "dns01" : mode;
         setRecommended({ mode, reason });
         setChallengeMode(eff);
       } catch {

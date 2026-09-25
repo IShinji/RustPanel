@@ -5,7 +5,8 @@ import { defaultFirewallForm, defaultSecurityOptions, defaultSshKeyForm, default
 import { firewallActionLabel, firewallDirectionLabel, firewallProtocolLabel, sshAlgorithmLabel, wafKindLabel } from "../lib/labels";
 import { type Clients } from "../lib/rpc";
 import { Ban, Copy, FileDown, FileText, FileUp, Globe, Plus, Power, RefreshCw, Save, Shield, ShieldAlert, ShieldCheck, TerminalSquare } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMountEffect } from "../lib/hooks";
 
 export function SecurityPanel({ clients }: { clients: Clients }) {
   const [rules, setRules] = useState<FirewallRule[]>([]);
@@ -51,9 +52,7 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
     }
   };
 
-  useEffect(() => {
-    void load();
-  }, []);
+  useMountEffect(() => load());
 
   const saveRule = async () => {
     try {
