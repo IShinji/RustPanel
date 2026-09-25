@@ -121,8 +121,11 @@ impl RollbackServiceImpl {
         let cancel_clone = notify.clone();
         let inner = self.inner.clone();
         let id = action_id.clone();
+        // 回滚计时器未触发前面板不能空闲退出,否则「改坏了自动回滚」就失效了。
+        let busy = crate::frugal::BusyGuard::new();
 
         tokio::spawn(async move {
+            let _busy = busy;
             tokio::select! {
                 _ = tokio::time::sleep(after) => {
                     // 到期触发回滚

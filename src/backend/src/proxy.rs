@@ -247,7 +247,10 @@ async fn start_proxy(
         .insert(instance.id.clone(), ProcessEntry { pid });
 
     let instance_id = instance.id.clone();
+    // 同 workload:ssserver 在面板 cgroup 里,运行期间不空闲退出。
+    let busy = crate::frugal::BusyGuard::new();
     tokio::spawn(async move {
+        let _busy = busy;
         let status = child.wait().await;
         processes.lock().await.remove(&instance_id);
         let state = if status.as_ref().is_ok_and(|status| status.success()) {

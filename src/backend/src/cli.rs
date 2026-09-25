@@ -42,6 +42,23 @@ pub struct Cli {
     pub restic_keep: u32,
     #[arg(long, default_value = "")]
     pub restic_tag: String,
+    // 系统 cron 回调(/etc/cron.d/rustpanel 生成的行):跑一次指定计划任务后退出。
+    #[arg(long)]
+    pub run_cron_task: Option<String>,
+    // systemd timer 回调(rustpanel-cert-renew.timer):续签临期证书后退出。
+    #[arg(long)]
+    pub renew_certs: bool,
+}
+
+impl Cli {
+    /// 是否为常驻服务模式(其余都是跑完即退的一次性命令)。
+    pub fn is_serving(&self) -> bool {
+        !self.setup
+            && self.backup_source.is_none()
+            && self.restic_source.is_none()
+            && self.run_cron_task.is_none()
+            && !self.renew_certs
+    }
 }
 
 impl Cli {

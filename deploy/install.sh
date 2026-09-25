@@ -20,6 +20,7 @@ RUSTPANEL_DISABLED_MODULES="${RUSTPANEL_DISABLED_MODULES:-}"
 RUSTPANEL_NAT_PORT_RANGE="${RUSTPANEL_NAT_PORT_RANGE:-}"
 RUSTPANEL_PUBLIC_HOST="${RUSTPANEL_PUBLIC_HOST:-}"
 RUSTPANEL_ULTRA_LOW="${RUSTPANEL_ULTRA_LOW:-0}"
+RUSTPANEL_FRUGAL="${RUSTPANEL_FRUGAL:-auto}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-rustpanel}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 GHCR_USERNAME="${GHCR_USERNAME:-_}"
@@ -60,6 +61,8 @@ Options:
   --modules LIST           Comma-separated enabled modules
   --disable-modules LIST   Comma-separated disabled modules
   --ultra-low              Disable proxy and workloads modules (recommended for <=128MB RAM)
+  --frugal / --no-frugal   Force frugal mode on/off (systemd socket activation + idle exit;
+                           default: on for micro binary installs)
   --origin ORIGIN          Allowed browser origin, for example https://panel.example.com
   --admin-username USER    Admin username (default: admin)
   --admin-password PASS    Admin password (default: generated)
@@ -489,6 +492,14 @@ while [[ $# -gt 0 ]]; do
       RUSTPANEL_NAT_PORT_RANGE="${2:?missing value for --nat-port-range}"
       shift 2
       ;;
+    --frugal)
+      RUSTPANEL_FRUGAL=1
+      shift
+      ;;
+    --no-frugal)
+      RUSTPANEL_FRUGAL=0
+      shift
+      ;;
     --ultra-low)
       RUSTPANEL_ULTRA_LOW=1
       shift
@@ -610,6 +621,7 @@ if [[ -f "$INSTALL_DIR/.env" && "$FORCE" != "1" ]]; then
   RUSTPANEL_NAT_PORT_RANGE="${RUSTPANEL_NAT_PORT_RANGE:-}"
   RUSTPANEL_PUBLIC_HOST="${RUSTPANEL_PUBLIC_HOST:-}"
   RUSTPANEL_ULTRA_LOW="${RUSTPANEL_ULTRA_LOW:-0}"
+  RUSTPANEL_FRUGAL="${RUSTPANEL_FRUGAL:-auto}"
   COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-rustpanel}"
   GITHUB_TOKEN="${GITHUB_TOKEN:-}"
   GHCR_USERNAME="${GHCR_USERNAME:-_}"
@@ -749,29 +761,9 @@ download_backend_binary() {
 }
 
 write_systemd_service() {
-  local service_path="/etc/systemd/system/rustpanel-backend.service"
-  cat > "$service_path" <<EOF
-[Unit]
-Description=RustPanel backend service
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=$INSTALL_DIR
-EnvironmentFile=$INSTALL_DIR/.env
-# glibc 默认每核 8 个 malloc arena,多线程下 RSS 虚胖;2 个足够面板用
-Environment=MALLOC_ARENA_MAX=2
-ExecStart=$INSTALL_DIR/bin/rustpanel-backend
-Restart=always
-RestartSec=3
-NoNewPrivileges=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  systemctl daemon-reload
-  systemctl enable --now rustpanel-backend
+  # shellcheck disable=SC1091
+  source "$INSTALL_DIR/deploy/systemd-units.sh"
+  rustpanel_write_units
 }
 
 start_binary_backend() {
@@ -782,6 +774,9 @@ start_binary_backend() {
 
   log "systemd not found, starting RustPanel with daemon mode"
   export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
+  # shellcheck disable=SC1091
+  source "$INSTALL_DIR/deploy/systemd-units.sh"
+  rustpanel_write_cert_renew_cron
   set -a
   # shellcheck disable=SC1091
   source "$INSTALL_DIR/.env"
@@ -840,6 +835,26 @@ write_env_var() {
   printf "'\n"
 }
 
+# 节俭模式只对 systemd 二进制安装有意义(要靠 socket 单元按需唤醒)
+if [[ "$RUSTPANEL_FRUGAL" == "auto" ]]; then
+  if [[ "$RUSTPANEL_INSTALL_PROFILE" == "micro" && "$RUSTPANEL_INSTALL_MODE" == "binary" ]]; then
+    RUSTPANEL_FRUGAL=1
+  else
+    RUSTPANEL_FRUGAL=0
+  fi
+fi
+if [[ "$RUSTPANEL_INSTALL_MODE" != "binary" ]] || ! command -v systemctl >/dev/null 2>&1; then
+  RUSTPANEL_FRUGAL=0
+fi
+# 计划任务交给系统 cron:二进制模式且有 cron.d 时由面板维护 /etc/cron.d/rustpanel
+RUSTPANEL_SYSTEM_CRONTAB="${RUSTPANEL_SYSTEM_CRONTAB:-}"
+if [[ -z "$RUSTPANEL_SYSTEM_CRONTAB" && "$RUSTPANEL_INSTALL_MODE" == "binary" && -d /etc/cron.d ]]; then
+  RUSTPANEL_SYSTEM_CRONTAB=/etc/cron.d/rustpanel
+fi
+if [[ "$RUSTPANEL_INSTALL_MODE" == "binary" && -z "$RUSTPANEL_SYSTEM_CRONTAB" ]]; then
+  log "/etc/cron.d not found; install cron to let panel cron tasks run on schedule"
+fi
+
 RUSTPANEL_ADMIN_PASSWORD="${RUSTPANEL_ADMIN_PASSWORD:-$(random_hex 12)}"
 RUSTPANEL_JWT_SECRET="${RUSTPANEL_JWT_SECRET:-$(random_hex 32)}"
 
@@ -850,6 +865,7 @@ install -d -m 0700 "$DATA_DIR"
 log "Downloading deployment files"
 download_file "$REPO_RAW_BASE/deploy/docker-compose.ghcr.yml" "$INSTALL_DIR/deploy/docker-compose.ghcr.yml"
 download_file "$REPO_RAW_BASE/deploy/update.sh" "$INSTALL_DIR/deploy/update.sh"
+download_file "$REPO_RAW_BASE/deploy/systemd-units.sh" "$INSTALL_DIR/deploy/systemd-units.sh"
 chmod +x "$INSTALL_DIR/deploy/update.sh"
 
 log "Writing production configuration"
@@ -867,6 +883,12 @@ umask 077
   write_env_var "RUSTPANEL_NAT_PORT_RANGE" "$RUSTPANEL_NAT_PORT_RANGE"
   write_env_var "RUSTPANEL_PUBLIC_HOST" "$RUSTPANEL_PUBLIC_HOST"
   write_env_var "RUSTPANEL_ULTRA_LOW" "$RUSTPANEL_ULTRA_LOW"
+  write_env_var "RUSTPANEL_FRUGAL" "$RUSTPANEL_FRUGAL"
+  if [[ "$RUSTPANEL_FRUGAL" == "1" ]]; then
+    write_env_var "RUSTPANEL_IDLE_EXIT_MINUTES" "${RUSTPANEL_IDLE_EXIT_MINUTES:-10}"
+  fi
+  write_env_var "RUSTPANEL_ENV_FILE" "$INSTALL_DIR/.env"
+  write_env_var "RUSTPANEL_SYSTEM_CRONTAB" "$RUSTPANEL_SYSTEM_CRONTAB"
   write_env_var "RUSTPANEL_BACKEND_ADDR" "$RUSTPANEL_BIND_HOST:$RUSTPANEL_API_PORT"
   write_env_var "RUSTPANEL_BIND_HOST" "$RUSTPANEL_BIND_HOST"
   write_env_var "RUSTPANEL_API_PORT" "$RUSTPANEL_API_PORT"
@@ -917,6 +939,10 @@ extra_notes=""
 if [[ -n "$RUSTPANEL_NAT_PORT_RANGE" ]]; then
   extra_notes+="
 NAT range:   $RUSTPANEL_NAT_PORT_RANGE (panel port $RUSTPANEL_API_PORT must remain inside this range)"
+fi
+if [[ "$RUSTPANEL_FRUGAL" == "1" ]]; then
+  extra_notes+="
+Frugal:      panel exits after ${RUSTPANEL_IDLE_EXIT_MINUTES:-10} idle minutes; rustpanel-backend.socket wakes it on demand"
 fi
 if [[ "$RUSTPANEL_ULTRA_LOW" == "1" ]]; then
   extra_notes+="

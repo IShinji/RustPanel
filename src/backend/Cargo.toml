@@ -20,6 +20,8 @@ flate2 = "1"
 futures-core = "0.3"
 futures-util = "0.3"
 hmac = "0.12"
+# systemd socket activation 给 fd 打 CLOEXEC 用;tokio 早已依赖,不增体积。
+libc = "0.2"
 http-body-util = "0.1"
 instant-acme = "0.8"
 jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
@@ -47,7 +49,6 @@ thiserror = "2"
 # rcgen 0.13 内部就用 time;直接 depend 一份对齐版本,设 not_after 用。
 time = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
-tokio-cron-scheduler = "0.13"
 tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = { version = "0.7", features = ["io"] }
 tonic = "0.12"

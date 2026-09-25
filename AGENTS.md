@@ -56,6 +56,12 @@
     PHP-FPM)是**能跑 Docker 主机**(KVM + 够内存)的增强,**不能当作低配场景的唯一方案**;
     动态 PHP 等重型站点在 ~128MB 上不在目标内。凡"用容器解决"的功能,必须确认
     `can_run_docker=false` 时有非容器后备或已明确置灰,不留"只在能跑 Docker 时才可用"的隐性缺口。
+- **节俭模式(micro 默认)**:面板由 `rustpanel-backend.socket` 按需唤醒,空闲
+  `RUSTPANEL_IDLE_EXIT_MINUTES`(默认 10)分钟后 exit 0。凡是**请求返回后仍在跑**的
+  工作(WS 会话、`tokio::spawn` 的部署/回滚计时器、托管子进程)都必须持有
+  `crate::frugal::BusyGuard`,否则会被空闲退出打断;普通请求与流式响应已由多路复用层自动计入。
+  周期性工作不要再做进程内调度器:计划任务走系统 cron(`--run-cron-task`),
+  证书续签走 `rustpanel-cert-renew.timer`(`--renew-certs`)。
 - **状态持久化**:JSON 状态文件一律 tmp+rename 原子写;同一文件的 load→改→save
   用进程内 `tokio::sync::Mutex` 串行化,防并发丢更新与半截文件。
   **不要再手写 tmp+rename**,统一走 `crate::statefile::write_atomic`。

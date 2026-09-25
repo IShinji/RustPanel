@@ -1,9 +1,12 @@
-use std::{env, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use tokio::sync::OnceCell;
-use tokio_cron_scheduler::JobScheduler;
 use tonic::{Request, Response as GrpcResponse, Status};
 use uuid::Uuid;
 
@@ -20,29 +23,20 @@ use crate::{
 const DEFAULT_CRON_ROOT: &str = "/tmp/rustpanel/cron";
 const DEFAULT_TIMEOUT_SECONDS: u64 = 300;
 
+/// 定时调度交给系统 cron:任务存 tasks.json,启用的任务写成一份 cron.d 文件
+/// (`RUSTPANEL_SYSTEM_CRONTAB`,如 /etc/cron.d/rustpanel),每行回调
+/// `rustpanel-backend --run-cron-task <id>` 一次性执行。面板进程不再常驻调度器,
+/// 节俭模式下面板空闲退出也不影响计划任务。未配置该 env 时只存不调度。
 #[derive(Clone)]
 pub struct CronServiceImpl {
     store: CronStore,
-    scheduler: Arc<OnceCell<JobScheduler>>,
 }
 
 impl CronServiceImpl {
     pub fn new() -> Self {
         Self {
             store: CronStore::from_env(),
-            scheduler: Arc::new(OnceCell::new()),
         }
-    }
-
-    async fn ensure_scheduler(&self) -> Result<(), Status> {
-        self.scheduler
-            .get_or_try_init(|| async {
-                let scheduler = JobScheduler::new().await.map_err(io_status)?;
-                scheduler.start().await.map_err(io_status)?;
-                Ok::<JobScheduler, Status>(scheduler)
-            })
-            .await
-            .map(|_| ())
     }
 }
 
@@ -58,7 +52,6 @@ impl CronService for CronServiceImpl {
         &self,
         _request: Request<ListCronTasksRequest>,
     ) -> Result<GrpcResponse<ListCronTasksResponse>, Status> {
-        self.ensure_scheduler().await?;
         let tasks = self.store.load().await?;
 
         Ok(GrpcResponse::new(ListCronTasksResponse {
@@ -71,7 +64,6 @@ impl CronService for CronServiceImpl {
         &self,
         request: Request<CreateCronTaskRequest>,
     ) -> Result<GrpcResponse<CreateCronTaskResponse>, Status> {
-        self.ensure_scheduler().await?;
         let mut task = request
             .into_inner()
             .task
@@ -90,6 +82,7 @@ impl CronService for CronServiceImpl {
         tasks.retain(|stored| stored.id != task.id);
         tasks.push(StoredCronTask::from_proto(task.clone()));
         self.store.save(&tasks).await?;
+        sync_system_crontab(&self.store, &tasks).await?;
 
         Ok(GrpcResponse::new(CreateCronTaskResponse {
             status: Some(ok_response("cron task saved")),
@@ -114,6 +107,7 @@ impl CronService for CronServiceImpl {
             return Err(Status::not_found("cron task not found"));
         }
         self.store.save(&tasks).await?;
+        sync_system_crontab(&self.store, &tasks).await?;
 
         Ok(GrpcResponse::new(UpdateCronTaskStateResponse {
             status: Some(ok_response("cron task state updated")),
@@ -212,12 +206,165 @@ async fn run_task(store: &CronStore, task: &StoredCronTask) -> Result<CronRun, S
     })
 }
 
+/// `--run-cron-task <id>`:系统 cron 回调入口,跑一次任务、写日志后退出。
+/// 任务已删除或被停用时静默跳过(crontab 同步前的窗口期)。
+pub async fn run_oneshot_task(task_id: &str) -> Result<(), Status> {
+    let store = CronStore::from_env();
+    let Some(task) = store
+        .load()
+        .await?
+        .into_iter()
+        .find(|task| task.id == task_id)
+    else {
+        tracing::warn!(task_id, "cron task not found, skipping");
+        return Ok(());
+    };
+    if task.state != CronTaskState::Enabled as i32 {
+        return Ok(());
+    }
+    let run = run_task(&store, &task).await?;
+    if run.state == CronRunState::Succeeded as i32 {
+        Ok(())
+    } else {
+        Err(Status::internal(format!(
+            "cron task {} finished with exit code {}",
+            task.name, run.exit_code
+        )))
+    }
+}
+
+/// 启动时调用:按已存任务重写一次系统 crontab(未配置 RUSTPANEL_SYSTEM_CRONTAB 时 no-op)。
+pub async fn sync_system_crontab_from_store() -> Result<(), Status> {
+    let store = CronStore::from_env();
+    let tasks = store.load().await?;
+    sync_system_crontab(&store, &tasks).await
+}
+
+fn system_crontab_path() -> Option<PathBuf> {
+    env::var("RUSTPANEL_SYSTEM_CRONTAB")
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+async fn sync_system_crontab(store: &CronStore, tasks: &[StoredCronTask]) -> Result<(), Status> {
+    let Some(path) = system_crontab_path() else {
+        return Ok(());
+    };
+    let exe = current_exe_path()?;
+    let env_file = env::var("RUSTPANEL_ENV_FILE")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from);
+    let content = render_crontab(tasks, &exe, store.root.as_ref(), env_file.as_deref());
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
+    }
+    // cron.d 要求 root 所有、非组/其他可写;write_atomic 按 umask(root 下 0644)。
+    crate::statefile::write_atomic(&path, content)
+        .await
+        .map_err(io_status)
+}
+
+/// 升级时二进制被原地替换后,Linux 上 /proc/self/exe 会带 " (deleted)" 后缀;
+/// 写进 crontab 的必须是磁盘上的真实路径。
+fn current_exe_path() -> Result<PathBuf, Status> {
+    let exe = env::current_exe().map_err(io_status)?;
+    let text = exe.to_string_lossy();
+    Ok(match text.strip_suffix(" (deleted)") {
+        Some(stripped) => PathBuf::from(stripped),
+        None => exe,
+    })
+}
+
+fn render_crontab(
+    tasks: &[StoredCronTask],
+    exe: &Path,
+    cron_root: &Path,
+    env_file: Option<&Path>,
+) -> String {
+    let mut out = String::from(
+        "# 由 RustPanel 生成,面板里改计划任务会覆盖本文件,请勿手改。\n\
+         SHELL=/bin/sh\n\
+         PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n",
+    );
+    for task in tasks {
+        if task.state != CronTaskState::Enabled as i32 {
+            continue;
+        }
+        let Some(schedule) = system_cron_schedule(&task.cron_expression) else {
+            tracing::warn!(
+                task = %task.name,
+                expression = %task.cron_expression,
+                "cron expression cannot be expressed in system cron, skipping"
+            );
+            continue;
+        };
+        // 命令本身不进 crontab(免去 % 转义与注入面),只回调 task id。
+        let mut command = String::new();
+        if let Some(env_file) = env_file {
+            command.push_str(&format!(
+                "set -a; . {}; set +a; ",
+                shell_quote(&env_file.to_string_lossy())
+            ));
+        }
+        command.push_str(&format!(
+            "RUSTPANEL_CRON_ROOT={} {} --run-cron-task {} >/dev/null 2>&1",
+            shell_quote(&cron_root.to_string_lossy()),
+            shell_quote(&exe.to_string_lossy()),
+            shell_quote(&task.id),
+        ));
+        out.push_str(&format!(
+            "# {}\n{schedule} root {}\n",
+            task.name.replace(['\n', '\r'], " "),
+            command.replace('%', "\\%")
+        ));
+    }
+    out
+}
+
+/// 面板用 6 段(秒 分 时 日 月 周)表达式,系统 cron 是 5 段。秒位只接受 0
+/// (系统 cron 最细到分钟);5 段原样;@daily 等宏原样。其余一律拒绝。
+fn system_cron_schedule(expression: &str) -> Option<String> {
+    let expression = expression.trim();
+    if let Some(name) = expression.strip_prefix('@') {
+        return matches!(
+            name,
+            "reboot" | "yearly" | "annually" | "monthly" | "weekly" | "daily" | "hourly"
+        )
+        .then(|| expression.to_owned());
+    }
+    let fields: Vec<&str> = expression.split_whitespace().collect();
+    let fields = match fields.len() {
+        5 => fields,
+        6 if fields[0] == "0" => fields[1..].to_vec(),
+        _ => return None,
+    };
+    // 只放行 cron 语法字符,顺手杜绝换行 / 命令注入。
+    let valid = fields.iter().all(|field| {
+        field
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '*' | '/' | ',' | '-'))
+    });
+    valid.then(|| fields.join(" "))
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
 fn validate_task(task: &CronTask) -> Result<(), Status> {
     if task.name.trim().is_empty() {
         return Err(Status::invalid_argument("task name is required"));
     }
     if task.cron_expression.trim().is_empty() {
         return Err(Status::invalid_argument("cron expression is required"));
+    }
+    if system_cron_schedule(&task.cron_expression).is_none() {
+        return Err(Status::invalid_argument(
+            "cron 表达式需为 5 段、秒位为 0 的 6 段(秒 分 时 日 月 周)或 @daily 等宏",
+        ));
     }
     if task.command.trim().is_empty() {
         return Err(Status::invalid_argument("command is required"));
@@ -402,5 +549,63 @@ mod tests {
         assert_eq!(loaded[0].name, "backup");
         // 原子写:落盘后不该留下临时文件。
         assert!(!dir.path().join("tasks.json.tmp").exists());
+    }
+
+    #[test]
+    fn converts_panel_expressions_to_system_cron() {
+        assert_eq!(
+            system_cron_schedule("0 0 2 * * *").as_deref(),
+            Some("0 2 * * *")
+        );
+        assert_eq!(
+            system_cron_schedule("0 */15 * * * *").as_deref(),
+            Some("*/15 * * * *")
+        );
+        assert_eq!(
+            system_cron_schedule(" 30 4 * * MON-FRI ").as_deref(),
+            Some("30 4 * * MON-FRI")
+        );
+        assert_eq!(system_cron_schedule("@daily").as_deref(), Some("@daily"));
+        // 秒位非 0、quartz 的 ?、7 段、未知宏、注入字符都拒绝
+        assert_eq!(system_cron_schedule("*/10 * * * * *"), None);
+        assert_eq!(system_cron_schedule("0 0 12 ? * *"), None);
+        assert_eq!(system_cron_schedule("0 0 0 1 1 * 2027"), None);
+        assert_eq!(system_cron_schedule("@every"), None);
+        assert_eq!(system_cron_schedule("* * * * *;rm"), None);
+    }
+
+    #[test]
+    fn crontab_calls_back_enabled_tasks_only() {
+        let mut enabled = StoredCronTask::from_proto(sample_task());
+        enabled.id = "task-1".to_owned();
+        enabled.cron_expression = "0 0 3 * * *".to_owned();
+        let mut paused = enabled.clone();
+        paused.id = "task-2".to_owned();
+        paused.state = CronTaskState::Paused.into();
+        let mut invalid = enabled.clone();
+        invalid.id = "task-3".to_owned();
+        invalid.cron_expression = "*/5 * * * * *".to_owned();
+
+        let rendered = render_crontab(
+            &[enabled, paused, invalid],
+            Path::new("/opt/rp/bin/rustpanel-backend"),
+            Path::new("/data/cron"),
+            Some(Path::new("/opt/rp/.env")),
+        );
+
+        assert!(rendered.contains(
+            "0 3 * * * root set -a; . '/opt/rp/.env'; set +a; RUSTPANEL_CRON_ROOT='/data/cron' \
+             '/opt/rp/bin/rustpanel-backend' --run-cron-task 'task-1' >/dev/null 2>&1"
+        ));
+        assert!(!rendered.contains("task-2"));
+        assert!(!rendered.contains("task-3"));
+    }
+
+    #[test]
+    fn crontab_escapes_percent_and_quotes() {
+        let mut task = StoredCronTask::from_proto(sample_task());
+        task.id = "id".to_owned();
+        let rendered = render_crontab(&[task], Path::new("/it's/100%/bin"), Path::new("/c"), None);
+        assert!(rendered.contains("'/it'\\''s/100\\%/bin'"));
     }
 }

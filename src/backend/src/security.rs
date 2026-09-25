@@ -1226,7 +1226,9 @@ async fn arm_rollback_watchdog(
         None => return,
     };
 
+    let busy = crate::frugal::BusyGuard::new();
     tokio::spawn(async move {
+        let _busy = busy;
         use crate::proto::rustpanel::v1::rollback_service_server::RollbackService;
         // 倒计时 30s + 2s 缓冲
         tokio::time::sleep(std::time::Duration::from_secs(32)).await;

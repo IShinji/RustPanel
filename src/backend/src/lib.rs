@@ -44,6 +44,7 @@ pub mod database;
 pub mod dns;
 pub mod docker;
 pub mod files;
+pub mod frugal;
 pub mod monitor;
 pub mod notification;
 pub mod proxy;
@@ -230,11 +231,30 @@ pub fn default_addr() -> SocketAddr {
 }
 
 pub async fn serve(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    serve_with_listener(addr, None).await
+}
+
+/// `activated` 为 systemd socket activation 交来的监听 socket(见 [`frugal`]);
+/// 有它就不再自己 bind,并按节俭模式策略决定是否空闲退出。
+pub async fn serve_with_listener(
+    addr: SocketAddr,
+    activated: Option<std::net::TcpListener>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let authority = auth::JwtAuthority::from_env()?;
     let auth_service = auth::AuthServiceImpl::from_env(authority.clone())?;
-    let listener = TcpListener::bind(addr).await?;
+    let socket_activated = activated.is_some();
+    let listener = match activated {
+        Some(listener) => TcpListener::from_std(listener)?,
+        None => TcpListener::bind(addr).await?,
+    };
     let local_addr = listener.local_addr()?;
-    info!(%local_addr, "rustpanel backend listening");
+    let idle_exit = frugal::idle_exit_after(socket_activated);
+    info!(
+        %local_addr,
+        socket_activated,
+        idle_exit_seconds = idle_exit.map(|limit| limit.as_secs()),
+        "rustpanel backend listening"
+    );
 
     // Phase A 后续修补:把面板自身监听端口写进 NAT 端口预留表,
     // 让用户在"网络与端口"页直接看到"已占 1/20",而不是显示 0/20。
@@ -254,10 +274,21 @@ pub async fn serve(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + S
     // 后台告警扫描器(证书到期 / 高负载 / 磁盘将满 → 通知渠道)。只在此处启动一次。
     notification::spawn_alert_scanner();
 
+    // 计划任务交给系统 cron:启动时按已存任务重写一次 crontab(配置了才写)。
+    if let Err(error) = cron::sync_system_crontab_from_store().await {
+        tracing::warn!(%error, "failed to sync system crontab");
+    }
+
     axum::serve(
         listener,
         Shared::new(multiplex_service_with_auth(auth_service, authority)),
     )
+    .with_graceful_shutdown(async move {
+        match idle_exit {
+            Some(limit) => frugal::wait_until_idle(limit).await,
+            None => std::future::pending().await,
+        }
+    })
     .await?;
 
     Ok(())
@@ -457,44 +488,57 @@ fn multiplex_service_with_auth(
         let grpc = grpc.clone();
         let http = http.clone();
         let enforce_authority = enforce_authority.clone();
+        // 节俭模式:请求在途(含流式响应体)期间不空闲退出;响应体被丢弃时释放。
+        let busy = frugal::BusyGuard::new();
 
         async move {
-            if is_grpc_request(&request) {
-                // RBAC:能解出受限角色且该方法不被允许 → 403;解不出(无/坏 token)则放过,
-                // 交给各服务自身的 AuthInterceptor 去拒绝(避免双重拒绝逻辑)。
-                if let Some(token) = extract_http_token(&request) {
-                    if let Ok(claims) = enforce_authority.validate(&token) {
-                        // 改角色 / 改密码 / 删用户之后签发前的 token 立刻作废,
-                        // 不再等它自己过期(默认 24h)。
-                        if user::token_revoked(&claims.sub, claims.iat).await {
-                            return Ok(unauthorized_response(
-                                "登录状态已失效(账号权限或密码已变更),请重新登录",
-                            ));
-                        }
-                        if !role_allows(&claims.role, request.uri().path()) {
-                            return Ok(forbidden_response("权限不足:当前角色不允许此操作"));
+            let routed: Result<HttpResponse<Body>, Infallible> = async move {
+                if is_grpc_request(&request) {
+                    // RBAC:能解出受限角色且该方法不被允许 → 403;解不出(无/坏 token)则放过,
+                    // 交给各服务自身的 AuthInterceptor 去拒绝(避免双重拒绝逻辑)。
+                    if let Some(token) = extract_http_token(&request) {
+                        if let Ok(claims) = enforce_authority.validate(&token) {
+                            // 改角色 / 改密码 / 删用户之后签发前的 token 立刻作废,
+                            // 不再等它自己过期(默认 24h)。
+                            if user::token_revoked(&claims.sub, claims.iat).await {
+                                return Ok(unauthorized_response(
+                                    "登录状态已失效(账号权限或密码已变更),请重新登录",
+                                ));
+                            }
+                            if !role_allows(&claims.role, request.uri().path()) {
+                                return Ok(forbidden_response("权限不足:当前角色不允许此操作"));
+                            }
                         }
                     }
+                    let request = request.map(|body| {
+                        body.map_err(|error| Status::internal(error.to_string()))
+                            .boxed_unsync()
+                    });
+                    let response = grpc
+                        .oneshot(request)
+                        .await
+                        .map(|response| response.map(Body::new))
+                        .unwrap_or_else(|error| internal_error_response(error.to_string()));
+
+                    Ok(response)
+                } else {
+                    let response = http
+                        .oneshot(request)
+                        .await
+                        .unwrap_or_else(|error| match error {});
+
+                    Ok(response)
                 }
-                let request = request.map(|body| {
-                    body.map_err(|error| Status::internal(error.to_string()))
-                        .boxed_unsync()
-                });
-                let response = grpc
-                    .oneshot(request)
-                    .await
-                    .map(|response| response.map(Body::new))
-                    .unwrap_or_else(|error| internal_error_response(error.to_string()));
-
-                Ok(response)
-            } else {
-                let response = http
-                    .oneshot(request)
-                    .await
-                    .unwrap_or_else(|error| match error {});
-
-                Ok(response)
             }
+            .await;
+            routed.map(|response| {
+                response.map(move |body| {
+                    Body::new(body.map_frame(move |frame| {
+                        let _ = &busy;
+                        frame
+                    }))
+                })
+            })
         }
     })
 }
@@ -948,7 +992,9 @@ async fn http_site_deploy_chunk(
     let job_id_for_task = job_id.clone();
     let chunk_root_for_task = chunk_root.clone();
     let keep_archive = query.keep_archive;
+    let busy = frugal::BusyGuard::new();
     tokio::spawn(async move {
+        let _busy = busy;
         run_deploy_job(
             job,
             site_name,
@@ -1137,6 +1183,7 @@ async fn http_site_deploy_progress(
 }
 
 async fn handle_deploy_progress_ws(mut socket: WebSocket, job_id: String) {
+    let _busy = frugal::BusyGuard::new();
     let job = {
         let jobs = deploy_jobs();
         jobs.read().await.get(&job_id).cloned()
@@ -1341,6 +1388,8 @@ async fn http_builtin_static_site(
 }
 
 async fn handle_terminal_socket(socket: WebSocket, cwd: Option<std::path::PathBuf>) {
+    // WS 升级后响应体早已结束,终端会话要单独占住「忙」,否则开着终端也会被空闲退出。
+    let _busy = frugal::BusyGuard::new();
     let Ok((session, mut output)) = terminal::spawn_web_terminal_with_cwd(cwd.as_deref()) else {
         return;
     };

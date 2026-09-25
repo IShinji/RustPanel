@@ -205,12 +205,13 @@ async fn start_supervisor(
     workload.updated_at_seconds = current_timestamp();
     store.replace(workload.clone()).await?;
 
-    tokio::spawn(supervise_workload(
-        store,
-        processes,
-        workload.clone(),
-        child,
-    ));
+    // 托管子进程在面板的 cgroup 里,面板退出会被 systemd 一起杀掉:运行期间不空闲退出。
+    let busy = crate::frugal::BusyGuard::new();
+    let supervised = supervise_workload(store, processes, workload.clone(), child);
+    tokio::spawn(async move {
+        let _busy = busy;
+        supervised.await;
+    });
 
     Ok(workload)
 }

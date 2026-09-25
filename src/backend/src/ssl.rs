@@ -430,6 +430,93 @@ pub(crate) async fn cert_expiry_overview() -> Vec<(String, i64)> {
     }
 }
 
+/// 未显式配置时,剩余天数 ≤ 该值即续签(Let's Encrypt 90 天证书的常规续签点)。
+const DEFAULT_RENEW_BEFORE_DAYS: i64 = 30;
+
+/// `--renew-certs`:由 systemd timer(`rustpanel-cert-renew.timer`)每天调一次,
+/// 面板进程不必常驻。只续**面板管理**、剩余 ≤ `RUSTPANEL_CERT_RENEW_DAYS`(默认 30)
+/// 天的真证书,且只走无人值守可行的 HTTP-01(域名绑定了面板站点 webroot);
+/// 手动 DNS-01 证书需要人加 TXT,续不了就推一条到期通知。certbot 管理的
+/// (fullchain.pem 是符号链接)一律不碰。任一续签失败则非零退出,journal 可见。
+pub async fn renew_due_certificates() -> Result<(), Status> {
+    if !crate::runtime::RuntimeModules::from_env().is_enabled(crate::runtime::MODULE_SSL) {
+        tracing::info!("ssl module disabled, nothing to renew");
+        return Ok(());
+    }
+    let renew_before = env::var("RUSTPANEL_CERT_RENEW_DAYS")
+        .ok()
+        .and_then(|value| value.trim().parse::<i64>().ok())
+        .filter(|days| *days > 0)
+        .unwrap_or(DEFAULT_RENEW_BEFORE_DAYS);
+    let email = crate::acme::read_settings()
+        .await
+        .map(|settings| settings.contact_email.trim().to_owned())
+        .unwrap_or_default();
+
+    let mut failures = Vec::new();
+    for item in list_certificates().await? {
+        if item.warning_level == "self-signed-bootstrap"
+            || item.warning_level == "parse-failed"
+            || item.days_until_expiry > renew_before
+        {
+            continue;
+        }
+        let domain = item.domain;
+        if is_externally_managed(&domain).await {
+            tracing::info!(%domain, "certificate managed outside RustPanel, skipping");
+            continue;
+        }
+        let Some(webroot) = crate::site::find_site_webroot_by_domain(&domain).await else {
+            tracing::warn!(%domain, "no site webroot for HTTP-01, manual DNS-01 renewal needed");
+            crate::notification::notify_event(
+                crate::proto::rustpanel::v1::NotificationEventKind::CertExpiry,
+                "证书需要手动续签",
+                &format!(
+                    "{domain} 的证书剩余 {} 天;它不是 HTTP-01 可自动续签的站点证书,\
+                     请在面板里走 DNS-01 续签。",
+                    item.days_until_expiry
+                ),
+            )
+            .await;
+            continue;
+        };
+        if email.is_empty() {
+            failures.push(format!("{domain}: 未设置 ACME 联系邮箱"));
+            continue;
+        }
+        match crate::acme::request_http01_blocking(&domain, &email, &webroot).await {
+            Ok(cert) => {
+                crate::acme::install_certificate(&domain, &cert, &cert_root())
+                    .await
+                    .map_err(|e| Status::internal(format!("acme install {domain}: {e}")))?;
+                clear_bootstrap_marker(&domain).await;
+                let reload = reload_active_proxy().await;
+                tracing::info!(%domain, %reload, "certificate renewed via http-01");
+            }
+            Err(error) => {
+                tracing::warn!(%domain, %error, "certificate renewal failed");
+                failures.push(format!("{domain}: {error}"));
+            }
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(Status::internal(format!(
+            "certificate renewal failed: {}",
+            failures.join("; ")
+        )))
+    }
+}
+
+/// certbot 的 live/<domain>/fullchain.pem 是指向 archive/ 的符号链接;
+/// 面板自己写的是普通文件。
+async fn is_externally_managed(domain: &str) -> bool {
+    tokio::fs::symlink_metadata(domain_cert_dir(domain).join("fullchain.pem"))
+        .await
+        .is_ok_and(|metadata| metadata.file_type().is_symlink())
+}
+
 async fn list_certificates() -> Result<Vec<CertificateItem>, Status> {
     let mut certificates = Vec::new();
     let mut entries = match tokio::fs::read_dir(cert_root()).await {

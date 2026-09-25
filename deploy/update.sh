@@ -46,7 +46,38 @@ if [[ "${RUSTPANEL_INSTALL_MODE:-docker}" == "binary" ]]; then
   fi
   chmod +x "$bin_dir/rustpanel-backend"
   if command -v systemctl >/dev/null 2>&1; then
-    systemctl restart rustpanel-backend
+    # 升级时同步刷新 systemd 单元(节俭模式 socket / 证书续签 timer),老安装也能用上。
+    units="$PROJECT_ROOT/deploy/systemd-units.sh"
+    units_tmp="$units.download"
+    if download_file "${RUSTPANEL_RAW_BASE:-https://raw.githubusercontent.com/IShinji/RustPanel/main}/deploy/systemd-units.sh" "$units_tmp"; then
+      mv "$units_tmp" "$units"
+    else
+      rm -f "$units_tmp"
+    fi
+    if [[ -f "$units" ]]; then
+      # shellcheck disable=SC1090
+      source "$units"
+      env_file="$PROJECT_ROOT/.env"
+      if [[ -z "${RUSTPANEL_FRUGAL:-}" ]]; then
+        RUSTPANEL_FRUGAL=0
+        [[ "${RUSTPANEL_INSTALL_PROFILE:-}" == "micro" ]] && RUSTPANEL_FRUGAL=1
+        rustpanel_ensure_env_var "$env_file" RUSTPANEL_FRUGAL "$RUSTPANEL_FRUGAL"
+      fi
+      if [[ "$RUSTPANEL_FRUGAL" == "1" ]]; then
+        rustpanel_ensure_env_var "$env_file" RUSTPANEL_IDLE_EXIT_MINUTES 10
+      fi
+      rustpanel_ensure_env_var "$env_file" RUSTPANEL_ENV_FILE "$env_file"
+      if [[ -d /etc/cron.d ]]; then
+        rustpanel_ensure_env_var "$env_file" RUSTPANEL_SYSTEM_CRONTAB /etc/cron.d/rustpanel
+      fi
+      INSTALL_DIR="$PROJECT_ROOT"
+      RUSTPANEL_BIND_HOST="${RUSTPANEL_BIND_HOST:-0.0.0.0}"
+      RUSTPANEL_API_PORT="${RUSTPANEL_API_PORT:-18080}"
+      # 内部先 stop 再 enable --now,新二进制随之生效
+      rustpanel_write_units
+    else
+      systemctl restart rustpanel-backend
+    fi
   else
     if [[ -f "$PROJECT_ROOT/rustpanel.pid" ]]; then
       kill "$(cat "$PROJECT_ROOT/rustpanel.pid")" >/dev/null 2>&1 || true

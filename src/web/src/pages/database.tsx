@@ -763,7 +763,7 @@ const CRON_PRESETS: Array<{ id: string; label: string; cron: string; command: st
     id: "ssl-renew-check",
     label: "SSL 续期检查(每天 02:00)",
     cron: "0 0 2 * * *",
-    command: "rustpanel-backend ssl renew-due"
+    command: "rustpanel-backend --renew-certs"
   },
   {
     id: "fail2ban-status",
