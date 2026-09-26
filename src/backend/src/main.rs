@@ -7,6 +7,9 @@ use rustpanel_backend::{
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 fn main() -> Result<(), BoxError> {
+    // 显式选 ring 作为进程级 CryptoProvider:依赖里若同时出现 ring 与 aws-lc-rs,
+    // rustls 自动选择会 panic(ACME / 出站 HTTPS 一发起就崩)。已安装过则忽略。
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let cli = Cli::parse();
     // fork 必须发生在 tokio 起线程之前:fork 后子进程里只剩调用线程,
     // 之前在 runtime 内 daemonize 会让 worker 线程全部"消失"。

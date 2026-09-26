@@ -65,6 +65,9 @@ Environment=MALLOC_ARENA_MAX=2
 ExecStart=$INSTALL_DIR/bin/rustpanel-backend
 Restart=$restart
 RestartSec=3
+# 网页终端里的交互式 shell 会忽略 SIGTERM,默认要等满 90s 才强杀;
+# 15s 足够托管的 workload / proxy 正常退出
+TimeoutStopSec=15
 NoNewPrivileges=true
 
 [Install]

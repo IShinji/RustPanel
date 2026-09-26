@@ -85,6 +85,7 @@ Environment=RUSTPANEL_JWT_SECRET=replace-with-at-least-32-random-bytes\n\
 Environment=MALLOC_ARENA_MAX=2\n\
 Restart=always\n\
 RestartSec=3\n\
+TimeoutStopSec=15\n\
 NoNewPrivileges=true\n\n\
 [Install]\n\
 WantedBy=multi-user.target\n",

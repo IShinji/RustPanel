@@ -35,7 +35,10 @@ hmac = "0.12"
 # systemd socket activation 给 fd 打 CLOEXEC 用;tokio 早已依赖,不增体积。
 libc = "0.2"
 http-body-util = "0.1"
-instant-acme = "0.8"
+# 只用 ring:默认的 aws-lc-rs 与 reqwest/tokio-rustls 带进来的 ring 同时存在时,
+# rustls 无法自动选 CryptoProvider,ACME 一发起 TLS 就 panic(panic=abort 直接崩进程)。
+# 顺带去掉 aws-lc-rs 这个大 C 库。
+instant-acme = { version = "0.8", default-features = false, features = ["ring", "hyper-rustls"] }
 jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
 mime_guess = "2"
 portable-pty = { version = "0.8", optional = true }
@@ -48,6 +51,8 @@ regex = "1"
 # 不引 openssl,适配最小镜像;复用已在树里的 rustls/hyper。
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 rust-embed = "8"
+# 启动时显式安装进程级 CryptoProvider(见 main.rs),防依赖变动再引入双 provider。
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"

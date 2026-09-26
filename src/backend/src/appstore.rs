@@ -930,6 +930,16 @@ pub(crate) async fn reload_rpxy_if_running() -> Result<(), Status> {
         // 它启动时会自动读到。这里报错只会让 site 操作失败。
         return Ok(());
     }
+    // rpxy 自己 watch 配置文件,改完即生效;常见的 rpxy.service 没配 ExecReload,
+    // 硬 reload 只会报 "Job type reload is not applicable" 的误导性警告。
+    let can_reload = tokio::process::Command::new("systemctl")
+        .args(["show", "-p", "CanReload", "--value", "rpxy.service"])
+        .output()
+        .await
+        .map_err(io_status)?;
+    if String::from_utf8_lossy(&can_reload.stdout).trim() != "yes" {
+        return Ok(());
+    }
     systemctl(&["reload", "rpxy.service"]).await
 }
 

@@ -464,6 +464,13 @@ mod tests {
     // tokio::sync::Mutex 设计就是干这个的。
     static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+    #[test]
+    fn rustls_can_pick_crypto_provider_without_install() {
+        // 依赖树里只能有一个 rustls 加密后端;若 ring 与 aws-lc-rs 同时被引入,
+        // instant-acme 内部的 ClientConfig::builder() 会 panic(线上曾因此崩进程)。
+        let _ = rustls::ClientConfig::builder();
+    }
+
     #[tokio::test]
     async fn directory_url_respects_production_env() {
         let _guard = ENV_LOCK.lock().await;
