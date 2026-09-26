@@ -84,6 +84,9 @@ if [[ "${RUSTPANEL_INSTALL_MODE:-docker}" == "binary" ]]; then
       RUSTPANEL_API_PORT="${RUSTPANEL_API_PORT:-18080}"
       # 内部先 stop 再 enable --now,新二进制随之生效
       rustpanel_write_units
+      if [[ "${RUSTPANEL_INSTALL_PROFILE:-}" == "micro" ]]; then
+        rustpanel_apply_small_disk_tweaks
+      fi
     else
       systemctl restart rustpanel-backend
     fi

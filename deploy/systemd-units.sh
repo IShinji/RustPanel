@@ -130,6 +130,29 @@ EOF
   chmod 0644 "$RUSTPANEL_CRON_D_DIR/rustpanel-cert-renew"
 }
 
+# 小硬盘优化(micro 档默认):apt 不留 .deb / pkgcache、索引保持压缩;journal 上限 20MB
+# (默认是分区的 10%,2GB 盘就是 ~190MB)。都是可重建的缓存,不影响功能,只是 apt 略慢。
+rustpanel_apply_small_disk_tweaks() {
+  if [[ -d /etc/apt/apt.conf.d ]]; then
+    cat > /etc/apt/apt.conf.d/99rustpanel-small-disk <<'APTCONF'
+// RustPanel 小硬盘优化:不留 .deb 包、不落 pkgcache 二进制缓存、索引保持压缩
+Dir::Cache::pkgcache "";
+Dir::Cache::srcpkgcache "";
+Acquire::GzipIndexes "true";
+Acquire::CompressionTypes::Order:: "gz";
+DPkg::Post-Invoke { "rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true"; };
+APT::Update::Post-Invoke { "rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true"; };
+APTCONF
+    apt-get clean >/dev/null 2>&1 || true
+    rm -f /var/cache/apt/*.bin
+  fi
+  if [[ -d /etc/systemd ]]; then
+    mkdir -p /etc/systemd/journald.conf.d
+    printf '[Journal]\nSystemMaxUse=20M\n' > /etc/systemd/journald.conf.d/rustpanel-small-disk.conf
+    systemctl restart systemd-journald >/dev/null 2>&1 || true
+  fi
+}
+
 # 写全部单元并按节俭模式切换启动方式。已在跑的面板会被重启。
 rustpanel_write_units() {
   local frugal="${RUSTPANEL_FRUGAL:-0}"

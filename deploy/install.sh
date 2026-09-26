@@ -768,6 +768,9 @@ write_systemd_service() {
   # shellcheck disable=SC1091
   source "$INSTALL_DIR/deploy/systemd-units.sh"
   rustpanel_write_units
+  if [[ "$RUSTPANEL_INSTALL_PROFILE" == "micro" ]]; then
+    rustpanel_apply_small_disk_tweaks
+  fi
 }
 
 start_binary_backend() {
