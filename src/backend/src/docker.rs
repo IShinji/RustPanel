@@ -41,7 +41,6 @@ use crate::{
     },
 };
 
-const DEFAULT_DOCKER_COMPOSE_ROOT: &str = "/tmp/rustpanel/compose";
 const DOCKER_SKIP_COMPOSE_ENV: &str = "RUSTPANEL_DOCKER_SKIP_COMPOSE";
 
 #[derive(Clone, Debug, Default)]
@@ -693,7 +692,7 @@ fn validate_image_name(image: &str) -> Result<(), Status> {
 fn compose_root() -> PathBuf {
     env::var("RUSTPANEL_DOCKER_COMPOSE_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_DOCKER_COMPOSE_ROOT))
+        .unwrap_or_else(|_| crate::paths::default_root("compose"))
 }
 
 fn compose_project_dir(name: &str) -> PathBuf {

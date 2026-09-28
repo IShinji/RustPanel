@@ -32,7 +32,6 @@ const HISTORY_RETENTION_SECONDS: u64 = 7 * 24 * 60 * 60;
 const HISTORY_MAX_SAMPLES: usize = 7 * 24 * 60;
 const PROCESS_SNAPSHOT_LIMIT: usize = 20;
 const PROCESS_SNAPSHOT_MAX_LIMIT: usize = 100;
-const DEFAULT_SECURITY_ROOT: &str = "/tmp/rustpanel/security";
 
 #[derive(Clone)]
 pub struct MonitorServiceImpl {
@@ -531,7 +530,7 @@ impl SecurityReportCounters {
 fn security_state_path() -> PathBuf {
     env::var("RUSTPANEL_SECURITY_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_SECURITY_ROOT))
+        .unwrap_or_else(|_| crate::paths::default_root("security"))
         .join("state.json")
 }
 

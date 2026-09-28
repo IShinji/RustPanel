@@ -25,7 +25,6 @@ use crate::{
     },
 };
 
-const DEFAULT_PROXY_ROOT: &str = "/tmp/rustpanel/proxy";
 const DEFAULT_SS_METHOD: &str = "2022-blake3-aes-128-gcm";
 
 #[derive(Clone)]
@@ -276,7 +275,7 @@ impl ProxyStore {
     fn from_env() -> Self {
         let root = env::var("RUSTPANEL_PROXY_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_PROXY_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("proxy"));
         Self {
             root: Arc::new(root),
         }

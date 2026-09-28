@@ -23,7 +23,6 @@ use crate::{
     },
 };
 
-const DEFAULT_WORKLOAD_ROOT: &str = "/tmp/rustpanel/workloads";
 const DEFAULT_LOG_LIMIT_BYTES: u64 = 5 * 1024 * 1024;
 const DEFAULT_MEMORY_LIMIT_MB: u64 = 32;
 const DEFAULT_RESTART_LIMIT: u32 = 3;
@@ -361,7 +360,7 @@ impl WorkloadStore {
     fn from_env() -> Self {
         let root = env::var("RUSTPANEL_WORKLOAD_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_WORKLOAD_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("workloads"));
         Self {
             root: Arc::new(root),
         }

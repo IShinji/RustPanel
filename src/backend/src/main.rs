@@ -69,6 +69,7 @@ async fn run(cli: Cli, activated: Option<std::net::TcpListener>) -> Result<(), B
     // 系统 cron 回调:跑一次计划任务后退出。
     if let Some(task_id) = cli.run_cron_task.as_deref() {
         init_tracing();
+        rustpanel_backend::paths::migrate_legacy_state();
         return rustpanel_backend::cron::run_oneshot_task(task_id)
             .await
             .map_err(Into::into);
@@ -77,6 +78,7 @@ async fn run(cli: Cli, activated: Option<std::net::TcpListener>) -> Result<(), B
     // systemd timer 回调:续签临期证书后退出。
     if cli.renew_certs {
         init_tracing();
+        rustpanel_backend::paths::migrate_legacy_state();
         return rustpanel_backend::ssl::renew_due_certificates()
             .await
             .map_err(Into::into);

@@ -24,7 +24,6 @@ use crate::proto::rustpanel::v1::{
     ReservePortRequest, ReservePortResponse, ReservedPort, ResourceBudget, Response,
 };
 
-const DEFAULT_CAPABILITY_ROOT: &str = "/tmp/rustpanel/capability";
 const DEFAULT_NAT_PORT_TOTAL: u32 = 20;
 
 fn ok_response(message: &str) -> Response {
@@ -82,7 +81,7 @@ impl CapabilityServiceImpl {
     pub fn new() -> Self {
         let root = env::var("RUSTPANEL_CAPABILITY_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_CAPABILITY_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("capability"));
 
         Self {
             inner: Arc::new(CapabilityState {

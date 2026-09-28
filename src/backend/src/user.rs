@@ -19,7 +19,6 @@ use crate::{
     },
 };
 
-const DEFAULT_USER_ROOT: &str = "/tmp/rustpanel/users";
 const PBKDF2_ITERATIONS: u32 = 100_000;
 
 #[derive(Clone)]
@@ -313,7 +312,7 @@ impl UserStore {
     fn from_env() -> Self {
         let root = env::var("RUSTPANEL_USER_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_USER_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("users"));
         Self {
             root: Arc::new(root),
             write_lock: Arc::new(tokio::sync::Mutex::new(())),

@@ -20,8 +20,6 @@ use crate::{
     },
 };
 
-const DEFAULT_APPSTORE_ROOT: &str = "/tmp/rustpanel/appstore";
-
 #[derive(Clone, Debug, Default)]
 pub struct AppStoreServiceImpl;
 
@@ -1678,7 +1676,7 @@ async fn ensure_compose_exists(compose_path: &Path) -> Result<(), Status> {
 fn appstore_root() -> PathBuf {
     env::var("RUSTPANEL_APPSTORE_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_APPSTORE_ROOT))
+        .unwrap_or_else(|_| crate::paths::default_root("appstore"))
 }
 
 fn metadata_path(app_name: &str) -> PathBuf {

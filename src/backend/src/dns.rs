@@ -14,7 +14,6 @@ use crate::{
     },
 };
 
-const DEFAULT_DNS_ROOT: &str = "/tmp/rustpanel/dns";
 const SECRET_REDACTED: &str = "__rustpanel_secret_kept__";
 const HTTP_TIMEOUT_SECONDS: u64 = 20;
 
@@ -325,7 +324,7 @@ impl DnsStore {
     fn from_env() -> Self {
         let root = env::var("RUSTPANEL_DNS_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_DNS_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("dns"));
         Self {
             root: Arc::new(root),
             write_lock: Arc::new(tokio::sync::Mutex::new(())),

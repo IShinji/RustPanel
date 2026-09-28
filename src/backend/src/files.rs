@@ -39,7 +39,6 @@ use crate::{
 
 const ARCHIVE_CHANNEL_SIZE: usize = 16;
 const DEFAULT_FILE_ROOT: &str = "/";
-const DEFAULT_FILE_STATE_ROOT: &str = "/tmp/rustpanel/files";
 /// 在线编辑器单文件读取上限。ReadFile 是把整个文件塞进一个 gRPC 响应的,
 /// 128MB 小鸡上点开一个几百 MB 的日志足以直接 OOM;超限一律走 /api/fs/download
 /// 的流式下载。tonic 出站默认不限大小,所以这道闸必须自己把。
@@ -369,7 +368,7 @@ impl FileManager {
 
         let state_root = env::var("RUSTPANEL_FILE_STATE_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_FILE_STATE_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("files"));
 
         Self {
             root: Arc::new(root),

@@ -48,6 +48,7 @@ pub mod files;
 pub mod frugal;
 pub mod monitor;
 pub mod notification;
+pub mod paths;
 pub mod proxy;
 pub mod rollback;
 pub mod runtime;
@@ -240,6 +241,12 @@ pub async fn serve_with_listener(
     addr: SocketAddr,
     activated: Option<std::net::TcpListener>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // 老版本把用户库 / 通知凭据 / 备份等放在 /tmp/rustpanel,先搬到持久目录;
+    // 必须在任何模块读状态(第一个就是下面的用户库)之前。
+    let migrated = tokio::task::spawn_blocking(paths::migrate_legacy_state).await?;
+    if !migrated.is_empty() {
+        info!(modules = ?migrated, "legacy /tmp state migrated to persistent data dir");
+    }
     let authority = auth::JwtAuthority::from_env()?;
     let auth_service = auth::AuthServiceImpl::from_env(authority.clone())?;
     let socket_activated = activated.is_some();

@@ -27,7 +27,6 @@ use crate::{
     },
 };
 
-const DEFAULT_BACKUP_ROOT: &str = "/tmp/rustpanel/backup";
 const SECRET_REDACTED: &str = "__rustpanel_secret_kept__";
 
 #[derive(Clone)]
@@ -1050,7 +1049,7 @@ impl BackupStore {
     fn from_env() -> Self {
         let root = env::var("RUSTPANEL_BACKUP_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_BACKUP_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("backup"));
         Self {
             root: Arc::new(root),
             write_lock: Arc::new(tokio::sync::Mutex::new(())),

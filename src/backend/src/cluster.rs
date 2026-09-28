@@ -19,7 +19,6 @@ use crate::{
     },
 };
 
-const DEFAULT_CLUSTER_ROOT: &str = "/tmp/rustpanel/cluster";
 const PAIRING_SECRET_ENV: &str = "RUSTPANEL_CLUSTER_PAIRING_SECRET";
 
 #[derive(Clone, Debug, Default)]
@@ -289,7 +288,7 @@ async fn save_state(state: &StoredClusterState) -> Result<(), Status> {
 fn cluster_root() -> PathBuf {
     env::var("RUSTPANEL_CLUSTER_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_CLUSTER_ROOT))
+        .unwrap_or_else(|_| crate::paths::default_root("cluster"))
 }
 
 fn state_path() -> PathBuf {

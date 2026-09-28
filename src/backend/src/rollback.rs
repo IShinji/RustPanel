@@ -28,7 +28,6 @@ use crate::proto::rustpanel::v1::{
     ScheduleRollbackRequest, ScheduleRollbackResponse,
 };
 
-const DEFAULT_ROLLBACK_ROOT: &str = "/tmp/rustpanel/rollback";
 const DEFAULT_ROLLBACK_SECONDS: u32 = 30;
 const MAX_ROLLBACK_SECONDS: u32 = 600;
 
@@ -91,7 +90,7 @@ impl RollbackServiceImpl {
     pub fn new() -> Self {
         let root = env::var("RUSTPANEL_ROLLBACK_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_ROLLBACK_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("rollback"));
         Self {
             inner: Arc::new(RollbackState {
                 root,

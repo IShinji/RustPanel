@@ -11,7 +11,6 @@ use tonic::Status;
 
 use crate::proto::rustpanel::v1::RuntimeModule;
 
-const DEFAULT_RUNTIME_ROOT: &str = "/var/lib/rustpanel/runtime";
 const OVERRIDE_CACHE_TTL: Duration = Duration::from_secs(2);
 
 /// 文件级 override:写到 $RUSTPANEL_RUNTIME_ROOT/modules.json。
@@ -29,7 +28,7 @@ pub struct ModuleOverride {
 fn runtime_root() -> PathBuf {
     env::var("RUSTPANEL_RUNTIME_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_RUNTIME_ROOT))
+        .unwrap_or_else(|_| crate::paths::default_root("runtime"))
 }
 
 fn override_path() -> PathBuf {

@@ -35,7 +35,6 @@ use crate::{
     },
 };
 
-const DEFAULT_RUNTIME_ROOT: &str = "/var/lib/rustpanel/runtime";
 const DEFAULT_VSMTP_CONFIG_DIR: &str = "/etc/vsmtp";
 
 #[derive(Clone, Debug, Default)]
@@ -114,7 +113,7 @@ impl VsmtpAliasService for VsmtpAliasServiceImpl {
 fn runtime_root() -> PathBuf {
     env::var("RUSTPANEL_RUNTIME_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_RUNTIME_ROOT))
+        .unwrap_or_else(|_| crate::paths::default_root("runtime"))
 }
 
 fn aliases_path() -> PathBuf {

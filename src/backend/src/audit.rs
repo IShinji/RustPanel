@@ -18,7 +18,6 @@ use crate::{
     },
 };
 
-const DEFAULT_AUDIT_ROOT: &str = "/tmp/rustpanel/audit";
 const DEFAULT_AUDIT_LIMIT: usize = 200;
 
 #[derive(Clone, Debug, Default)]
@@ -256,7 +255,7 @@ fn analysis_provider() -> String {
 fn audit_root() -> PathBuf {
     env::var("RUSTPANEL_AUDIT_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_AUDIT_ROOT))
+        .unwrap_or_else(|_| crate::paths::default_root("audit"))
 }
 
 fn audit_path() -> PathBuf {

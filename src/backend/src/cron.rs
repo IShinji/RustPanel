@@ -20,7 +20,6 @@ use crate::{
     },
 };
 
-const DEFAULT_CRON_ROOT: &str = "/tmp/rustpanel/cron";
 const DEFAULT_TIMEOUT_SECONDS: u64 = 300;
 
 /// 定时调度交给系统 cron:任务存 tasks.json,启用的任务写成一份 cron.d 文件
@@ -381,7 +380,7 @@ impl CronStore {
     fn from_env() -> Self {
         let root = env::var("RUSTPANEL_CRON_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_CRON_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("cron"));
 
         Self {
             root: Arc::new(root),

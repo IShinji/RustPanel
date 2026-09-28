@@ -22,8 +22,6 @@ use instant_acme::{
 };
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_ACME_ROOT: &str = "/var/lib/rustpanel/acme";
-
 #[derive(Debug, thiserror::Error)]
 pub enum AcmeError {
     #[error("instant-acme: {0}")]
@@ -95,7 +93,7 @@ fn now_seconds() -> u64 {
 fn acme_root() -> PathBuf {
     env::var("RUSTPANEL_ACME_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_ACME_ROOT))
+        .unwrap_or_else(|_| crate::paths::default_root("acme"))
 }
 
 fn pending_path(domain: &str) -> PathBuf {

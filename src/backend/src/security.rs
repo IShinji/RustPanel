@@ -32,7 +32,6 @@ use crate::{
     },
 };
 
-const DEFAULT_SECURITY_ROOT: &str = "/tmp/rustpanel/security";
 const APPLY_ENV: &str = "RUSTPANEL_SECURITY_APPLY";
 const DEFAULT_SCAN_BURST: u32 = 20;
 const DEFAULT_SCAN_WINDOW_SECONDS: u32 = 60;
@@ -570,7 +569,7 @@ impl SecurityStore {
     fn from_env() -> Self {
         let root = env::var("RUSTPANEL_SECURITY_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_SECURITY_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("security"));
         Self::new(root)
     }
 
@@ -2311,23 +2310,29 @@ fn should_apply_system_firewall() -> bool {
 }
 
 fn default_waf_config_path() -> String {
-    env::var("RUSTPANEL_WAF_CONFIG_PATH")
-        .unwrap_or_else(|_| format!("{DEFAULT_SECURITY_ROOT}/nginx-waf.conf"))
+    env::var("RUSTPANEL_WAF_CONFIG_PATH").unwrap_or_else(|_| security_state_file("nginx-waf.conf"))
 }
 
 fn default_waf_challenge_path() -> String {
     env::var("RUSTPANEL_WAF_CHALLENGE_PATH")
-        .unwrap_or_else(|_| format!("{DEFAULT_SECURITY_ROOT}/waf-challenge.html"))
+        .unwrap_or_else(|_| security_state_file("waf-challenge.html"))
 }
 
 fn default_ssh_config_path() -> String {
     env::var("RUSTPANEL_SSHD_CONFIG_PATH")
-        .unwrap_or_else(|_| format!("{DEFAULT_SECURITY_ROOT}/sshd-rustpanel.conf"))
+        .unwrap_or_else(|_| security_state_file("sshd-rustpanel.conf"))
 }
 
 fn default_ssh_key_root() -> String {
-    env::var("RUSTPANEL_SSH_KEY_ROOT")
-        .unwrap_or_else(|_| format!("{DEFAULT_SECURITY_ROOT}/ssh-keys"))
+    env::var("RUSTPANEL_SSH_KEY_ROOT").unwrap_or_else(|_| security_state_file("ssh-keys"))
+}
+
+/// 安全模块状态目录下的文件路径(跟随 RUSTPANEL_SECURITY_ROOT / DATA_DIR)。
+fn security_state_file(name: &str) -> String {
+    crate::paths::state_root("security", "RUSTPANEL_SECURITY_ROOT")
+        .join(name)
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn safe_key_name(name: &str) -> Result<String, Status> {

@@ -20,7 +20,6 @@ use crate::{
     },
 };
 
-const DEFAULT_NOTIFICATION_ROOT: &str = "/tmp/rustpanel/notification";
 const HISTORY_MAX: usize = 200;
 const HTTP_TIMEOUT_SECONDS: u64 = 10;
 // 返回给前端时密钥脱敏成这个占位;upsert 时原样回传表示"保持不变"。
@@ -432,7 +431,7 @@ impl NotificationStore {
     fn from_env() -> Self {
         let root = env::var("RUSTPANEL_NOTIFICATION_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_NOTIFICATION_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("notification"));
         Self {
             root: Arc::new(root),
             write_lock: Arc::new(tokio::sync::Mutex::new(())),

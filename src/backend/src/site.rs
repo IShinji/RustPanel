@@ -31,7 +31,6 @@ use crate::{
 };
 
 const DEFAULT_NGINX_SITES_DIR: &str = "/etc/nginx/sites-enabled";
-const DEFAULT_SITE_STATE_ROOT: &str = "/tmp/rustpanel/site";
 const SITE_ENGINE_ENV: &str = "RUSTPANEL_SITE_ENGINE";
 const SITE_ENGINE_BUILTIN: &str = "builtin";
 const SITE_ENGINE_NGINX: &str = "nginx";
@@ -862,7 +861,7 @@ pub(crate) fn site_archive_dir(site_name: &str) -> Result<std::path::PathBuf, St
     let safe = safe_name(site_name)?;
     let root = env::var("RUSTPANEL_SITE_STATE_ROOT")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::path::PathBuf::from(DEFAULT_SITE_STATE_ROOT));
+        .unwrap_or_else(|_| crate::paths::default_root("site"));
     Ok(root.join("archives").join(safe))
 }
 
@@ -1081,7 +1080,7 @@ impl SiteStore {
     fn from_env() -> Self {
         let root = env::var("RUSTPANEL_SITE_STATE_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(DEFAULT_SITE_STATE_ROOT));
+            .unwrap_or_else(|_| crate::paths::default_root("site"));
         Self {
             root: Arc::new(root),
             write_lock: Arc::new(tokio::sync::Mutex::new(())),

@@ -6,6 +6,8 @@ services:
     environment:
       RUSTPANEL_ENV: production
       MALLOC_ARENA_MAX: "2"
+      # 未单独指定目录的模块(用户库、通知、备份、能力探针等)都落在 /data/<模块>
+      RUSTPANEL_DATA_DIR: /data
       RUSTPANEL_BACKEND_ADDR: 0.0.0.0:8080
       RUSTPANEL_ADMIN_USERNAME: ${RUSTPANEL_ADMIN_USERNAME:-admin}
       RUSTPANEL_ADMIN_PASSWORD: ${RUSTPANEL_ADMIN_PASSWORD:?RUSTPANEL_ADMIN_PASSWORD is required}
