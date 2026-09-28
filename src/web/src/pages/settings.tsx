@@ -288,8 +288,8 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
 
   const importCert = async () => {
     try {
-      await clients.ssl.importCertificate(importForm);
-      setMessage("证书已导入");
+      const response = await clients.ssl.importCertificate(importForm);
+      setMessage(response.status?.message || "证书已导入");
       setImportForm({ domain: "", group: "default", certificatePem: "", privateKeyPem: "" });
       void refresh();
     } catch (err) {

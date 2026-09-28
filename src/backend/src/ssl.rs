@@ -268,9 +268,20 @@ impl SslService for SslServiceImpl {
         clear_bootstrap_marker(&request.domain).await;
         let certificate = certificate_item(&request.domain, CertificateState::Issued).await?;
         let _ = reload_active_proxy().await;
+        // 证书只按域名落盘;代理配置是从站点生成的。没有站点绑定这个域名时要明确说,
+        // 否则页面显示"已导入",用户以为生效了,实际访问 Cloudflare 521 / 证书不对
+        let sites = crate::site::sites_using_domain(&request.domain).await;
+        let message = if sites.is_empty() {
+            format!(
+                "证书已导入,但还没有站点绑定 {0}:到「站点」里编辑要用它的站点,把 {0} 加进域名并保存后才会生效",
+                request.domain.trim()
+            )
+        } else {
+            format!("证书已导入,已生效于站点:{}", sites.join("、"))
+        };
 
         Ok(GrpcResponse::new(ImportCertificateResponse {
-            status: Some(ok_response("certificate imported")),
+            status: Some(ok_response(&message)),
             certificate: Some(certificate),
         }))
     }

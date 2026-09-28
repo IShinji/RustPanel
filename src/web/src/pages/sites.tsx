@@ -1636,8 +1636,8 @@ function SslPanel({
   };
   const importCertificate = async () => {
     try {
-      await clients.ssl.importCertificate(importForm);
-      onMessage(`${importForm.domain} 已导入`);
+      const response = await clients.ssl.importCertificate(importForm);
+      onMessage(response.status?.message || `${importForm.domain} 已导入`);
       onChanged();
     } catch (err) {
       onError(safeError(err));

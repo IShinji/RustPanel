@@ -698,9 +698,10 @@ const RPXY_FRAGMENT_DIR: &str = "/etc/rpxy/sites.d";
 /// 返回 None 表示这种站点不适合直接走 rpxy(典型是纯静态站,
 /// 需要 sws 作上游配合,见 static_site_to_sws_args)。
 ///
-/// 同一 site 多 domain 时,**只取第一个作为 server_name** —— rpxy
-/// 单个 app 块只支持一个 SNI;多域名要在调用方为每个 domain 生成
-/// 独立的 app 块。
+/// rpxy 单个 app 块只支持一个 SNI(server_name),所以同一 site 多 domain 时
+/// **每个 domain 各出一个 app 块**:第一个域名沿用 `[apps."<name>"]`(老配置不变),
+/// 其余是 `[apps."<name>@<domain>"]`;TLS 各自指向该域名的证书目录。
+/// 以前只取第一个域名,站点里加的第二个域名(比如换域名迁移)永远不生效。
 /// 站点的反代目标是 `http(s)://host:port[/path]`(nginx proxy_pass 格式);
 /// rpxy 的 upstream `location` 只收 `host:port`,HTTPS 上游另写 `tls = true`。
 /// 之前原样写进去,rpxy 会把 `http://...` 当成主机名,反代站全部 502。
@@ -725,8 +726,14 @@ fn rpxy_upstream_entry(target: &str) -> Option<String> {
 
 pub(crate) fn site_to_rpxy_app_block(site: &SiteItem) -> Option<String> {
     let kind = SiteKind::try_from(site.kind).unwrap_or(SiteKind::Unspecified);
-    let primary_domain = site.domains.first()?;
-    if primary_domain.trim().is_empty() {
+    let mut domains: Vec<&str> = Vec::new();
+    for d in &site.domains {
+        let d = d.trim();
+        if !d.is_empty() && !domains.iter().any(|x| x.eq_ignore_ascii_case(d)) {
+            domains.push(d);
+        }
+    }
+    if domains.is_empty() {
         return None;
     }
     let upstream = match kind {
@@ -760,25 +767,29 @@ pub(crate) fn site_to_rpxy_app_block(site: &SiteItem) -> Option<String> {
     };
     // ssl_enabled 时显式指向 RustPanel ssl 模块按域签下的证书,**不让 rpxy
     // 自己跑 ACME** —— NAT VPS 没有 80/443,只能走 DNS-01,ACME 客户端
-    // 已经是 ssl 模块的工作。证书是否实际存在由调用方在写入前自行验证;
-    // 这里只发出"路径合约"。
-    let tls_line = if site.ssl_enabled {
-        let (cert, key) = crate::ssl::acme_cert_paths(primary_domain);
-        format!(
-            "tls = {{ https_redirection = true, tls_cert_path = \"{}\", tls_cert_key_path = \"{}\" }}\n",
-            cert.display(),
-            key.display(),
-        )
-    } else {
-        String::new()
-    };
-    Some(format!(
-        "[apps.\"{name}\"]\nserver_name = \"{domain}\"\nreverse_proxy = [{{ location = \"/\", upstream = [{{ {upstream} }}] }}]\n{tls}",
-        name = site.name,
-        domain = primary_domain,
-        upstream = upstream,
-        tls = tls_line,
-    ))
+    // 已经是 ssl 模块的工作。每个域名用自己目录下的证书(create_site 会给每个
+    // 域名都 bootstrap 一份自签兜底,保证文件存在、rpxy 起得来);这里只发出"路径合约"。
+    let blocks: Vec<String> = domains
+        .iter()
+        .enumerate()
+        .map(|(i, domain)| {
+            let tls_line = if site.ssl_enabled {
+                let (cert, key) = crate::ssl::acme_cert_paths(domain);
+                format!(
+                    "tls = {{ https_redirection = true, tls_cert_path = \"{}\", tls_cert_key_path = \"{}\" }}\n",
+                    cert.display(),
+                    key.display(),
+                )
+            } else {
+                String::new()
+            };
+            let app = if i == 0 { site.name.clone() } else { format!("{}@{}", site.name, domain) };
+            format!(
+                "[apps.\"{app}\"]\nserver_name = \"{domain}\"\nreverse_proxy = [{{ location = \"/\", upstream = [{{ {upstream} }}] }}]\n{tls_line}",
+            )
+        })
+        .collect();
+    Some(blocks.join("\n"))
 }
 
 /// 给静态站点生成 systemd template-unit 调用所需的"--root + --port"
@@ -2809,6 +2820,29 @@ mod tests {
         assert!(block.contains("blog.example.com/fullchain.pem"));
         assert!(block.contains("blog.example.com/privkey.pem"));
         assert!(!block.contains("acme = true"));
+    }
+
+    #[test]
+    fn site_to_rpxy_app_block_emits_one_app_per_domain() {
+        // 换域名迁移:站点里同时挂新旧两个域名,两个都要能访问,各用各的证书
+        let mut site = make_site(SiteKind::ReverseProxy, "jobs", "jobs.old.com");
+        site.domains.push(" jobs.new.xyz ".to_owned());
+        site.domains.push("JOBS.OLD.COM".to_owned()); // 重复的不再出块
+        site.proxy_target = "http://127.0.0.1:1201".to_owned();
+        site.ssl_enabled = true;
+        let block = site_to_rpxy_app_block(&site).expect("多域名也应生成");
+        // 第一个域名的块名不变,老配置升级后不抖
+        assert!(block.starts_with("[apps.\"jobs\"]\nserver_name = \"jobs.old.com\""));
+        assert!(block.contains("[apps.\"jobs@jobs.new.xyz\"]\nserver_name = \"jobs.new.xyz\""));
+        assert!(block.contains("jobs.old.com/fullchain.pem"));
+        assert!(block.contains("jobs.new.xyz/fullchain.pem"));
+        assert!(block.contains("jobs.new.xyz/privkey.pem"));
+        assert_eq!(block.matches("[apps.").count(), 2);
+        assert_eq!(block.matches("location = \"127.0.0.1:1201\"").count(), 2);
+        // app 名(TOML 表名)不能重复,否则 rpxy 整个配置读不进来
+        let names: Vec<&str> = block.lines().filter(|l| l.starts_with("[apps.")).collect();
+        assert_eq!(names.len(), 2);
+        assert_ne!(names[0], names[1]);
     }
 
     #[test]

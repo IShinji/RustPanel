@@ -188,18 +188,25 @@ impl SiteService for SiteServiceImpl {
         };
 
         // 启用 SSL 但还没签真证书时,先在 ssl_certificate 路径写一份自签
-        // 兜底,这样 nginx -t / reload 立刻通过;后续 ACME 完成会覆盖。
-        // 多域名时按 primary domain 来,与 render_phase_c_site 里 tls_block
-        // 的 ssl_certificate 路径对齐。
-        if (request.ssl_enabled || tls != SiteTlsStrategy::None) && !request.domains.is_empty() {
-            let primary = &request.domains[0];
-            if let Err(error) = crate::ssl::bootstrap_self_signed_if_missing(primary).await {
-                tracing::warn!(
-                    target = "site.ssl-bootstrap",
-                    domain = %primary,
-                    error = %error,
-                    "snakeoil bootstrap failed; nginx -t may reject vhost until real cert is issued"
-                );
+        // 兜底,这样 nginx -t / reload 立刻通过;后续 ACME / 导入会覆盖(已有证书不动)。
+        // nginx vhost 用 primary domain 的证书(与 render_phase_c_site 的 tls_block 对齐);
+        // rpxy 每个域名一个 app 块、各用各的证书目录,所以**每个域名**都要兜底,
+        // 否则缺文件的那个块会让 rpxy 整个起不来。
+        if request.ssl_enabled || tls != SiteTlsStrategy::None {
+            for domain in request
+                .domains
+                .iter()
+                .map(|d| d.trim())
+                .filter(|d| !d.is_empty())
+            {
+                if let Err(error) = crate::ssl::bootstrap_self_signed_if_missing(domain).await {
+                    tracing::warn!(
+                        target = "site.ssl-bootstrap",
+                        domain = %domain,
+                        error = %error,
+                        "snakeoil bootstrap failed; proxy may reject config until real cert is issued"
+                    );
+                }
             }
         }
 
@@ -227,6 +234,17 @@ impl SiteService for SiteServiceImpl {
             _ => 0,
         };
 
+        // 编辑站点也走 create_site(同名覆盖):站点关联的 systemd 服务 / 日志路径
+        // 是另外用 UpdateSiteServices 设的,请求里没有 —— 从旧元数据里带过来,
+        // 不然改一次域名,关联的服务就全没了
+        let previous = self
+            .store
+            .load_nginx_site_metadata(&safe_name(&request.name)?)
+            .await;
+        let (service_units, log_paths) = previous
+            .map(|p| (p.service_units, p.log_paths))
+            .unwrap_or_default();
+
         let site = SiteItem {
             name: request.name,
             domains: request.domains,
@@ -244,8 +262,8 @@ impl SiteService for SiteServiceImpl {
             internal_port,
             disk_bytes: 0,
             previous_backup_path: String::new(),
-            service_units: Vec::new(),
-            log_paths: Vec::new(),
+            service_units,
+            log_paths,
         };
 
         // 落 sidecar 元数据:list_site_configs 之后回到详情抽屉能拿到
@@ -936,6 +954,25 @@ pub(crate) async fn find_site_webroot_by_domain(domain: &str) -> Option<std::pat
         return Some(std::path::PathBuf::from(root));
     }
     None
+}
+
+/// 哪些站点绑定了这个域名(导入 / 签发证书后提示用:证书只按域名落盘,
+/// 没有站点绑定该域名时,代理配置里根本没有它,证书不会生效)
+pub(crate) async fn sites_using_domain(domain: &str) -> Vec<String> {
+    let store = SiteStore::from_env();
+    let Ok(sites) = list_site_configs(&store).await else {
+        return Vec::new();
+    };
+    let needle = domain.trim();
+    sites
+        .into_iter()
+        .filter(|site| {
+            site.domains
+                .iter()
+                .any(|d| d.trim().eq_ignore_ascii_case(needle))
+        })
+        .map(|site| site.name)
+        .collect()
 }
 
 async fn list_site_configs(store: &SiteStore) -> Result<Vec<SiteItem>, Status> {
