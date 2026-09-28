@@ -438,6 +438,10 @@ impl NotificationStore {
         }
     }
 
+    fn alert_state_path(&self) -> PathBuf {
+        self.root.join("alert-state.json")
+    }
+
     async fn load(&self) -> Result<StoredState, Status> {
         match tokio::fs::read_to_string(self.state_path()).await {
             Ok(content) => serde_json::from_str(&content).map_err(io_status),
@@ -620,14 +624,44 @@ pub fn spawn_alert_scanner() {
         .filter(|value| *value >= 30)
         .unwrap_or(DEFAULT_ALERT_SCAN_SECONDS);
     tokio::spawn(async move {
-        // 去重表:alert key → 上次告警时间;进程内存,重启后首轮会重新告警一次(可接受)。
-        let mut last_alert: HashMap<String, u64> = HashMap::new();
         let mut ticker = tokio::time::interval(Duration::from_secs(interval_secs));
         loop {
             ticker.tick().await;
-            run_alert_scan(&mut last_alert).await;
+            scan_alerts_once().await;
         }
     });
+}
+
+/// 跑一轮告警扫描。冷却表(alert key → 上次告警时间)落在通知目录的
+/// alert-state.json:节俭模式下面板大部分时间在休眠,扫描改由
+/// rustpanel-alerts.timer 调 `--scan-alerts` 完成,它和面板进程内的扫描器共用这份冷却表,
+/// 重启 / 换进程都不会重复告警。
+pub async fn scan_alerts_once() {
+    let store = NotificationStore::from_env();
+    let mut last_alert = load_alert_state(&store).await;
+    let before = last_alert.clone();
+    run_alert_scan(&mut last_alert).await;
+    if last_alert != before {
+        if let Err(error) = save_alert_state(&store, &last_alert).await {
+            tracing::warn!(%error, "notification: save alert cooldown state failed");
+        }
+    }
+}
+
+async fn load_alert_state(store: &NotificationStore) -> HashMap<String, u64> {
+    match tokio::fs::read_to_string(store.alert_state_path()).await {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => HashMap::new(),
+    }
+}
+
+async fn save_alert_state(
+    store: &NotificationStore,
+    state: &HashMap<String, u64>,
+) -> std::io::Result<()> {
+    tokio::fs::create_dir_all(store.root.as_ref()).await?;
+    let content = serde_json::to_string(state).map_err(std::io::Error::other)?;
+    crate::statefile::write_atomic(&store.alert_state_path(), content).await
 }
 
 async fn run_alert_scan(last_alert: &mut HashMap<String, u64>) {
@@ -791,6 +825,31 @@ mod tests {
         // SSH 自动封禁默认开;登录失败默认关。
         assert!(event_enabled(&empty, NotificationEventKind::SshAutoBan));
         assert!(!event_enabled(&empty, NotificationEventKind::LoginFailed));
+    }
+
+    #[test]
+    fn alert_cooldown_state_round_trips() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = NotificationStore {
+            root: Arc::new(dir.path().to_path_buf()),
+            write_lock: Arc::new(tokio::sync::Mutex::new(())),
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime");
+        runtime.block_on(async {
+            assert!(load_alert_state(&store).await.is_empty());
+            let mut state = HashMap::new();
+            assert!(should_alert(&mut state, "cert:a.com", CERT_ALERT_COOLDOWN));
+            save_alert_state(&store, &state).await.expect("save");
+            // 换一个进程(重新 load)后仍在冷却内,不会重复告警
+            let mut reloaded = load_alert_state(&store).await;
+            assert!(!should_alert(
+                &mut reloaded,
+                "cert:a.com",
+                CERT_ALERT_COOLDOWN
+            ));
+        });
     }
 
     #[test]

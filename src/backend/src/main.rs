@@ -84,6 +84,14 @@ async fn run(cli: Cli, activated: Option<std::net::TcpListener>) -> Result<(), B
             .map_err(Into::into);
     }
 
+    // systemd timer 回调:跑一轮告警扫描后退出(节俭模式下面板多半在休眠)。
+    if cli.scan_alerts {
+        init_tracing();
+        rustpanel_backend::paths::migrate_legacy_state();
+        rustpanel_backend::notification::scan_alerts_once().await;
+        return Ok(());
+    }
+
     init_tracing();
     serve_with_listener(cli.listen_addr(), activated).await
 }

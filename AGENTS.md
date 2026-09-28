@@ -61,7 +61,7 @@
   工作(WS 会话、`tokio::spawn` 的部署/回滚计时器、托管子进程)都必须持有
   `crate::frugal::BusyGuard`,否则会被空闲退出打断;普通请求与流式响应已由多路复用层自动计入。
   周期性工作不要再做进程内调度器:计划任务走系统 cron(`--run-cron-task`),
-  证书续签走 `rustpanel-cert-renew.timer`(`--renew-certs`)。
+  证书续签走 `rustpanel-cert-renew.timer`(`--renew-certs`),告警扫描走 `rustpanel-alerts.timer`(`--scan-alerts`,冷却表落盘共享)。
 - **状态目录**:新模块的状态目录一律走 `crate::paths::state_root("<模块>", "RUSTPANEL_<X>_ROOT")`
   (落在 `$RUSTPANEL_DATA_DIR/<模块>`,默认 `/var/lib/rustpanel/<模块>`),并登记到
   `paths::MODULES`。**禁止**再用 `/tmp` 作默认状态目录——tmpfiles 清理 / tmpfs / 容器重建都会丢数据。

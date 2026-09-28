@@ -48,6 +48,9 @@ pub struct Cli {
     // systemd timer 回调(rustpanel-cert-renew.timer):续签临期证书后退出。
     #[arg(long)]
     pub renew_certs: bool,
+    // systemd timer 回调(rustpanel-alerts.timer,节俭模式):跑一轮告警扫描后退出。
+    #[arg(long)]
+    pub scan_alerts: bool,
 }
 
 impl Cli {
@@ -58,6 +61,7 @@ impl Cli {
             && self.restic_source.is_none()
             && self.run_cron_task.is_none()
             && !self.renew_certs
+            && !self.scan_alerts
     }
 }
 

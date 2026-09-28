@@ -119,6 +119,37 @@ WantedBy=timers.target
 EOF
 }
 
+# 节俭模式下面板大部分时间在休眠,进程内的告警扫描器跟着停了;
+# 改由这个 timer 每 15 分钟拉起一次性的 --scan-alerts(没配通知渠道时秒退)。
+rustpanel_write_alerts_timer() {
+  cat > "$RUSTPANEL_SYSTEMD_DIR/rustpanel-alerts.service" <<EOF
+[Unit]
+Description=RustPanel alert scan (one-shot, frugal mode)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=$INSTALL_DIR
+EnvironmentFile=$INSTALL_DIR/.env
+Environment=MALLOC_ARENA_MAX=2
+Environment=TOKIO_WORKER_THREADS=1
+ExecStart=$INSTALL_DIR/bin/rustpanel-backend --scan-alerts
+NoNewPrivileges=true
+EOF
+  cat > "$RUSTPANEL_SYSTEMD_DIR/rustpanel-alerts.timer" <<EOF
+[Unit]
+Description=RustPanel alert scan every 15 minutes
+
+[Timer]
+OnCalendar=*:0/15
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
 # 无 systemd 时的证书续签后备:cron.d 每天一次。
 rustpanel_write_cert_renew_cron() {
   [[ -d "$RUSTPANEL_CRON_D_DIR" ]] || return 0
@@ -166,10 +197,19 @@ rustpanel_write_units() {
     rm -f "$RUSTPANEL_SYSTEMD_DIR/rustpanel-backend.socket"
   fi
   rustpanel_write_cert_renew_timer
+  if [[ "$frugal" == "1" ]]; then
+    rustpanel_write_alerts_timer
+  else
+    systemctl disable --now rustpanel-alerts.timer >/dev/null 2>&1 || true
+    rm -f "$RUSTPANEL_SYSTEMD_DIR/rustpanel-alerts.service" "$RUSTPANEL_SYSTEMD_DIR/rustpanel-alerts.timer"
+  fi
   systemctl daemon-reload
   if [[ "$frugal" == "1" ]]; then
     systemctl enable --now rustpanel-backend.socket
   fi
   systemctl enable --now rustpanel-backend.service
   systemctl enable --now rustpanel-cert-renew.timer
+  if [[ "$frugal" == "1" ]]; then
+    systemctl enable --now rustpanel-alerts.timer
+  fi
 }
