@@ -749,19 +749,25 @@ start_docker() {
 download_backend_binary() {
   local bin_dir="$INSTALL_DIR/bin"
   local archive="/tmp/rustpanel-backend.tar.gz"
+  local extract="/tmp/rustpanel-backend-extract"
   install -d -m 0755 "$bin_dir"
   log "Downloading RustPanel backend binary"
   download_file "$BINARY_URL" "$archive"
-  tar -xzf "$archive" -C "$bin_dir"
-  if [[ ! -x "$bin_dir/rustpanel-backend" ]]; then
-    local found
-    found="$(find "$bin_dir" -type f -name rustpanel-backend -perm -111 | head -n 1)"
-    [[ -n "$found" ]] || fail "rustpanel-backend binary not found in $BINARY_URL"
-    if [[ "$found" != "$bin_dir/rustpanel-backend" ]]; then
-      cp "$found" "$bin_dir/rustpanel-backend"
-    fi
+  rm -rf "$extract"
+  install -d "$extract"
+  tar -xzf "$archive" -C "$extract"
+  local found
+  found="$(find "$extract" -type f -name rustpanel-backend -perm -111 | head -n 1)"
+  [[ -n "$found" ]] || fail "rustpanel-backend binary not found in $BINARY_URL"
+  install -m 0755 "$found" "$bin_dir/rustpanel-backend.new"
+  mv -f "$bin_dir/rustpanel-backend.new" "$bin_dir/rustpanel-backend"
+  # 新版发布包自带部署脚本:以包内版本为准,保证与二进制一致
+  if [[ -f "$extract/deploy/systemd-units.sh" ]]; then
+    install -m 0644 "$extract/deploy/systemd-units.sh" "$INSTALL_DIR/deploy/systemd-units.sh"
   fi
-  chmod +x "$bin_dir/rustpanel-backend"
+  if [[ -f "$extract/deploy/update.sh" ]]; then
+    install -m 0755 "$extract/deploy/update.sh" "$INSTALL_DIR/deploy/update.sh"
+  fi
 }
 
 write_systemd_service() {
@@ -868,8 +874,8 @@ fi
 
 # 下载 / 解压中转文件:无论成功、失败还是 Ctrl-C 都清掉,别在小鸡的 /tmp 留几十 MB
 cleanup_install_scratch() {
-  rm -rf /tmp/rustpanel-backend.tar.gz /tmp/rustpanel-shadowsocks.tar.xz \
-    /tmp/rustpanel-shadowsocks /tmp/rustpanel-get-docker.sh
+  rm -rf /tmp/rustpanel-backend.tar.gz /tmp/rustpanel-backend-extract \
+    /tmp/rustpanel-shadowsocks.tar.xz /tmp/rustpanel-shadowsocks /tmp/rustpanel-get-docker.sh
 }
 trap cleanup_install_scratch EXIT
 

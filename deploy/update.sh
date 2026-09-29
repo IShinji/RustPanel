@@ -40,28 +40,43 @@ if [[ "${RUSTPANEL_INSTALL_MODE:-docker}" == "binary" ]]; then
     sed -i "s|^RUSTPANEL_BINARY_URL=.*|RUSTPANEL_BINARY_URL='$MICRO_BINARY_URL'|" "$PROJECT_ROOT/.env"
   fi
   archive="/tmp/rustpanel-backend.tar.gz"
-  trap 'rm -f "$archive"' EXIT
+  extract="/tmp/rustpanel-backend-extract"
+  trap 'rm -rf "$archive" "$extract"' EXIT
   bin_dir="$PROJECT_ROOT/bin"
-  mkdir -p "$bin_dir"
+  mkdir -p "$bin_dir" "$PROJECT_ROOT/deploy"
   download_file "${RUSTPANEL_BINARY_URL:?RUSTPANEL_BINARY_URL is required}" "$archive"
-  tar -xzf "$archive" -C "$bin_dir"
-  if [[ ! -x "$bin_dir/rustpanel-backend" ]]; then
-    found="$(find "$bin_dir" -type f -name rustpanel-backend -perm -111 | head -n 1)"
-    [[ -n "$found" ]] || {
-      echo "rustpanel-backend binary not found in archive" >&2
-      exit 1
-    }
-    cp "$found" "$bin_dir/rustpanel-backend"
+  rm -rf "$extract"
+  mkdir -p "$extract"
+  tar -xzf "$archive" -C "$extract"
+  found="$(find "$extract" -type f -name rustpanel-backend -perm -111 | head -n 1)"
+  [[ -n "$found" ]] || {
+    echo "rustpanel-backend binary not found in archive" >&2
+    exit 1
+  }
+  # 先落 .new 再 rename:正在运行的旧进程不受影响,半截下载也不会覆盖可用版本
+  install -m 0755 "$found" "$bin_dir/rustpanel-backend.new"
+  mv -f "$bin_dir/rustpanel-backend.new" "$bin_dir/rustpanel-backend"
+  # 发布包自带的部署脚本与二进制同版本,优先用它;老发布包没有时才去 GitHub 拉
+  bundled_units=""
+  if [[ -f "$extract/deploy/systemd-units.sh" ]]; then
+    install -m 0644 "$extract/deploy/systemd-units.sh" "$PROJECT_ROOT/deploy/systemd-units.sh"
+    bundled_units=1
   fi
-  chmod +x "$bin_dir/rustpanel-backend"
+  if [[ -f "$extract/deploy/update.sh" ]]; then
+    # rename 换新 inode,正在执行的这份脚本读的旧文件不受影响
+    install -m 0755 "$extract/deploy/update.sh" "$PROJECT_ROOT/deploy/update.sh.new"
+    mv -f "$PROJECT_ROOT/deploy/update.sh.new" "$PROJECT_ROOT/deploy/update.sh"
+  fi
   if command -v systemctl >/dev/null 2>&1; then
     # 升级时同步刷新 systemd 单元(节俭模式 socket / 证书续签 timer),老安装也能用上。
     units="$PROJECT_ROOT/deploy/systemd-units.sh"
     units_tmp="$units.download"
-    if download_file "${RUSTPANEL_RAW_BASE:-https://raw.githubusercontent.com/IShinji/RustPanel/main}/deploy/systemd-units.sh" "$units_tmp"; then
-      mv "$units_tmp" "$units"
-    else
-      rm -f "$units_tmp"
+    if [[ -z "$bundled_units" ]]; then
+      if download_file "${RUSTPANEL_RAW_BASE:-https://raw.githubusercontent.com/IShinji/RustPanel/main}/deploy/systemd-units.sh" "$units_tmp"; then
+        mv "$units_tmp" "$units"
+      else
+        rm -f "$units_tmp"
+      fi
     fi
     if [[ -f "$units" ]]; then
       # shellcheck disable=SC1090

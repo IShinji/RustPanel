@@ -184,7 +184,10 @@ jobs:
             --target binary-export \
             --output type=local,dest=dist/backend-binary \
             -f src/backend/Dockerfile .
-          tar -C dist/backend-binary -czf dist/release/rustpanel-backend-linux-amd64.tar.gz rustpanel-backend
+          # 部署脚本随二进制一起发布:升级时二进制与单元脚本版本一致
+          mkdir -p dist/backend-binary/deploy
+          cp deploy/systemd-units.sh deploy/update.sh dist/backend-binary/deploy/
+          tar -C dist/backend-binary -czf dist/release/rustpanel-backend-linux-amd64.tar.gz rustpanel-backend deploy
       - name: Build linux/amd64 micro backend binary
         run: |
           rm -rf dist/backend-binary-micro
@@ -196,7 +199,9 @@ jobs:
             --build-arg BACKEND_CARGO_FLAGS=--no-default-features \
             --output type=local,dest=dist/backend-binary-micro \
             -f src/backend/Dockerfile .
-          tar -C dist/backend-binary-micro -czf dist/release/rustpanel-backend-micro-linux-amd64.tar.gz rustpanel-backend
+          mkdir -p dist/backend-binary-micro/deploy
+          cp deploy/systemd-units.sh deploy/update.sh dist/backend-binary-micro/deploy/
+          tar -C dist/backend-binary-micro -czf dist/release/rustpanel-backend-micro-linux-amd64.tar.gz rustpanel-backend deploy
           ls -l dist/backend-binary/rustpanel-backend dist/backend-binary-micro/rustpanel-backend
       - uses: actions/setup-node@v6
         with:
