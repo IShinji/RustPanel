@@ -7,8 +7,10 @@ import { appendAuthQuery, authFetch, type Clients } from "../lib/rpc";
 import { Archive, Download, FileText, Folder, FolderPlus, RefreshCw, RotateCw, Save, TerminalSquare, Trash2, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { useMountEffect } from "../lib/hooks";
+import { useLocale } from "../lib/i18n/locale-provider";
 
 export function FileManager({ clients, openTerminal }: { clients: Clients; openTerminal: (cwd: string) => void }) {
+  const { t } = useLocale();
   const [path, setPath] = useState("/");
   const [items, setItems] = useState<FileItem[]>([]);
   const [selected, setSelected] = useState<FileItem | undefined>();
@@ -110,16 +112,25 @@ export function FileManager({ clients, openTerminal }: { clients: Clients; openT
     <section className="file-grid">
       <header className="section-header full-span">
         <div>
-          <h1>文件管理器</h1>
+          <h1>{t("files.title")}</h1>
           <p>{path}</p>
         </div>
         <div className="toolbar">
-          <IconButton label="刷新" icon={RefreshCw} onClick={() => void load(path)} />
-          <IconButton label="新建目录" icon={FolderPlus} onClick={() => void clients.files.createDirectory({ path: `${path.replace(/\/$/, "")}/new-folder` }).then(() => load(path))} />
-          <IconButton label="上传" icon={Upload} onClick={() => inputRef.current?.click()} />
-          <IconButton label="终端" icon={TerminalSquare} onClick={() => openTerminal(path)} />
-          <input className="toolbar-input" onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索" value={searchQuery} />
-          <IconButton label="搜索" icon={FileText} onClick={() => void search()} />
+          <IconButton label={t("files.refresh")} icon={RefreshCw} onClick={() => void load(path)} />
+          <IconButton
+            label={t("files.newFolder")}
+            icon={FolderPlus}
+            onClick={() => void clients.files.createDirectory({ path: `${path.replace(/\/$/, "")}/new-folder` }).then(() => load(path))}
+          />
+          <IconButton label={t("files.upload")} icon={Upload} onClick={() => inputRef.current?.click()} />
+          <IconButton label={t("files.terminal")} icon={TerminalSquare} onClick={() => openTerminal(path)} />
+          <input
+            className="toolbar-input"
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={t("files.searchPlaceholder")}
+            value={searchQuery}
+          />
+          <IconButton label={t("files.search")} icon={FileText} onClick={() => void search()} />
           <input hidden multiple onChange={(event) => void upload(event.target.files)} ref={inputRef} type="file" />
         </div>
       </header>
@@ -156,12 +167,12 @@ export function FileManager({ clients, openTerminal }: { clients: Clients; openT
       <div className="panel editor-panel">
         <div className="panel-title">
           <FileText size={18} />
-          <span>{selected?.name ?? "未选择文件"}</span>
+          <span>{selected?.name ?? t("files.noFileSelected")}</span>
           {selected && selected.kind !== FileKind.DIRECTORY && (
             <>
-              <IconButton label="保存" icon={Save} onClick={() => void saveFile()} />
+              <IconButton label={t("files.save")} icon={Save} onClick={() => void saveFile()} />
               <IconButton
-                label="下载"
+                label={t("files.download")}
                 icon={Download}
                 onClick={() => {
                   // 浏览器跳转无法带 Authorization header,所以把 token 拼到 query 里
@@ -181,7 +192,7 @@ export function FileManager({ clients, openTerminal }: { clients: Clients; openT
       </div>
 
       <div className="panel full-span">
-        <div className="panel-title"><Trash2 size={18} /><span>回收站</span></div>
+        <div className="panel-title"><Trash2 size={18} /><span>{t("files.recycleBin")}</span></div>
         <div className="table-list">
           {recycleItems.slice(0, 8).map((item) => (
             <div className="table-row" key={item.id}>
@@ -189,15 +200,15 @@ export function FileManager({ clients, openTerminal }: { clients: Clients; openT
                 <strong>{item.originalPath}</strong>
                 <small>{item.recyclePath}</small>
               </div>
-              <IconButton label="还原" icon={RotateCw} onClick={() => void restoreRecycleItem(item)} />
+              <IconButton label={t("files.restore")} icon={RotateCw} onClick={() => void restoreRecycleItem(item)} />
             </div>
           ))}
-          {!recycleItems.length && <div className="empty-state">回收站为空</div>}
+          {!recycleItems.length && <div className="empty-state">{t("files.recycleBinEmpty")}</div>}
         </div>
       </div>
 
       <div className="panel full-span">
-        <div className="panel-title"><FileText size={18} /><span>全文检索</span></div>
+        <div className="panel-title"><FileText size={18} /><span>{t("files.fullTextSearch")}</span></div>
         <div className="table-list">
           {searchResults.map((match) => (
             <div className="table-row" key={`${match.path}-${match.lineNumber}`}>
@@ -207,14 +218,20 @@ export function FileManager({ clients, openTerminal }: { clients: Clients; openT
               </div>
             </div>
           ))}
-          {!searchResults.length && <div className="empty-state">暂无结果</div>}
+          {!searchResults.length && <div className="empty-state">{t("files.noResults")}</div>}
         </div>
       </div>
 
       {menu && (
         <div className="context-menu" style={{ left: menu.x, top: menu.y }}>
-          <button onClick={() => void archiveItem(menu.item)} type="button"><Archive size={15} />打包</button>
-          <button onClick={() => void deleteItem(menu.item)} type="button"><Trash2 size={15} />删除</button>
+          <button onClick={() => void archiveItem(menu.item)} type="button">
+            <Archive size={15} />
+            {t("files.archive")}
+          </button>
+          <button onClick={() => void deleteItem(menu.item)} type="button">
+            <Trash2 size={15} />
+            {t("files.delete")}
+          </button>
         </div>
       )}
     </section>

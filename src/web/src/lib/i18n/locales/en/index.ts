@@ -3,6 +3,7 @@ import { app } from "./app";
 import { common } from "./common";
 import { components } from "./components";
 import { dashboard } from "./dashboard";
+import { files } from "./files";
 import { network } from "./network";
 import { security } from "./security";
 import { terminal } from "./terminal";
@@ -12,6 +13,7 @@ export const en: Messages = {
   app,
   components,
   dashboard,
+  files,
   network,
   security,
   terminal
