@@ -24,6 +24,7 @@ RUSTPANEL_NAT_PORT_RANGE="${RUSTPANEL_NAT_PORT_RANGE:-}"
 RUSTPANEL_PUBLIC_HOST="${RUSTPANEL_PUBLIC_HOST:-}"
 RUSTPANEL_ULTRA_LOW="${RUSTPANEL_ULTRA_LOW:-0}"
 RUSTPANEL_FRUGAL="${RUSTPANEL_FRUGAL:-auto}"
+RUSTPANEL_PANEL_TRUSTED_SOURCES="${RUSTPANEL_PANEL_TRUSTED_SOURCES:-}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-rustpanel}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 GHCR_USERNAME="${GHCR_USERNAME:-_}"
@@ -65,6 +66,8 @@ Options:
   --modules LIST           Comma-separated enabled modules
   --disable-modules LIST   Comma-separated disabled modules
   --ultra-low              Disable proxy and workloads modules (recommended for <=128MB RAM)
+  --cloudflare-only        Panel only accepts connections from Cloudflare (use with a proxied
+                           domain; extra CIDRs via RUSTPANEL_PANEL_ALLOW_CIDRS)
   --frugal / --no-frugal   Force frugal mode on/off (systemd socket activation + idle exit;
                            default: on for micro binary installs)
   --origin ORIGIN          Allowed browser origin, for example https://panel.example.com
@@ -496,6 +499,10 @@ while [[ $# -gt 0 ]]; do
       RUSTPANEL_NAT_PORT_RANGE="${2:?missing value for --nat-port-range}"
       shift 2
       ;;
+    --cloudflare-only)
+      RUSTPANEL_PANEL_TRUSTED_SOURCES=cloudflare
+      shift
+      ;;
     --frugal)
       RUSTPANEL_FRUGAL=1
       shift
@@ -626,6 +633,7 @@ if [[ -f "$INSTALL_DIR/.env" && "$FORCE" != "1" ]]; then
   RUSTPANEL_PUBLIC_HOST="${RUSTPANEL_PUBLIC_HOST:-}"
   RUSTPANEL_ULTRA_LOW="${RUSTPANEL_ULTRA_LOW:-0}"
   RUSTPANEL_FRUGAL="${RUSTPANEL_FRUGAL:-auto}"
+  RUSTPANEL_PANEL_TRUSTED_SOURCES="${RUSTPANEL_PANEL_TRUSTED_SOURCES:-}"
   COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-rustpanel}"
   GITHUB_TOKEN="${GITHUB_TOKEN:-}"
   GHCR_USERNAME="${GHCR_USERNAME:-_}"
@@ -908,6 +916,7 @@ umask 077
   write_env_var "RUSTPANEL_PUBLIC_HOST" "$RUSTPANEL_PUBLIC_HOST"
   write_env_var "RUSTPANEL_ULTRA_LOW" "$RUSTPANEL_ULTRA_LOW"
   write_env_var "RUSTPANEL_FRUGAL" "$RUSTPANEL_FRUGAL"
+  write_env_var "RUSTPANEL_PANEL_TRUSTED_SOURCES" "$RUSTPANEL_PANEL_TRUSTED_SOURCES"
   if [[ "$RUSTPANEL_FRUGAL" == "1" ]]; then
     write_env_var "RUSTPANEL_IDLE_EXIT_MINUTES" "${RUSTPANEL_IDLE_EXIT_MINUTES:-10}"
   fi

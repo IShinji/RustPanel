@@ -26,10 +26,11 @@ use tokio::net::TcpListener;
 use tokio_stream::wrappers::IntervalStream;
 use tokio_util::io::ReaderStream;
 use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse, Status};
-use tower::{make::Shared, service_fn, ServiceExt};
+use tower::{service_fn, ServiceExt};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+pub mod access;
 pub mod access_log;
 pub mod acme;
 pub mod appstore;
@@ -290,9 +291,17 @@ pub async fn serve_with_listener(
         tracing::warn!(%error, "failed to sync system crontab");
     }
 
+    // 可选的来源白名单(只接受 Cloudflare 回源 / 本机 / 额外放行网段)
+    let source_filter = access::SourceFilter::from_env();
+    if source_filter.is_active() {
+        info!("panel accepts connections only from Cloudflare, loopback and RUSTPANEL_PANEL_ALLOW_CIDRS");
+    }
     axum::serve(
         listener,
-        Shared::new(multiplex_service_with_auth(auth_service, authority)),
+        access::GatedMakeService::new(
+            multiplex_service_with_auth(auth_service, authority),
+            source_filter,
+        ),
     )
     .with_graceful_shutdown(async move {
         match idle_exit {
@@ -1676,7 +1685,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("local addr");
         let server = tokio::spawn(async move {
-            axum::serve(listener, Shared::new(multiplex_service()))
+            axum::serve(listener, tower::make::Shared::new(multiplex_service()))
                 .await
                 .expect("server");
         });
@@ -1708,7 +1717,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("local addr");
         let server = tokio::spawn(async move {
-            axum::serve(listener, Shared::new(multiplex_service()))
+            axum::serve(listener, tower::make::Shared::new(multiplex_service()))
                 .await
                 .expect("server");
         });

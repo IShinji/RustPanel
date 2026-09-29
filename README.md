@@ -63,6 +63,16 @@ micro 档还默认启用**节俭模式**:
 
 不想要节俭模式可加 `--no-frugal`;其它档位也可用 `--frugal` 强制开启。
 
+### 面板访问安全
+
+- **两步验证**:设置 → 安全 →「两步验证」里扫码绑定,输入验证码确认后生效;关闭同样需要验证码。
+- **只允许经 Cloudflare 访问**:面板挂在 Cloudflare 代理的域名后面时,可在 `.env` 设
+  `RUSTPANEL_PANEL_TRUSTED_SOURCES=cloudflare`(安装时加 `--cloudflare-only`),直连 IP:端口
+  一律 403;本机回环始终放行,额外放行的网段写在 `RUSTPANEL_PANEL_ALLOW_CIDRS`(逗号分隔)。
+  开启前先确认能通过域名打开面板,否则只能 SSH 上去改 `.env` 恢复。
+- **自动证书**:在 DNS 页填 Cloudflare API Token(Zone → DNS → Edit)与 Zone ID 后,
+  该 Zone 下域名的 Let's Encrypt 证书走 DNS-01 全自动签发与每日续签(NAT 机器也可用)。
+
 安装前可先查看建议：
 
 ```bash
