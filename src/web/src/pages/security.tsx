@@ -1,20 +1,22 @@
 import { IconButton, Input, NumberInput, SelectRow, StatusPill, ToggleRow } from "../components/form-controls";
 import { FirewallAction, FirewallBackend, FirewallDirection, FirewallProtocol, FirewallRule, SshKeyAlgorithm, SshKeyItem, SshLoginEvent, WafAttackEvent, WafRule, WafRuleKind } from "../gen/rustpanel/v1/security_pb";
-import { safeError } from "../lib/format";
+import { formatDateTime, safeError } from "../lib/format";
 import { defaultFirewallForm, defaultSecurityOptions, defaultSshKeyForm, defaultSshSettings, defaultWafRuleForm, defaultWafSettings, type FirewallForm, type SecurityOptionsForm, type SshKeyForm, type SshSettingsForm, type WafRuleForm, type WafSettingsForm } from "../lib/forms";
 import { firewallActionLabel, firewallDirectionLabel, firewallProtocolLabel, sshAlgorithmLabel, wafKindLabel } from "../lib/labels";
 import { type Clients } from "../lib/rpc";
 import { Ban, Copy, FileDown, FileText, FileUp, Globe, Plus, Power, RefreshCw, Save, Shield, ShieldAlert, ShieldCheck, TerminalSquare } from "lucide-react";
 import { useState } from "react";
 import { useMountEffect } from "../lib/hooks";
+import { useLocale } from "../lib/i18n/locale-provider";
 
 export function SecurityPanel({ clients }: { clients: Clients }) {
+  const { t, locale } = useLocale();
   const [rules, setRules] = useState<FirewallRule[]>([]);
-  const [ruleForm, setRuleForm] = useState<FirewallForm>(defaultFirewallForm);
+  const [ruleForm, setRuleForm] = useState<FirewallForm>(defaultFirewallForm());
   const [options, setOptions] = useState<SecurityOptionsForm>(defaultSecurityOptions);
   const [wafSettings, setWafSettings] = useState<WafSettingsForm>(defaultWafSettings);
   const [wafRules, setWafRules] = useState<WafRule[]>([]);
-  const [wafRuleForm, setWafRuleForm] = useState<WafRuleForm>(defaultWafRuleForm);
+  const [wafRuleForm, setWafRuleForm] = useState<WafRuleForm>(defaultWafRuleForm());
   const [wafEvents, setWafEvents] = useState<WafAttackEvent[]>([]);
   const [sshSettings, setSshSettings] = useState<SshSettingsForm>(defaultSshSettings);
   const [sshKeys, setSshKeys] = useState<SshKeyItem[]>([]);
@@ -74,7 +76,7 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
           updatedAtSeconds: 0n
         }
       });
-      setRuleForm(defaultFirewallForm);
+      setRuleForm(defaultFirewallForm());
       await load();
     } catch (err) {
       setStatus(safeError(err));
@@ -121,7 +123,7 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
       if (response.options) {
         setOptions({ ...defaultSecurityOptions, ...response.options });
       }
-      setStatus(response.options?.lastApplyMessage ?? "安全选项已保存");
+      setStatus(response.options?.lastApplyMessage ?? t("security.optionsSaved"));
     } catch (err) {
       setStatus(safeError(err));
     }
@@ -131,7 +133,7 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
     try {
       const response = await clients.security.exportFirewallRules({});
       setBackupJson(response.backupJson);
-      setStatus("规则备份已生成");
+      setStatus(t("security.backupExported"));
     } catch (err) {
       setStatus(safeError(err));
     }
@@ -147,7 +149,7 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
       if (response.options) {
         setOptions({ ...defaultSecurityOptions, ...response.options });
       }
-      setStatus("规则备份已导入");
+      setStatus(t("security.backupImported"));
     } catch (err) {
       setStatus(safeError(err));
     }
@@ -158,7 +160,7 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
       const response = await clients.security.updateWafSettings({ settings: wafSettings });
       if (response.settings) {
         setWafSettings({ ...defaultWafSettings, ...response.settings });
-        setStatus(response.settings.lastApplyMessage || "WAF 配置已保存");
+        setStatus(response.settings.lastApplyMessage || t("security.wafSaved"));
       }
     } catch (err) {
       setStatus(safeError(err));
@@ -180,7 +182,7 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
           updatedAtSeconds: 0n
         }
       });
-      setWafRuleForm(defaultWafRuleForm);
+      setWafRuleForm(defaultWafRuleForm());
       await load();
     } catch (err) {
       setStatus(safeError(err));
@@ -213,7 +215,7 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
       const response = await clients.security.updateSshSettings({ settings: sshSettings });
       if (response.settings) {
         setSshSettings({ ...defaultSshSettings, ...response.settings });
-        setStatus(response.settings.lastApplyMessage || "SSH 配置已保存");
+        setStatus(response.settings.lastApplyMessage || t("security.sshSaved"));
       }
     } catch (err) {
       setStatus(safeError(err));
@@ -257,63 +259,77 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
     <section className="page-grid security-layout">
       <header className="section-header full-span">
         <div>
-          <h1>安全管理</h1>
-          <p>{status || options.lastApplyMessage || `${rules.length} 条防火墙规则`}</p>
+          <h1>{t("security.title")}</h1>
+          <p>{status || options.lastApplyMessage || t("security.ruleCount", { count: rules.length })}</p>
         </div>
         <div className="toolbar">
-          <IconButton label="刷新" icon={RefreshCw} onClick={() => void load()} />
-          <IconButton label="新建规则" icon={Plus} onClick={() => setRuleForm(defaultFirewallForm)} />
+          <IconButton label={t("security.refresh")} icon={RefreshCw} onClick={() => void load()} />
+          <IconButton label={t("security.newRule")} icon={Plus} onClick={() => setRuleForm(defaultFirewallForm())} />
         </div>
       </header>
 
       <div className="panel security-options">
-        <div className="panel-title"><ShieldAlert size={18} /><span>入口防护</span></div>
+        <div className="panel-title"><ShieldAlert size={18} /><span>{t("security.entryProtection")}</span></div>
         <Input
-          label="访问路径"
+          label={t("security.accessPath")}
           value={options.panelAccessPath}
           onChange={(panelAccessPath) => setOptions({ ...options, panelAccessPath })}
         />
         <Input
-          label="监听地址"
+          label={t("security.listenAddr")}
           value={options.panelListenAddr}
           onChange={(panelListenAddr) => setOptions({ ...options, panelListenAddr })}
         />
         <ToggleRow
-          label="2FA 登录"
+          label={t("security.twoFactorLogin")}
           checked={options.twoFactorRequired}
           onChange={(twoFactorRequired) => setOptions({ ...options, twoFactorRequired })}
         />
-        <ToggleRow label="禁 Ping" checked={options.disablePing} onChange={(disablePing) => setOptions({ ...options, disablePing })} />
         <ToggleRow
-          label="防扫描"
+          label={t("security.disablePing")}
+          checked={options.disablePing}
+          onChange={(disablePing) => setOptions({ ...options, disablePing })}
+        />
+        <ToggleRow
+          label={t("security.antiScan")}
           checked={options.scanProtectionEnabled}
           onChange={(scanProtectionEnabled) => setOptions({ ...options, scanProtectionEnabled })}
         />
-        <NumberInput label="触发次数" value={options.scanBurst} onChange={(scanBurst) => setOptions({ ...options, scanBurst })} />
         <NumberInput
-          label="窗口秒数"
+          label={t("security.triggerCount")}
+          value={options.scanBurst}
+          onChange={(scanBurst) => setOptions({ ...options, scanBurst })}
+        />
+        <NumberInput
+          label={t("security.windowSeconds")}
           value={options.scanWindowSeconds}
           onChange={(scanWindowSeconds) => setOptions({ ...options, scanWindowSeconds })}
         />
         <SelectRow
-          label="后端"
+          label={t("security.backend")}
           value={options.backendPreference}
           onChange={(backendPreference) => setOptions({ ...options, backendPreference: Number(backendPreference) as FirewallBackend })}
           options={[
-            [FirewallBackend.UNSPECIFIED, "自动检测"],
+            [FirewallBackend.UNSPECIFIED, t("security.autoDetect")],
             [FirewallBackend.UFW, "UFW"],
             [FirewallBackend.FIREWALLD, "Firewalld"],
             [FirewallBackend.IPTABLES, "Iptables"]
           ]}
         />
-        <button onClick={() => void saveOptions()} type="button"><Save size={15} />保存开关</button>
+        <button onClick={() => void saveOptions()} type="button">
+          <Save size={15} />
+          {t("security.saveToggles")}
+        </button>
       </div>
 
       <div className="panel rule-form">
-        <div className="panel-title"><ShieldCheck size={18} /><span>{ruleForm.id ? "编辑规则" : "新建规则"}</span></div>
-        <Input label="名称" value={ruleForm.name} onChange={(name) => setRuleForm({ ...ruleForm, name })} />
+        <div className="panel-title">
+          <ShieldCheck size={18} />
+          <span>{ruleForm.id ? t("security.editRule") : t("security.newRule")}</span>
+        </div>
+        <Input label={t("security.name")} value={ruleForm.name} onChange={(name) => setRuleForm({ ...ruleForm, name })} />
         <SelectRow
-          label="协议"
+          label={t("security.protocol")}
           value={ruleForm.protocol}
           onChange={(protocol) => setRuleForm({ ...ruleForm, protocol: Number(protocol) as FirewallProtocol })}
           options={[
@@ -323,122 +339,194 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
           ]}
         />
         <SelectRow
-          label="动作"
+          label={t("security.action")}
           value={ruleForm.action}
           onChange={(action) => setRuleForm({ ...ruleForm, action: Number(action) as FirewallAction })}
           options={[
-            [FirewallAction.ALLOW, "放行"],
-            [FirewallAction.DENY, "屏蔽"],
-            [FirewallAction.REJECT, "拒绝"]
+            [FirewallAction.ALLOW, firewallActionLabel(FirewallAction.ALLOW, t)],
+            [FirewallAction.DENY, firewallActionLabel(FirewallAction.DENY, t)],
+            [FirewallAction.REJECT, firewallActionLabel(FirewallAction.REJECT, t)]
           ]}
         />
         <SelectRow
-          label="方向"
+          label={t("security.direction")}
           value={ruleForm.direction}
           onChange={(direction) => setRuleForm({ ...ruleForm, direction: Number(direction) as FirewallDirection })}
           options={[
-            [FirewallDirection.INBOUND, "入站"],
-            [FirewallDirection.OUTBOUND, "出站"]
+            [FirewallDirection.INBOUND, firewallDirectionLabel(FirewallDirection.INBOUND, t)],
+            [FirewallDirection.OUTBOUND, firewallDirectionLabel(FirewallDirection.OUTBOUND, t)]
           ]}
         />
         {ruleForm.protocol !== FirewallProtocol.ICMP && (
           <div className="inline-grid">
-            <Input label="起始端口" type="number" value={ruleForm.portStart} onChange={(portStart) => setRuleForm({ ...ruleForm, portStart })} />
-            <Input label="结束端口" type="number" value={ruleForm.portEnd} onChange={(portEnd) => setRuleForm({ ...ruleForm, portEnd })} />
+            <Input
+              label={t("security.startPort")}
+              type="number"
+              value={ruleForm.portStart}
+              onChange={(portStart) => setRuleForm({ ...ruleForm, portStart })}
+            />
+            <Input
+              label={t("security.endPort")}
+              type="number"
+              value={ruleForm.portEnd}
+              onChange={(portEnd) => setRuleForm({ ...ruleForm, portEnd })}
+            />
           </div>
         )}
-        <Input label="来源 IP/CIDR" value={ruleForm.source} onChange={(source) => setRuleForm({ ...ruleForm, source })} />
-        <Input label="目标 IP/CIDR" value={ruleForm.destination} onChange={(destination) => setRuleForm({ ...ruleForm, destination })} />
-        <Input label="备注" value={ruleForm.comment} onChange={(comment) => setRuleForm({ ...ruleForm, comment })} />
-        <ToggleRow label="启用" checked={ruleForm.enabled} onChange={(enabled) => setRuleForm({ ...ruleForm, enabled })} />
-        <button onClick={() => void saveRule()} type="button"><Save size={15} />保存规则</button>
+        <Input label={t("security.sourceIpCidr")} value={ruleForm.source} onChange={(source) => setRuleForm({ ...ruleForm, source })} />
+        <Input
+          label={t("security.destIpCidr")}
+          value={ruleForm.destination}
+          onChange={(destination) => setRuleForm({ ...ruleForm, destination })}
+        />
+        <Input label={t("security.comment")} value={ruleForm.comment} onChange={(comment) => setRuleForm({ ...ruleForm, comment })} />
+        <ToggleRow label={t("security.enabled")} checked={ruleForm.enabled} onChange={(enabled) => setRuleForm({ ...ruleForm, enabled })} />
+        <button onClick={() => void saveRule()} type="button">
+          <Save size={15} />
+          {t("security.saveRule")}
+        </button>
       </div>
 
       <div className="panel wide-panel firewall-list">
-        <div className="panel-title"><Shield size={18} /><span>防火墙规则</span></div>
+        <div className="panel-title"><Shield size={18} /><span>{t("security.firewallRules")}</span></div>
         <div className="table-list">
           {rules.map((rule) => (
             <div className="table-row firewall-row" key={rule.id}>
               <div>
                 <strong>{rule.name}</strong>
                 <small>
-                  {firewallProtocolLabel(rule.protocol)} · {firewallActionLabel(rule.action)} · {firewallDirectionLabel(rule.direction)}
+                  {firewallProtocolLabel(rule.protocol)} · {firewallActionLabel(rule.action, t)} ·{" "}
+                  {firewallDirectionLabel(rule.direction, t)}
                   {rule.protocol !== FirewallProtocol.ICMP ? ` · ${rule.portStart}${rule.portEnd && rule.portEnd !== rule.portStart ? `-${rule.portEnd}` : ""}` : ""}
                   {rule.source ? ` · ${rule.source}` : ""}
                 </small>
               </div>
-              <StatusPill label={rule.enabled ? "启用" : "停用"} tone={rule.enabled ? "good" : "muted"} />
+              <StatusPill
+                label={rule.enabled ? t("security.enabled") : t("security.disabled")}
+                tone={rule.enabled ? "good" : "muted"}
+              />
               <div className="row-actions">
-                <IconButton label={rule.enabled ? "停用" : "启用"} icon={Power} onClick={() => void toggleRule(rule)} />
-                <IconButton label="编辑" icon={Copy} onClick={() => editRule(rule)} />
-                <IconButton label="删除" icon={Ban} onClick={() => void deleteRule(rule)} />
+                <IconButton
+                  label={rule.enabled ? t("security.disabled") : t("security.enabled")}
+                  icon={Power}
+                  onClick={() => void toggleRule(rule)}
+                />
+                <IconButton label={t("security.edit")} icon={Copy} onClick={() => editRule(rule)} />
+                <IconButton label={t("security.delete")} icon={Ban} onClick={() => void deleteRule(rule)} />
               </div>
             </div>
           ))}
-          {!rules.length && <div className="empty-state">暂无规则</div>}
+          {!rules.length && <div className="empty-state">{t("security.noRules")}</div>}
         </div>
       </div>
 
       <div className="panel waf-settings">
-        <div className="panel-title"><ShieldAlert size={18} /><span>WAF 防护</span></div>
-        <ToggleRow label="WAF 总开关" checked={wafSettings.enabled} onChange={(enabled) => setWafSettings({ ...wafSettings, enabled })} />
+        <div className="panel-title"><ShieldAlert size={18} /><span>{t("security.wafProtection")}</span></div>
         <ToggleRow
-          label="抗 CC"
+          label={t("security.wafMasterSwitch")}
+          checked={wafSettings.enabled}
+          onChange={(enabled) => setWafSettings({ ...wafSettings, enabled })}
+        />
+        <ToggleRow
+          label={t("security.antiCc")}
           checked={wafSettings.ccProtectionEnabled}
           onChange={(ccProtectionEnabled) => setWafSettings({ ...wafSettings, ccProtectionEnabled })}
         />
         <ToggleRow
-          label="验证码挑战"
+          label={t("security.captchaChallenge")}
           checked={wafSettings.captchaChallengeEnabled}
           onChange={(captchaChallengeEnabled) => setWafSettings({ ...wafSettings, captchaChallengeEnabled })}
         />
-        <NumberInput label="每分钟请求" value={wafSettings.requestsPerMinute} onChange={(requestsPerMinute) => setWafSettings({ ...wafSettings, requestsPerMinute })} />
-        <NumberInput label="突发请求" value={wafSettings.burst} onChange={(burst) => setWafSettings({ ...wafSettings, burst })} />
         <NumberInput
-          label="封禁秒数"
+          label={t("security.requestsPerMinute")}
+          value={wafSettings.requestsPerMinute}
+          onChange={(requestsPerMinute) => setWafSettings({ ...wafSettings, requestsPerMinute })}
+        />
+        <NumberInput
+          label={t("security.burstRequests")}
+          value={wafSettings.burst}
+          onChange={(burst) => setWafSettings({ ...wafSettings, burst })}
+        />
+        <NumberInput
+          label={t("security.blockSeconds")}
           value={wafSettings.blockDurationSeconds}
           onChange={(blockDurationSeconds) => setWafSettings({ ...wafSettings, blockDurationSeconds })}
         />
-        <Input label="Nginx 片段" value={wafSettings.nginxConfigPath} onChange={(nginxConfigPath) => setWafSettings({ ...wafSettings, nginxConfigPath })} />
-        <Input label="挑战页" value={wafSettings.challengePagePath} onChange={(challengePagePath) => setWafSettings({ ...wafSettings, challengePagePath })} />
-        <button onClick={() => void saveWafSettings()} type="button"><Save size={15} />保存 WAF</button>
+        <Input
+          label={t("security.nginxFragment")}
+          value={wafSettings.nginxConfigPath}
+          onChange={(nginxConfigPath) => setWafSettings({ ...wafSettings, nginxConfigPath })}
+        />
+        <Input
+          label={t("security.challengePage")}
+          value={wafSettings.challengePagePath}
+          onChange={(challengePagePath) => setWafSettings({ ...wafSettings, challengePagePath })}
+        />
+        <button onClick={() => void saveWafSettings()} type="button">
+          <Save size={15} />
+          {t("security.saveWaf")}
+        </button>
       </div>
 
       <div className="panel waf-rule-form">
-        <div className="panel-title"><ShieldCheck size={18} /><span>{wafRuleForm.id ? "编辑 WAF 规则" : "新建 WAF 规则"}</span></div>
-        <Input label="名称" value={wafRuleForm.name} onChange={(name) => setWafRuleForm({ ...wafRuleForm, name })} />
+        <div className="panel-title">
+          <ShieldCheck size={18} />
+          <span>{wafRuleForm.id ? t("security.editWafRule") : t("security.newWafRule")}</span>
+        </div>
+        <Input label={t("security.name")} value={wafRuleForm.name} onChange={(name) => setWafRuleForm({ ...wafRuleForm, name })} />
         <SelectRow
-          label="类型"
+          label={t("security.kind")}
           value={wafRuleForm.kind}
           onChange={(kind) => setWafRuleForm({ ...wafRuleForm, kind: Number(kind) as WafRuleKind })}
           options={[
-            [WafRuleKind.SQL_INJECTION, "SQL 注入"],
-            [WafRuleKind.XSS, "XSS"],
-            [WafRuleKind.KEYWORD, "关键词"],
-            [WafRuleKind.SCANNER, "扫描器"],
-            [WafRuleKind.CC, "CC"]
+            [WafRuleKind.SQL_INJECTION, wafKindLabel(WafRuleKind.SQL_INJECTION, t)],
+            [WafRuleKind.XSS, wafKindLabel(WafRuleKind.XSS, t)],
+            [WafRuleKind.KEYWORD, wafKindLabel(WafRuleKind.KEYWORD, t)],
+            [WafRuleKind.SCANNER, wafKindLabel(WafRuleKind.SCANNER, t)],
+            [WafRuleKind.CC, wafKindLabel(WafRuleKind.CC, t)]
           ]}
         />
-        <Input label="匹配规则" value={wafRuleForm.pattern} onChange={(pattern) => setWafRuleForm({ ...wafRuleForm, pattern })} />
-        <Input label="站点域名" value={wafRuleForm.scopeDomain} onChange={(scopeDomain) => setWafRuleForm({ ...wafRuleForm, scopeDomain })} />
-        <Input label="备注" value={wafRuleForm.comment} onChange={(comment) => setWafRuleForm({ ...wafRuleForm, comment })} />
-        <ToggleRow label="启用" checked={wafRuleForm.enabled} onChange={(enabled) => setWafRuleForm({ ...wafRuleForm, enabled })} />
-        <button onClick={() => void saveWafRule()} type="button"><Save size={15} />保存规则</button>
+        <Input
+          label={t("security.matchPattern")}
+          value={wafRuleForm.pattern}
+          onChange={(pattern) => setWafRuleForm({ ...wafRuleForm, pattern })}
+        />
+        <Input
+          label={t("security.scopeDomain")}
+          value={wafRuleForm.scopeDomain}
+          onChange={(scopeDomain) => setWafRuleForm({ ...wafRuleForm, scopeDomain })}
+        />
+        <Input label={t("security.comment")} value={wafRuleForm.comment} onChange={(comment) => setWafRuleForm({ ...wafRuleForm, comment })} />
+        <ToggleRow
+          label={t("security.enabled")}
+          checked={wafRuleForm.enabled}
+          onChange={(enabled) => setWafRuleForm({ ...wafRuleForm, enabled })}
+        />
+        <button onClick={() => void saveWafRule()} type="button">
+          <Save size={15} />
+          {t("security.saveRule")}
+        </button>
       </div>
 
       <div className="panel wide-panel waf-rule-list">
-        <div className="panel-title"><Shield size={18} /><span>WAF 规则库</span></div>
+        <div className="panel-title"><Shield size={18} /><span>{t("security.wafRuleLibrary")}</span></div>
         <div className="table-list">
           {wafRules.map((rule) => (
             <div className="table-row firewall-row" key={rule.id}>
               <div>
                 <strong>{rule.name}</strong>
-                <small>{wafKindLabel(rule.kind)} · {rule.pattern}{rule.scopeDomain ? ` · ${rule.scopeDomain}` : ""}</small>
+                <small>
+                  {wafKindLabel(rule.kind, t)} · {rule.pattern}
+                  {rule.scopeDomain ? ` · ${rule.scopeDomain}` : ""}
+                </small>
               </div>
-              <StatusPill label={rule.enabled ? "启用" : "停用"} tone={rule.enabled ? "good" : "muted"} />
+              <StatusPill
+                label={rule.enabled ? t("security.enabled") : t("security.disabled")}
+                tone={rule.enabled ? "good" : "muted"}
+              />
               <div className="row-actions">
-                <IconButton label="编辑" icon={Copy} onClick={() => editWafRule(rule)} />
-                <IconButton label="删除" icon={Ban} onClick={() => void deleteWafRule(rule)} />
+                <IconButton label={t("security.edit")} icon={Copy} onClick={() => editWafRule(rule)} />
+                <IconButton label={t("security.delete")} icon={Ban} onClick={() => void deleteWafRule(rule)} />
               </div>
             </div>
           ))}
@@ -446,7 +534,7 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
       </div>
 
       <div className="panel waf-map">
-        <div className="panel-title"><Globe size={18} /><span>攻击来源</span></div>
+        <div className="panel-title"><Globe size={18} /><span>{t("security.attackSources")}</span></div>
         <div className="world-map" aria-label="WAF attack source map">
           {wafCountryRanking.slice(0, 8).map((country, index) => (
             <span className={`map-point point-${index + 1}`} key={country.code} title={`${country.name}: ${country.count}`}>
@@ -457,7 +545,7 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
       </div>
 
       <div className="panel waf-ranking">
-        <div className="panel-title"><ShieldAlert size={18} /><span>攻击 IP 排名</span></div>
+        <div className="panel-title"><ShieldAlert size={18} /><span>{t("security.attackIpRanking")}</span></div>
         <div className="table-list">
           {wafIpRanking.slice(0, 8).map((item) => (
             <div className="rank-row" key={item.ip}>
@@ -466,39 +554,54 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
               <StatusPill label={String(item.count)} tone="danger" />
             </div>
           ))}
-          {!wafIpRanking.length && <div className="empty-state">暂无拦截记录</div>}
+          {!wafIpRanking.length && <div className="empty-state">{t("security.noBlockRecords")}</div>}
         </div>
       </div>
 
       <div className="panel ssh-settings">
-        <div className="panel-title"><TerminalSquare size={18} /><span>SSH 加固</span></div>
-        <ToggleRow label="服务启用" checked={sshSettings.serviceEnabled} onChange={(serviceEnabled) => setSshSettings({ ...sshSettings, serviceEnabled })} />
-        <NumberInput label="SSH 端口" value={sshSettings.port} onChange={(port) => setSshSettings({ ...sshSettings, port })} />
+        <div className="panel-title"><TerminalSquare size={18} /><span>{t("security.sshHardening")}</span></div>
         <ToggleRow
-          label="禁用密码"
+          label={t("security.serviceEnabled")}
+          checked={sshSettings.serviceEnabled}
+          onChange={(serviceEnabled) => setSshSettings({ ...sshSettings, serviceEnabled })}
+        />
+        <NumberInput label={t("security.sshPort")} value={sshSettings.port} onChange={(port) => setSshSettings({ ...sshSettings, port })} />
+        <ToggleRow
+          label={t("security.disablePasswordLogin")}
           checked={sshSettings.passwordLoginDisabled}
           onChange={(passwordLoginDisabled) => setSshSettings({ ...sshSettings, passwordLoginDisabled })}
         />
-        <ToggleRow label="自动封禁" checked={sshSettings.autoBanEnabled} onChange={(autoBanEnabled) => setSshSettings({ ...sshSettings, autoBanEnabled })} />
+        <ToggleRow
+          label={t("security.autoBan")}
+          checked={sshSettings.autoBanEnabled}
+          onChange={(autoBanEnabled) => setSshSettings({ ...sshSettings, autoBanEnabled })}
+        />
         <NumberInput
-          label="失败阈值"
+          label={t("security.failThreshold")}
           value={sshSettings.failedAttemptLimit}
           onChange={(failedAttemptLimit) => setSshSettings({ ...sshSettings, failedAttemptLimit })}
         />
         <NumberInput
-          label="窗口秒数"
+          label={t("security.windowSeconds")}
           value={sshSettings.failedAttemptWindowSeconds}
           onChange={(failedAttemptWindowSeconds) => setSshSettings({ ...sshSettings, failedAttemptWindowSeconds })}
         />
-        <Input label="配置文件" value={sshSettings.configPath} onChange={(configPath) => setSshSettings({ ...sshSettings, configPath })} />
-        <button onClick={() => void saveSshSettings()} type="button"><Save size={15} />保存 SSH</button>
+        <Input
+          label={t("security.configFile")}
+          value={sshSettings.configPath}
+          onChange={(configPath) => setSshSettings({ ...sshSettings, configPath })}
+        />
+        <button onClick={() => void saveSshSettings()} type="button">
+          <Save size={15} />
+          {t("security.saveSsh")}
+        </button>
       </div>
 
       <div className="panel ssh-keys">
-        <div className="panel-title"><ShieldCheck size={18} /><span>SSH 密钥</span></div>
-        <Input label="名称" value={sshKeyForm.name} onChange={(name) => setSshKeyForm({ ...sshKeyForm, name })} />
+        <div className="panel-title"><ShieldCheck size={18} /><span>{t("security.sshKeys")}</span></div>
+        <Input label={t("security.name")} value={sshKeyForm.name} onChange={(name) => setSshKeyForm({ ...sshKeyForm, name })} />
         <SelectRow
-          label="算法"
+          label={t("security.algorithm")}
           value={sshKeyForm.algorithm}
           onChange={(algorithm) => setSshKeyForm({ ...sshKeyForm, algorithm: Number(algorithm) as SshKeyAlgorithm })}
           options={[
@@ -506,7 +609,10 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
             [SshKeyAlgorithm.RSA, "RSA 4096"]
           ]}
         />
-        <button onClick={() => void generateSshKey()} type="button"><Plus size={15} />生成</button>
+        <button onClick={() => void generateSshKey()} type="button">
+          <Plus size={15} />
+          {t("security.generate")}
+        </button>
         <div className="table-list compact-list">
           {sshKeys.map((key) => (
             <div className="key-row" key={key.id}>
@@ -514,32 +620,46 @@ export function SecurityPanel({ clients }: { clients: Clients }) {
               <small>{sshAlgorithmLabel(key.algorithm)} · {key.privateKeyPath}</small>
             </div>
           ))}
-          {!sshKeys.length && <div className="empty-state">暂无密钥</div>}
+          {!sshKeys.length && <div className="empty-state">{t("security.noKeys")}</div>}
         </div>
       </div>
 
       <div className="panel full-span ssh-audit">
-        <div className="panel-title"><FileText size={18} /><span>SSH 登录审计</span></div>
+        <div className="panel-title"><FileText size={18} /><span>{t("security.sshAudit")}</span></div>
         <div className="table-list">
           {sshEvents.slice(0, 12).map((event) => (
             <div className="table-row firewall-row" key={event.id}>
               <div>
                 <strong>{event.username} · {event.sourceIp || "-"}</strong>
-                <small>{event.message || new Date(Number(event.occurredAtSeconds) * 1000).toLocaleString()}</small>
+                <small>
+                  {event.message || formatDateTime(new Date(Number(event.occurredAtSeconds) * 1000), locale)}
+                </small>
               </div>
-              <StatusPill label={event.successful ? "成功" : "失败"} tone={event.successful ? "good" : "danger"} />
-              <StatusPill label={event.autoBanned ? "已封禁" : "未封禁"} tone={event.autoBanned ? "danger" : "muted"} />
+              <StatusPill
+                label={event.successful ? t("security.success") : t("security.failure")}
+                tone={event.successful ? "good" : "danger"}
+              />
+              <StatusPill
+                label={event.autoBanned ? t("security.banned") : t("security.notBanned")}
+                tone={event.autoBanned ? "danger" : "muted"}
+              />
             </div>
           ))}
-          {!sshEvents.length && <div className="empty-state">暂无审计记录</div>}
+          {!sshEvents.length && <div className="empty-state">{t("security.noAuditRecords")}</div>}
         </div>
       </div>
 
       <div className="panel backup-panel full-span">
-        <div className="panel-title"><FileDown size={18} /><span>规则备份</span></div>
+        <div className="panel-title"><FileDown size={18} /><span>{t("security.ruleBackup")}</span></div>
         <div className="toolbar backup-actions">
-          <button onClick={() => void exportRules()} type="button"><FileDown size={15} />导出</button>
-          <button onClick={() => void importRules()} type="button"><FileUp size={15} />导入覆盖</button>
+          <button onClick={() => void exportRules()} type="button">
+            <FileDown size={15} />
+            {t("security.export")}
+          </button>
+          <button onClick={() => void importRules()} type="button">
+            <FileUp size={15} />
+            {t("security.importOverwrite")}
+          </button>
         </div>
         <textarea
           onChange={(event) => setBackupJson(event.target.value)}

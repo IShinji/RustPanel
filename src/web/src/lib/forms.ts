@@ -6,6 +6,7 @@ import {
   SshKeyAlgorithm,
   WafRuleKind
 } from "@/gen/rustpanel/v1/security_pb";
+import { tGlobal } from "./i18n/translate";
 
 // 各页面共享的表单形状与默认值。此前和三十来个页面挤在 App.tsx 顶部,
 // 页面一拆出去就互相引用不到,统一收在这里。
@@ -162,19 +163,24 @@ export const defaultDistributionForm: DistributionForm = {
   content: "managed_by=rustpanel\n",
   targetNodeId: ""
 };
-export const defaultFirewallForm: FirewallForm = {
-  id: "",
-  name: "SSH 管理",
-  protocol: FirewallProtocol.TCP,
-  action: FirewallAction.ALLOW,
-  direction: FirewallDirection.INBOUND,
-  portStart: "22",
-  portEnd: "",
-  source: "",
-  destination: "",
-  enabled: true,
-  comment: "面板安全入口"
-};
+// 这两个默认表单里带着示例文案(规则名/备注),不是纯粹的界面骨架——写成函数,
+// 每次"新建"都按当前语言现取,而不是在模块加载那一刻(通常还没确定用户选的语言)
+// 就把文案定死。
+export function defaultFirewallForm(): FirewallForm {
+  return {
+    id: "",
+    name: tGlobal("security.exampleRuleName"),
+    protocol: FirewallProtocol.TCP,
+    action: FirewallAction.ALLOW,
+    direction: FirewallDirection.INBOUND,
+    portStart: "22",
+    portEnd: "",
+    source: "",
+    destination: "",
+    enabled: true,
+    comment: tGlobal("security.exampleRuleComment")
+  };
+}
 export const defaultSecurityOptions: SecurityOptionsForm = {
   disablePing: false,
   scanProtectionEnabled: false,
@@ -197,15 +203,17 @@ export const defaultWafSettings: WafSettingsForm = {
   challengePagePath: "",
   lastApplyMessage: ""
 };
-export const defaultWafRuleForm: WafRuleForm = {
-  id: "",
-  name: "自定义关键词",
-  kind: WafRuleKind.KEYWORD,
-  pattern: "(badbot|malicious)",
-  enabled: true,
-  scopeDomain: "",
-  comment: ""
-};
+export function defaultWafRuleForm(): WafRuleForm {
+  return {
+    id: "",
+    name: tGlobal("security.exampleWafRuleName"),
+    kind: WafRuleKind.KEYWORD,
+    pattern: "(badbot|malicious)",
+    enabled: true,
+    scopeDomain: "",
+    comment: ""
+  };
+}
 export const defaultSshSettings: SshSettingsForm = {
   serviceEnabled: true,
   port: 22,
