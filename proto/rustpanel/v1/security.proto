@@ -358,4 +358,53 @@ service SecurityService {
   rpc GenerateSshKey(GenerateSshKeyRequest) returns (GenerateSshKeyResponse);
   rpc ListSshLoginEvents(ListSshLoginEventsRequest) returns (ListSshLoginEventsResponse);
   rpc RecordSshLoginEvent(RecordSshLoginEventRequest) returns (RecordSshLoginEventResponse);
+  // 面板两步验证(TOTP)绑定:扫码 → 输验证码确认才生效;关闭同样要验证码
+  rpc GetTwoFactorStatus(GetTwoFactorStatusRequest) returns (GetTwoFactorStatusResponse);
+  rpc BeginTwoFactorSetup(BeginTwoFactorSetupRequest) returns (BeginTwoFactorSetupResponse);
+  rpc ConfirmTwoFactorSetup(ConfirmTwoFactorSetupRequest) returns (ConfirmTwoFactorSetupResponse);
+  rpc DisableTwoFactor(DisableTwoFactorRequest) returns (DisableTwoFactorResponse);
+}
+
+// TwoFactorStatus 描述面板 TOTP 两步验证状态。
+message TwoFactorStatus {
+  bool enabled = 1;
+  // "panel":在面板里绑定;"env":由 RUSTPANEL_TOTP_SECRET 环境变量管理;未启用为空
+  string source = 2;
+}
+
+message GetTwoFactorStatusRequest {}
+
+message GetTwoFactorStatusResponse {
+  Response status = 1;
+  TwoFactorStatus two_factor = 2;
+}
+
+message BeginTwoFactorSetupRequest {}
+
+// BeginTwoFactorSetupResponse 返回待确认的新密钥(10 分钟内有效)。
+message BeginTwoFactorSetupResponse {
+  Response status = 1;
+  // base32 密钥,供不能扫码时手动输入
+  string secret = 2;
+  string otpauth_uri = 3;
+  // otpauth_uri 的二维码(SVG)
+  string qr_svg = 4;
+}
+
+message ConfirmTwoFactorSetupRequest {
+  string code = 1;
+}
+
+message ConfirmTwoFactorSetupResponse {
+  Response status = 1;
+  TwoFactorStatus two_factor = 2;
+}
+
+message DisableTwoFactorRequest {
+  string code = 1;
+}
+
+message DisableTwoFactorResponse {
+  Response status = 1;
+  TwoFactorStatus two_factor = 2;
 }

@@ -45,6 +45,8 @@ portable-pty = { version = "0.8", optional = true }
 prost = "0.13"
 prost-types = "0.13"
 rcgen = "0.13"
+# 两步验证绑定时生成 otpauth 二维码(纯 Rust SVG 渲染,不带图片编码依赖)
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 redis = { version = "0.27", default-features = false, features = ["tokio-comp"], optional = true }
 regex = "1"
 # 通知告警出站 HTTP(Webhook/Telegram/钉钉/企业微信/Bark)。走 rustls + 内置根证书,

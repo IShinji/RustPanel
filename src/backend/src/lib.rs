@@ -58,6 +58,7 @@ pub mod ssl;
 pub mod statefile;
 pub mod terminal;
 pub mod toolbox;
+pub mod two_factor;
 pub mod user;
 pub mod vsmtp;
 pub mod workload;

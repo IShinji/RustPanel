@@ -76,7 +76,6 @@ pub struct AuthServiceImpl {
     authority: JwtAuthority,
     credentials: PanelCredentials,
     security: SecurityConfig,
-    totp_secret: Option<Vec<u8>>,
     // 登录失败内存滑窗 + 上次告警时间;用于"登录失败激增"聚合通知(默认关)。
     recent_failures: Arc<tokio::sync::Mutex<Vec<u64>>>,
     last_login_alert: Arc<tokio::sync::Mutex<u64>>,
@@ -331,11 +330,12 @@ impl JwtAuthority {
 
 impl AuthServiceImpl {
     pub fn from_env(authority: JwtAuthority) -> Result<Self, AuthError> {
+        // 环境变量里的 TOTP 密钥写错了就尽早报错(实际读取见 two_factor::active_secret)
+        totp_secret_from_env()?;
         Ok(Self {
             authority,
             credentials: PanelCredentials::from_env()?,
             security: SecurityConfig::from_env(),
-            totp_secret: totp_secret_from_env()?,
             recent_failures: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             last_login_alert: Arc::new(tokio::sync::Mutex::new(0)),
             throttle: Arc::new(LoginThrottle::from_env()),
@@ -422,13 +422,13 @@ impl AuthService for AuthServiceImpl {
             return Err(Status::unauthenticated("invalid username or password"));
         };
 
-        let requires_two_factor =
-            self.security.two_factor_required().await || self.totp_secret.is_some();
-        if requires_two_factor {
-            let secret = self
-                .totp_secret
-                .as_deref()
-                .ok_or_else(|| Status::failed_precondition("TOTP secret is not configured"))?;
+        // 有生效的密钥(面板里绑定的或环境变量)才要求验证码。此前「强制两步验证」开关
+        // 在没配密钥时打开,会让所有人都登不进面板;现在没密钥就只记一条告警。
+        let totp_secret = crate::two_factor::active_secret().await;
+        if totp_secret.is_none() && self.security.two_factor_required().await {
+            tracing::warn!("two-factor required but no TOTP secret is enrolled; skipping");
+        }
+        if let Some(secret) = totp_secret.as_deref() {
             if request.totp_code.trim().is_empty()
                 || !verify_totp(
                     secret,
@@ -623,7 +623,7 @@ fn decode_totp_secret(secret: &str) -> Result<Vec<u8>, AuthError> {
         .map_err(|_| AuthError::InvalidTotpSecret)
 }
 
-fn verify_totp(secret: &[u8], code: &str, timestamp_seconds: u64) -> bool {
+pub(crate) fn verify_totp(secret: &[u8], code: &str, timestamp_seconds: u64) -> bool {
     if code.len() != TOTP_DIGITS as usize || !code.chars().all(|char| char.is_ascii_digit()) {
         return false;
     }

@@ -14,17 +14,20 @@ use uuid::Uuid;
 use crate::{
     audit, ok_response,
     proto::rustpanel::v1::{
-        security_service_server::SecurityService, DeleteFirewallRuleRequest,
-        DeleteFirewallRuleResponse, DeleteWafRuleRequest, DeleteWafRuleResponse,
+        security_service_server::SecurityService, BeginTwoFactorSetupRequest,
+        BeginTwoFactorSetupResponse, ConfirmTwoFactorSetupRequest, ConfirmTwoFactorSetupResponse,
+        DeleteFirewallRuleRequest, DeleteFirewallRuleResponse, DeleteWafRuleRequest,
+        DeleteWafRuleResponse, DisableTwoFactorRequest, DisableTwoFactorResponse,
         ExportFirewallRulesRequest, ExportFirewallRulesResponse, FirewallAction, FirewallBackend,
         FirewallDirection, FirewallProtocol, FirewallRule, GenerateSshKeyRequest,
         GenerateSshKeyResponse, GetSshSettingsRequest, GetSshSettingsResponse,
-        GetWafSettingsRequest, GetWafSettingsResponse, ImportFirewallRulesRequest,
-        ImportFirewallRulesResponse, ListFirewallRulesRequest, ListFirewallRulesResponse,
-        ListSshLoginEventsRequest, ListSshLoginEventsResponse, ListWafAttackEventsRequest,
-        ListWafAttackEventsResponse, RecordSshLoginEventRequest, RecordSshLoginEventResponse,
-        SecurityOptions, SetFirewallRuleEnabledRequest, SetFirewallRuleEnabledResponse,
-        SshKeyAlgorithm, SshKeyItem, SshLoginEvent, SshSettings, UpdateSecurityOptionsRequest,
+        GetTwoFactorStatusRequest, GetTwoFactorStatusResponse, GetWafSettingsRequest,
+        GetWafSettingsResponse, ImportFirewallRulesRequest, ImportFirewallRulesResponse,
+        ListFirewallRulesRequest, ListFirewallRulesResponse, ListSshLoginEventsRequest,
+        ListSshLoginEventsResponse, ListWafAttackEventsRequest, ListWafAttackEventsResponse,
+        RecordSshLoginEventRequest, RecordSshLoginEventResponse, SecurityOptions,
+        SetFirewallRuleEnabledRequest, SetFirewallRuleEnabledResponse, SshKeyAlgorithm, SshKeyItem,
+        SshLoginEvent, SshSettings, TwoFactorStatus, UpdateSecurityOptionsRequest,
         UpdateSecurityOptionsResponse, UpdateSshSettingsRequest, UpdateSshSettingsResponse,
         UpdateWafSettingsRequest, UpdateWafSettingsResponse, UpsertFirewallRuleRequest,
         UpsertFirewallRuleResponse, UpsertWafRuleRequest, UpsertWafRuleResponse, WafAttackEvent,
@@ -110,6 +113,80 @@ impl SecurityConfig {
 
 #[tonic::async_trait]
 impl SecurityService for SecurityServiceImpl {
+    async fn get_two_factor_status(
+        &self,
+        _request: Request<GetTwoFactorStatusRequest>,
+    ) -> Result<GrpcResponse<GetTwoFactorStatusResponse>, Status> {
+        Ok(GrpcResponse::new(GetTwoFactorStatusResponse {
+            status: Some(ok_response("ok")),
+            two_factor: Some(two_factor_status().await),
+        }))
+    }
+
+    async fn begin_two_factor_setup(
+        &self,
+        _request: Request<BeginTwoFactorSetupRequest>,
+    ) -> Result<GrpcResponse<BeginTwoFactorSetupResponse>, Status> {
+        let challenge = crate::two_factor::begin_setup(&two_factor_account())
+            .await
+            .map_err(two_factor_status_error)?;
+        Ok(GrpcResponse::new(BeginTwoFactorSetupResponse {
+            status: Some(ok_response("请用验证器扫码,然后输入 6 位验证码确认")),
+            secret: challenge.secret,
+            otpauth_uri: challenge.otpauth_uri,
+            qr_svg: challenge.qr_svg,
+        }))
+    }
+
+    async fn confirm_two_factor_setup(
+        &self,
+        request: Request<ConfirmTwoFactorSetupRequest>,
+    ) -> Result<GrpcResponse<ConfirmTwoFactorSetupResponse>, Status> {
+        crate::two_factor::confirm_setup(&request.into_inner().code)
+            .await
+            .map_err(two_factor_status_error)?;
+        let _ = crate::audit::append_audit_event(
+            "security",
+            "two_factor_enabled",
+            "panel two-factor authentication enabled".to_owned(),
+            "grpc",
+        )
+        .await;
+        Ok(GrpcResponse::new(ConfirmTwoFactorSetupResponse {
+            status: Some(ok_response("两步验证已启用,下次登录需要输入验证码")),
+            two_factor: Some(two_factor_status().await),
+        }))
+    }
+
+    async fn disable_two_factor(
+        &self,
+        request: Request<DisableTwoFactorRequest>,
+    ) -> Result<GrpcResponse<DisableTwoFactorResponse>, Status> {
+        crate::two_factor::disable(&request.into_inner().code)
+            .await
+            .map_err(two_factor_status_error)?;
+        // 密钥没了,「强制两步验证」开关也一并关掉,保持状态一致
+        {
+            let _guard = self.store.write_guard().await;
+            let mut state = self.store.load().await?;
+            if state.options.two_factor_required {
+                state.options.two_factor_required = false;
+                self.store.save(&state).await?;
+            }
+        }
+        let _ = crate::audit::append_audit_event(
+            "security",
+            "two_factor_disabled",
+            "panel two-factor authentication disabled".to_owned(),
+            "grpc",
+        )
+        .await;
+        Ok(GrpcResponse::new(DisableTwoFactorResponse {
+            status: Some(ok_response("两步验证已关闭")),
+            two_factor: Some(two_factor_status().await),
+        }))
+    }
+
     async fn list_firewall_rules(
         &self,
         _request: Request<ListFirewallRulesRequest>,
@@ -229,6 +306,12 @@ impl SecurityService for SecurityServiceImpl {
             .options
             .ok_or_else(|| Status::invalid_argument("security options are required"))?;
         validate_options(&options)?;
+        // 没有生效的 TOTP 密钥时打开「强制两步验证」没有意义(此前还会把所有人锁在外面)
+        if options.two_factor_required && crate::two_factor::source().await.is_none() {
+            return Err(Status::failed_precondition(
+                "请先在「两步验证」里绑定验证器,再开启强制两步验证",
+            ));
+        }
 
         let _guard = self.store.write_guard().await;
         let mut state = self.store.load().await?;
@@ -2353,6 +2436,30 @@ fn safe_key_name(name: &str) -> Result<String, Status> {
         Err(Status::invalid_argument("ssh key name is required"))
     } else {
         Ok(safe)
+    }
+}
+
+async fn two_factor_status() -> TwoFactorStatus {
+    let source = crate::two_factor::source().await;
+    TwoFactorStatus {
+        enabled: source.is_some(),
+        source: source.unwrap_or_default().to_owned(),
+    }
+}
+
+/// 验证器里显示的账户名:管理员用户名@主机名。
+fn two_factor_account() -> String {
+    let user = env::var("RUSTPANEL_ADMIN_USERNAME").unwrap_or_else(|_| "admin".to_owned());
+    let host = sysinfo::System::host_name().unwrap_or_else(|| "rustpanel".to_owned());
+    format!("{user}@{host}")
+}
+
+fn two_factor_status_error(error: crate::two_factor::TwoFactorError) -> Status {
+    use crate::two_factor::TwoFactorError;
+    match error {
+        TwoFactorError::InvalidCode => Status::invalid_argument(error.to_string()),
+        TwoFactorError::Io(_) => Status::internal(error.to_string()),
+        _ => Status::failed_precondition(error.to_string()),
     }
 }
 

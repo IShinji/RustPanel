@@ -406,7 +406,8 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
           </Card>
         </TabsContent>
 
-        <TabsContent value="security" className="mt-4">
+        <TabsContent value="security" className="mt-4 flex flex-col gap-4">
+          <TwoFactorCard clients={clients} />
           <Card>
             <CardHeader>
               <CardTitle>登录与请求保护</CardTitle>
@@ -693,6 +694,144 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
 // AcmeSettingsCard:面板级 ACME 偏好(联系邮箱 + staging↔production 开关)。
 // 替代之前藏在 RUSTPANEL_ACME_PRODUCTION env var 里的 prod toggle ——
 // 用户不用 ssh 改 .env 再 restart backend,直接 UI 里勾。
+// 两步验证绑定:生成密钥 → 扫码 → 输入验证码确认才生效;关闭同样要验证码。
+function TwoFactorCard({ clients }: { clients: Clients }) {
+  const [enabled, setEnabled] = useState(false);
+  const [source, setSource] = useState("");
+  const [setup, setSetup] = useState<{ secret: string; qrSvg: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const response = await clients.security.getTwoFactorStatus({});
+      setEnabled(response.twoFactor?.enabled ?? false);
+      setSource(response.twoFactor?.source ?? "");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const run = async (action: () => Promise<{ status?: { message: string } }>) => {
+    setError("");
+    setMessage("");
+    try {
+      const response = await action();
+      setMessage(response.status?.message ?? "");
+      setCode("");
+      await load();
+      return true;
+    } catch (err) {
+      setError(safeError(err));
+      return false;
+    }
+  };
+
+  const begin = async () => {
+    setError("");
+    try {
+      const response = await clients.security.beginTwoFactorSetup({});
+      setSetup({ secret: response.secret, qrSvg: response.qrSvg });
+      setMessage(response.status?.message ?? "");
+    } catch (err) {
+      setError(safeError(err));
+    }
+  };
+
+  const confirm = async () => {
+    if (await run(() => clients.security.confirmTwoFactorSetup({ code }))) {
+      setSetup(null);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>两步验证</CardTitle>
+        <CardDescription>
+          {enabled
+            ? source === "env"
+              ? "已启用(由环境变量 RUSTPANEL_TOTP_SECRET 管理)"
+              : "已启用:登录时需要输入验证器里的 6 位验证码"
+            : "未启用:面板暴露在公网时强烈建议开启"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {message && !error && <p className="text-sm text-success">{message}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!enabled && !setup && (
+          <div>
+            <UIButton size="sm" onClick={() => void begin()}>
+              <ShieldCheck className="size-4" />
+              开始绑定
+            </UIButton>
+          </div>
+        )}
+        {!enabled && setup && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              用 Google Authenticator / 1Password / Authy 等验证器扫描二维码,再输入显示的 6 位验证码。
+            </p>
+            {/* SVG 由后端 qrcode crate 生成,只含矩形路径 */}
+            <div
+              className="w-[200px] rounded-md border border-border bg-white p-1 [&>svg]:h-auto [&>svg]:w-full"
+              dangerouslySetInnerHTML={{ __html: setup.qrSvg }}
+            />
+            <p className="text-xs text-muted-foreground break-all">
+              不能扫码时手动输入密钥:<span className="font-mono">{setup.secret}</span>
+            </p>
+            <div className="flex items-end gap-2">
+              <div className="grid gap-1">
+                <UILabel htmlFor="twofa-code">验证码</UILabel>
+                <UIInput
+                  id="twofa-code"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={code}
+                  onChange={(event) => setCode(event.target.value.trim())}
+                />
+              </div>
+              <UIButton size="sm" onClick={() => void confirm()} disabled={code.length !== 6}>
+                确认启用
+              </UIButton>
+              <UIButton size="sm" variant="outline" onClick={() => setSetup(null)}>
+                取消
+              </UIButton>
+            </div>
+          </div>
+        )}
+        {enabled && source === "panel" && (
+          <div className="flex items-end gap-2">
+            <div className="grid gap-1">
+              <UILabel htmlFor="twofa-disable-code">当前验证码</UILabel>
+              <UIInput
+                id="twofa-disable-code"
+                inputMode="numeric"
+                maxLength={6}
+                value={code}
+                onChange={(event) => setCode(event.target.value.trim())}
+              />
+            </div>
+            <UIButton
+              size="sm"
+              variant="destructive"
+              disabled={code.length !== 6}
+              onClick={() => void run(() => clients.security.disableTwoFactor({ code }))}
+            >
+              关闭两步验证
+            </UIButton>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function AcmeSettingsCard({
   clients,
   onMessage,
