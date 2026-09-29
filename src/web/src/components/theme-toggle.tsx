@@ -8,17 +8,19 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { useTheme } from "@/components/theme-provider";
+import { useLocale } from "@/lib/i18n/locale-provider";
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
+  const { t } = useLocale();
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="切换主题">
+        <Button variant="ghost" size="icon" aria-label={t("components.themeToggleLabel")}>
           <Sun className="size-4 scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
           <Moon className="absolute size-4 scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
-          <span className="sr-only">切换主题</span>
+          <span className="sr-only">{t("components.themeToggleLabel")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -28,7 +30,7 @@ export function ThemeToggle() {
           className="data-[active=true]:bg-accent"
         >
           <Sun className="size-4" />
-          <span>浅色</span>
+          <span>{t("components.themeLight")}</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => setTheme("dark")}
@@ -36,7 +38,7 @@ export function ThemeToggle() {
           className="data-[active=true]:bg-accent"
         >
           <Moon className="size-4" />
-          <span>深色</span>
+          <span>{t("components.themeDark")}</span>
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => setTheme("system")}
@@ -44,7 +46,7 @@ export function ThemeToggle() {
           className="data-[active=true]:bg-accent"
         >
           <Monitor className="size-4" />
-          <span>跟随系统</span>
+          <span>{t("components.themeSystem")}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

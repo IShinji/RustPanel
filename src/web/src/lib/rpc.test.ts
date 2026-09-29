@@ -39,9 +39,9 @@ Object.assign(globalThis, {
   }
 });
 
-const { appendAuthQuery, clearAuthToken, getAuthToken, onAuthChanged, setAuthToken } = await import(
-  "./rpc"
-);
+const { appendAuthQuery, authFetch, clearAuthToken, getAuthToken, onAuthChanged, setAuthToken } =
+  await import("./rpc");
+const { getActiveLocale, setActiveLocale } = await import("./i18n/translate");
 
 beforeEach(() => {
   clearAuthToken();
@@ -81,4 +81,23 @@ test("auth change subscribers fire on login and logout, and unsubscribe works", 
   unsubscribe();
   setAuthToken("jwt-456");
   expect(hits).toBe(2);
+});
+
+test("authFetch tells the backend which language to reply in", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocale = getActiveLocale();
+  let sentHeaders: Headers | undefined;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    sentHeaders = new Headers(init?.headers);
+    return new Response(null, { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    setActiveLocale("en");
+    await authFetch("/api/fs/download?path=/etc");
+    expect(sentHeaders?.get("x-rustpanel-locale")).toBe("en");
+  } finally {
+    globalThis.fetch = originalFetch;
+    setActiveLocale(originalLocale);
+  }
 });

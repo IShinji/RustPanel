@@ -26,8 +26,12 @@ import { ToolboxService } from "../gen/rustpanel/v1/toolbox_pb";
 import { UserService } from "../gen/rustpanel/v1/user_pb";
 import { VsmtpAliasService } from "../gen/rustpanel/v1/vsmtp_pb";
 import { WorkloadService } from "../gen/rustpanel/v1/workload_pb";
+import { getActiveLocale } from "./i18n/translate";
 
 const TOKEN_KEY = "rustpanel.token";
+// 后端按这个 header 决定成功/错误提示用哪种语言(见 backend/src/i18n.rs);
+// 没有这个 header 时后端退回简体中文,不影响老前端 / 直接 curl 调用。
+const LOCALE_HEADER = "x-rustpanel-locale";
 const AUTH_CHANGED_EVENT = "rustpanel:auth-changed";
 
 // 浏览器关闭标签即清空 token,降低长期暴露风险
@@ -58,6 +62,7 @@ export function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Pro
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
+  headers.set(LOCALE_HEADER, getActiveLocale());
   return fetch(input, { ...init, headers }).then(async (response) => {
     if (response.status === 401) {
       clearAuthToken();
@@ -79,6 +84,7 @@ const authInterceptor: Interceptor = (next) => async (req) => {
   if (token) {
     req.header.set("Authorization", `Bearer ${token}`);
   }
+  req.header.set(LOCALE_HEADER, getActiveLocale());
   try {
     return await next(req);
   } catch (error) {

@@ -90,6 +90,9 @@ import {
 } from "./components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { ThemeToggle } from "./components/theme-toggle";
+import { LanguageToggle } from "./components/language-toggle";
+import { useLocale } from "./lib/i18n/locale-provider";
+import type { MessageKey } from "./lib/i18n/translate";
 import { cn } from "./lib/utils";
 import {
   clearAuthToken,
@@ -164,13 +167,14 @@ type TabId =
 type NavGroup = "overview" | "host" | "resource" | "security" | "tools" | "system";
 type NavTab = {
   id: TabId;
-  label: string;
+  labelKey: MessageKey;
   icon: typeof Activity;
   group: NavGroup;
   modules?: string[];
 };
 type MonitorRange = "1h" | "24h" | "7d" | "custom";
 
+// monitorRanges 只在 Dashboard 里用,label 随 Dashboard 一起迁移(见后续 i18n 提交)。
 const monitorRanges: Array<{ id: MonitorRange; label: string }> = [
   { id: "1h", label: "1h" },
   { id: "24h", label: "24h" },
@@ -178,42 +182,49 @@ const monitorRanges: Array<{ id: MonitorRange; label: string }> = [
   { id: "custom", label: "自定义" }
 ];
 const tabs: NavTab[] = [
-  { id: "dashboard", label: "仪表盘", icon: Activity, group: "overview" },
-  { id: "sites", label: "网站", icon: Globe, group: "host", modules: ["sites", "ssl"] },
-  { id: "ftp", label: "FTP", icon: HardDrive, group: "host" },
-  { id: "database", label: "数据库", icon: Database, group: "host", modules: ["database"] },
-  { id: "files", label: "文件", icon: Folder, group: "resource", modules: ["files"] },
-  { id: "cron", label: "计划任务", icon: Clock, group: "resource", modules: ["cron"] },
-  { id: "appstore", label: "软件商店", icon: Store, group: "resource", modules: ["appstore"] },
-  { id: "vsmtp", label: "邮件别名", icon: Mail, group: "resource", modules: ["appstore"] },
-  { id: "docker", label: "容器", icon: Boxes, group: "resource", modules: ["docker"] },
-  { id: "security", label: "安全", icon: Shield, group: "security", modules: ["security"] },
-  { id: "audit", label: "日志", icon: ScrollText, group: "security", modules: ["cluster"] },
-  { id: "cluster", label: "集群", icon: Network, group: "security", modules: ["cluster"] },
-  { id: "terminal", label: "终端", icon: TerminalSquare, group: "tools", modules: ["terminal"] },
-  { id: "micro", label: "Micro", icon: Power, group: "tools", modules: ["static-sites", "workloads", "proxy"] },
-  { id: "network", label: "网络与端口", icon: Wifi, group: "system" },
-  { id: "notifications", label: "通知", icon: Bell, group: "system" },
-  { id: "backup", label: "备份", icon: Archive, group: "tools" },
-  { id: "toolbox", label: "工具箱", icon: HardDrive, group: "tools" },
-  { id: "accesslog", label: "访问统计", icon: BarChart3, group: "tools" },
-  { id: "dns", label: "DNS", icon: Globe, group: "tools" },
-  { id: "users", label: "用户", icon: UserCircle2, group: "system" },
-  { id: "settings", label: "面板设置", icon: SettingsIcon, group: "system" }
+  { id: "dashboard", labelKey: "app.navDashboard", icon: Activity, group: "overview" },
+  { id: "sites", labelKey: "app.navSites", icon: Globe, group: "host", modules: ["sites", "ssl"] },
+  { id: "ftp", labelKey: "app.navFtp", icon: HardDrive, group: "host" },
+  { id: "database", labelKey: "app.navDatabase", icon: Database, group: "host", modules: ["database"] },
+  { id: "files", labelKey: "app.navFiles", icon: Folder, group: "resource", modules: ["files"] },
+  { id: "cron", labelKey: "app.navCron", icon: Clock, group: "resource", modules: ["cron"] },
+  { id: "appstore", labelKey: "app.navAppstore", icon: Store, group: "resource", modules: ["appstore"] },
+  { id: "vsmtp", labelKey: "app.navVsmtp", icon: Mail, group: "resource", modules: ["appstore"] },
+  { id: "docker", labelKey: "app.navDocker", icon: Boxes, group: "resource", modules: ["docker"] },
+  { id: "security", labelKey: "app.navSecurity", icon: Shield, group: "security", modules: ["security"] },
+  { id: "audit", labelKey: "app.navAudit", icon: ScrollText, group: "security", modules: ["cluster"] },
+  { id: "cluster", labelKey: "app.navCluster", icon: Network, group: "security", modules: ["cluster"] },
+  { id: "terminal", labelKey: "app.navTerminal", icon: TerminalSquare, group: "tools", modules: ["terminal"] },
+  {
+    id: "micro",
+    labelKey: "app.navMicro",
+    icon: Power,
+    group: "tools",
+    modules: ["static-sites", "workloads", "proxy"]
+  },
+  { id: "network", labelKey: "app.navNetwork", icon: Wifi, group: "system" },
+  { id: "notifications", labelKey: "app.navNotifications", icon: Bell, group: "system" },
+  { id: "backup", labelKey: "app.navBackup", icon: Archive, group: "tools" },
+  { id: "toolbox", labelKey: "app.navToolbox", icon: HardDrive, group: "tools" },
+  { id: "accesslog", labelKey: "app.navAccesslog", icon: BarChart3, group: "tools" },
+  { id: "dns", labelKey: "app.navDns", icon: Globe, group: "tools" },
+  { id: "users", labelKey: "app.navUsers", icon: UserCircle2, group: "system" },
+  { id: "settings", labelKey: "app.navSettings", icon: SettingsIcon, group: "system" }
 ];
 
-const navGroups: Array<{ id: NavGroup; label: string }> = [
-  { id: "overview", label: "总览" },
-  { id: "host", label: "主机" },
-  { id: "resource", label: "资源" },
-  { id: "security", label: "安全" },
-  { id: "tools", label: "工具" },
-  { id: "system", label: "系统" }
+const navGroups: Array<{ id: NavGroup; labelKey: MessageKey }> = [
+  { id: "overview", labelKey: "app.groupOverview" },
+  { id: "host", labelKey: "app.groupHost" },
+  { id: "resource", labelKey: "app.groupResource" },
+  { id: "security", labelKey: "app.groupSecurity" },
+  { id: "tools", labelKey: "app.groupTools" },
+  { id: "system", labelKey: "app.groupSystem" }
 ];
 
 // 登录页:无 token 时唯一可访问的视图。提交后调用 AuthService.Login,成功则把 JWT 写入 sessionStorage
 // 并触发 rustpanel:auth-changed 事件,App 会重新渲染主面板。
 function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
+  const { t } = useLocale();
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
@@ -234,11 +245,11 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
         });
         if (response.requiresTwoFactor && !response.accessToken) {
           setRequiresTwoFactor(true);
-          setError("请输入两步验证码");
+          setError(t("app.totpRequired"));
           return;
         }
         if (!response.accessToken) {
-          setError(response.status?.message || "登录失败");
+          setError(response.status?.message || t("app.loginFailed"));
           return;
         }
         setAuthToken(response.accessToken);
@@ -249,11 +260,15 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
         setSubmitting(false);
       }
     },
-    [username, password, totpCode, onAuthenticated]
+    [username, password, totpCode, onAuthenticated, t]
   );
 
   return (
     <div className="login-shell">
+      <div className="fixed right-4 top-4 flex gap-2">
+        <LanguageToggle />
+        <ThemeToggle />
+      </div>
       <Card className="w-full max-w-sm border-border/60 shadow-2xl backdrop-blur supports-[backdrop-filter]:bg-card/90">
         <CardHeader className="gap-1.5">
           <div className="flex items-center gap-3">
@@ -262,14 +277,14 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
             </div>
             <div className="flex flex-col">
               <CardTitle className="text-lg tracking-tight">RustPanel</CardTitle>
-              <CardDescription>请使用管理员账户登录</CardDescription>
+              <CardDescription>{t("app.loginSubtitle")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <div className="flex flex-col gap-2">
-              <UILabel htmlFor="login-username">用户名</UILabel>
+              <UILabel htmlFor="login-username">{t("app.username")}</UILabel>
               <UIInput
                 id="login-username"
                 autoComplete="username"
@@ -281,7 +296,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <UILabel htmlFor="login-password">密码</UILabel>
+              <UILabel htmlFor="login-password">{t("app.password")}</UILabel>
               <UIInput
                 id="login-password"
                 autoComplete="current-password"
@@ -294,7 +309,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
             </div>
             {requiresTwoFactor && (
               <div className="flex flex-col gap-2">
-                <UILabel htmlFor="login-totp">两步验证码</UILabel>
+                <UILabel htmlFor="login-totp">{t("app.totpCode")}</UILabel>
                 <UIInput
                   id="login-totp"
                   autoComplete="one-time-code"
@@ -315,10 +330,14 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
               </div>
             )}
             <UIButton className="w-full" disabled={submitting} type="submit">
-              {submitting ? "登录中..." : "登录"}
+              {submitting ? t("app.loggingIn") : t("app.login")}
             </UIButton>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              初始密码在安装时打印,也可在 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">/www/wwwroot/rustpanel/.env</code> 里查 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">RUSTPANEL_ADMIN_PASSWORD</code>。
+              {t("app.loginHintBefore")}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">RUSTPANEL_ADMIN_PASSWORD</code>
+              {t("app.loginHintMiddle")}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">/www/wwwroot/rustpanel/.env</code>
+              {t("app.loginHintAfter")}
             </p>
           </form>
         </CardContent>
@@ -376,6 +395,7 @@ function tabIdFromHash(): TabId | null {
 }
 
 function AppShell({ onLogout }: { onLogout: () => void }) {
+  const { t } = useLocale();
   // 路由:URL hash 是唯一真源,active 只是把它转成强类型 TabId。
   // 第一次渲染就读 hash,刷新页面能停在当前 Tab,深链接(/#sites)直达。
   const [active, setActiveState] = useState<TabId>(
@@ -445,20 +465,20 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="RustPanel navigation">
+      <aside className="sidebar" aria-label={t("app.sidebarNav")}>
         <div className="brand">
           <div className="flex size-8 items-center justify-center rounded-md bg-primary/15 text-primary ring-1 ring-primary/20">
             <Server className="size-4" />
           </div>
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold tracking-tight">RustPanel</span>
-            <span className="text-[11px] text-muted-foreground">控制面板</span>
+            <span className="text-[11px] text-muted-foreground">{t("app.brandSubtitle")}</span>
           </div>
         </div>
         <nav className="nav-list flex flex-col">
           {groupedTabs.map((group) => (
             <div key={group.id} className="flex flex-col gap-0.5">
-              {group.id !== "overview" && <div className="nav-group-title">{group.label}</div>}
+              {group.id !== "overview" && <div className="nav-group-title">{t(group.labelKey)}</div>}
               {group.items.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = active === tab.id;
@@ -470,7 +490,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
                     className={cn("nav-item", isActive && "active")}
                   >
                     <Icon className="size-[18px] shrink-0" />
-                    <span>{tab.label}</span>
+                    <span>{t(tab.labelKey)}</span>
                   </button>
                 );
               })}
@@ -479,12 +499,12 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
         </nav>
         <button className="nav-logout" onClick={onLogout} type="button">
           <LogOut className="size-[18px] shrink-0" />
-          <span>退出登录</span>
+          <span>{t("app.logout")}</span>
         </button>
       </aside>
 
       <main className="min-w-0 flex flex-col overflow-hidden">
-        <Topbar title={activeTab?.label ?? "仪表盘"} onLogout={onLogout} />
+        <Topbar title={activeTab ? t(activeTab.labelKey) : t("app.navDashboard")} onLogout={onLogout} />
         <RollbackBanner clients={clients} />
         <div className="workspace flex-1 overflow-auto">
           {active === "dashboard" && <Dashboard clients={clients} />}
@@ -528,6 +548,7 @@ function AppShell({ onLogout }: { onLogout: () => void }) {
 // 规则 / 面板端口)都会在这里产生倒计时,用户在到期前点"保留"才不会被
 // 还原。空闲时不显示。
 function RollbackBanner({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [pending, setPending] = useState<PendingRollbackAction | null>(null);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
 
@@ -582,7 +603,10 @@ function RollbackBanner({ clients }: { clients: Clients }) {
       <ShieldAlert className="size-4 text-warning shrink-0" />
       <div className="flex flex-col flex-1 min-w-0">
         <span className="font-medium truncate">
-          {pending.title} · 还剩 <span className="tabular-nums font-bold">{remaining}</span> 秒自动回滚
+          {pending.title}
+          {t("app.rollbackPrefix")}
+          <span className="tabular-nums font-bold">{remaining}</span>
+          {t("app.rollbackSuffix")}
         </span>
         {pending.description && (
           <span className="text-xs text-muted-foreground truncate">
@@ -598,13 +622,14 @@ function RollbackBanner({ clients }: { clients: Clients }) {
       </div>
       <UIButton size="sm" onClick={() => void confirm()}>
         <ShieldCheck className="size-4" />
-        保留(我能登录)
+        {t("app.rollbackKeep")}
       </UIButton>
     </div>
   );
 }
 
 function Topbar({ title, onLogout }: { title: string; onLogout: () => void }) {
+  const { t } = useLocale();
   return (
     <header className="flex h-14 items-center justify-between gap-4 border-b border-border bg-card/60 px-6 backdrop-blur">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -613,19 +638,20 @@ function Topbar({ title, onLogout }: { title: string; onLogout: () => void }) {
         <span className="font-medium text-foreground">{title}</span>
       </div>
       <div className="flex items-center gap-2">
+        <LanguageToggle />
         <ThemeToggle />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <UIButton variant="ghost" size="icon" aria-label="账户">
+            <UIButton variant="ghost" size="icon" aria-label={t("app.account")}>
               <UserCircle2 className="size-5" />
             </UIButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>账户</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("app.account")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={onLogout}>
               <LogOut className="size-4" />
-              <span>退出登录</span>
+              <span>{t("app.logout")}</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

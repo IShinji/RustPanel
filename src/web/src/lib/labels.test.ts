@@ -18,6 +18,10 @@ import {
   SshKeyAlgorithm,
   WafRuleKind
 } from "../gen/rustpanel/v1/security_pb";
+import { translator } from "./i18n/translate";
+
+const zh = translator("zh-CN");
+const en = translator("en");
 
 test("audit level maps to badge tone, unknown falls back to muted", () => {
   expect(auditLevelVariant("ERROR")).toBe("destructive");
@@ -34,13 +38,21 @@ test("app state maps to badge tone by keyword", () => {
   expect(appStateVariant("")).toBe("muted");
 });
 
-test("security enums render Chinese labels with a dash fallback", () => {
+test("security enums render labels in the given language with a dash fallback", () => {
   expect(firewallProtocolLabel(FirewallProtocol.TCP)).toBe("TCP");
   expect(firewallProtocolLabel(FirewallProtocol.UNSPECIFIED)).toBe("-");
-  expect(firewallActionLabel(FirewallAction.DENY)).toBe("屏蔽");
-  expect(firewallDirectionLabel(FirewallDirection.OUTBOUND)).toBe("出站");
-  expect(wafKindLabel(WafRuleKind.SQL_INJECTION)).toBe("SQL 注入");
+  expect(firewallActionLabel(FirewallAction.DENY, zh)).toBe("屏蔽");
+  expect(firewallActionLabel(FirewallAction.DENY, en)).toBe("Deny");
+  expect(firewallDirectionLabel(FirewallDirection.OUTBOUND, zh)).toBe("出站");
+  expect(firewallDirectionLabel(FirewallDirection.OUTBOUND, en)).toBe("Outbound");
+  expect(wafKindLabel(WafRuleKind.SQL_INJECTION, zh)).toBe("SQL 注入");
+  expect(wafKindLabel(WafRuleKind.SQL_INJECTION, en)).toBe("SQL injection");
+  expect(wafKindLabel(WafRuleKind.CC, en)).toBe("CC");
   expect(sshAlgorithmLabel(SshKeyAlgorithm.ED25519)).toBe("Ed25519");
+});
+
+test("firewall/waf labels default to the global active locale when no translator is passed", () => {
+  expect(firewallActionLabel(FirewallAction.DENY)).toBe("屏蔽");
 });
 
 test("editor language is derived from the extension", () => {

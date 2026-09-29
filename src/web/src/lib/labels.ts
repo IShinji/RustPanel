@@ -5,6 +5,7 @@ import {
   SshKeyAlgorithm,
   WafRuleKind
 } from "@/gen/rustpanel/v1/security_pb";
+import { tGlobal, type TFn } from "./i18n/translate";
 
 // 枚举 → 中文短语,以及几个纯字符串工具。都是无状态纯函数,单独成模块方便
 // 各页面各自引用,也方便直接写单测。
@@ -24,25 +25,27 @@ export function firewallProtocolLabel(protocol: FirewallProtocol): string {
   return "-";
 }
 
-export function firewallActionLabel(action: FirewallAction): string {
-  if (action === FirewallAction.ALLOW) return "放行";
-  if (action === FirewallAction.DENY) return "屏蔽";
-  if (action === FirewallAction.REJECT) return "拒绝";
+// t 默认取全局当前语言,调用方拿到 useLocale() 的 t 后可以显式传入以获得
+// 语言切换时的即时重渲染(见 lib/format.ts 的 formatDuration 同款注释)。
+export function firewallActionLabel(action: FirewallAction, t: TFn = tGlobal): string {
+  if (action === FirewallAction.ALLOW) return t("security.firewallAllow");
+  if (action === FirewallAction.DENY) return t("security.firewallDeny");
+  if (action === FirewallAction.REJECT) return t("security.firewallReject");
   return "-";
 }
 
-export function firewallDirectionLabel(direction: FirewallDirection): string {
-  if (direction === FirewallDirection.INBOUND) return "入站";
-  if (direction === FirewallDirection.OUTBOUND) return "出站";
+export function firewallDirectionLabel(direction: FirewallDirection, t: TFn = tGlobal): string {
+  if (direction === FirewallDirection.INBOUND) return t("security.directionInbound");
+  if (direction === FirewallDirection.OUTBOUND) return t("security.directionOutbound");
   return "-";
 }
 
-export function wafKindLabel(kind: WafRuleKind): string {
+export function wafKindLabel(kind: WafRuleKind, t: TFn = tGlobal): string {
   if (kind === WafRuleKind.CC) return "CC";
-  if (kind === WafRuleKind.SQL_INJECTION) return "SQL 注入";
+  if (kind === WafRuleKind.SQL_INJECTION) return t("security.wafSqlInjection");
   if (kind === WafRuleKind.XSS) return "XSS";
-  if (kind === WafRuleKind.KEYWORD) return "关键词";
-  if (kind === WafRuleKind.SCANNER) return "扫描器";
+  if (kind === WafRuleKind.KEYWORD) return t("security.wafKeyword");
+  if (kind === WafRuleKind.SCANNER) return t("security.wafScanner");
   return "-";
 }
 
