@@ -155,6 +155,10 @@ export function DnsPage({ clients }: { clients: Clients }) {
               onChange={setApiToken}
             />
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            配置后,该 Zone 下域名的 Let&apos;s Encrypt 证书走 DNS-01 全自动签发与续签(NAT 机器也可用)。
+            Token 需要 Zone → DNS → Edit 权限。
+          </p>
           <div className="mt-3">
             <UIButton size="sm" onClick={() => void saveConfig()}>
               保存配置

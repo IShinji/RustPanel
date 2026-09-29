@@ -86,11 +86,44 @@ impl SslService for SslServiceImpl {
         // P8-04-5:走真实 instant-acme 状态机,第一次返回真 TXT,第二次完成
         // 验证拿到证书。manual 模式默认走 staging,生产需要 RUSTPANEL_ACME_PRODUCTION=1。
         if effective_challenge == AcmeChallengeType::Dns01 {
-            let provider = if request.dns_provider.trim().is_empty() {
+            // 未指定 provider 且 DNS 页配好了 Cloudflare → 全自动(写 TXT / 等生效 / 签发 / 清理);
+            // 显式 "manual" 仍走两步手动 TXT。
+            let requested = request.dns_provider.trim();
+            let provider = if requested == "cloudflare"
+                || (requested.is_empty() && crate::dns::cloudflare_configured().await)
+            {
+                "cloudflare"
+            } else if requested.is_empty() {
                 "manual"
             } else {
-                request.dns_provider.trim()
+                requested
             };
+            if provider == "cloudflare" {
+                send_progress(
+                    &sender,
+                    &request.domain,
+                    CertificateState::Pending,
+                    "dns-01: 通过 Cloudflare API 自动写入 TXT 并等待生效",
+                );
+                let cert = crate::acme::issue_dns01_cloudflare(&request.domain, &request.email)
+                    .await
+                    .map_err(|e| Status::internal(format!("acme dns-01 (cloudflare): {e}")))?;
+                install_acme_certificate(&request.domain, &cert).await?;
+                send_progress(
+                    &sender,
+                    &request.domain,
+                    CertificateState::Issued,
+                    "certificate stored via ACME (dns-01, cloudflare)",
+                );
+                let _ = reload_active_proxy().await;
+                let item = certificate_item(&request.domain, CertificateState::Issued).await?;
+                return Ok(GrpcResponse::new(RequestCertificateResponse {
+                    status: Some(ok_response("certificate issued via dns-01 (cloudflare)")),
+                    certificate: Some(item),
+                    dns_record_name: String::new(),
+                    dns_record_value: String::new(),
+                }));
+            }
             if provider == "manual" {
                 send_progress(
                     &sender,
@@ -127,6 +160,7 @@ impl SslService for SslServiceImpl {
                         let _ = cert_dir; // 兼容旧路径
                         let _ = (cert_path, key_path);
                         clear_bootstrap_marker(&request.domain).await;
+                        let _ = tokio::fs::remove_file(imported_marker_path(&request.domain)).await;
                         send_progress(
                             &sender,
                             &request.domain,
@@ -145,9 +179,8 @@ impl SslService for SslServiceImpl {
                     }
                 }
             }
-            // cloudflare/route53 等 provider 留待后续实现
             return Err(Status::unimplemented(format!(
-                "DNS provider {provider} 暂未实现,请使用 manual 模式手动添加 TXT 记录"
+                "DNS provider {provider} 暂未实现,请使用 cloudflare 或 manual"
             )));
         }
 
@@ -188,6 +221,7 @@ impl SslService for SslServiceImpl {
                 .map_err(|e| Status::internal(format!("acme install: {e}")))?;
         let _ = (cert_path, key_path);
         clear_bootstrap_marker(&request.domain).await;
+        let _ = tokio::fs::remove_file(imported_marker_path(&request.domain)).await;
         send_progress(
             &sender,
             &request.domain,
@@ -266,6 +300,10 @@ impl SslService for SslServiceImpl {
                 .map_err(io_status)?;
         }
         clear_bootstrap_marker(&request.domain).await;
+        // 标记为导入证书:自动续签不会把它换成 LE,只在临期时提醒重新导入
+        tokio::fs::write(imported_marker_path(&request.domain), b"imported")
+            .await
+            .map_err(io_status)?;
         let certificate = certificate_item(&request.domain, CertificateState::Issued).await?;
         let _ = reload_active_proxy().await;
         // 证书只按域名落盘;代理配置是从站点生成的。没有站点绑定这个域名时要明确说,
@@ -307,6 +345,21 @@ impl SslService for SslServiceImpl {
                 "未设置 ACME 联系邮箱;请去面板设置里填一次真实邮箱再续签",
             ));
         }
+        if crate::dns::cloudflare_configured().await {
+            let cert = crate::acme::issue_dns01_cloudflare(&domain, &email)
+                .await
+                .map_err(|e| Status::internal(format!("acme renew (cloudflare): {e}")))?;
+            install_acme_certificate(&domain, &cert).await?;
+            let item = certificate_item(&domain, CertificateState::Issued).await?;
+            let reload_output = reload_active_proxy().await;
+            return Ok(GrpcResponse::new(RenewCertificateResponse {
+                status: Some(ok_response("certificate renewed via dns-01 (cloudflare)")),
+                certificate: Some(item),
+                output: reload_output,
+                dns_record_name: String::new(),
+                dns_record_value: String::new(),
+            }));
+        }
         let outcome = crate::acme::request_or_resume_dns01(&domain, &email)
             .await
             .map_err(|e| Status::internal(format!("acme renew: {e}")))?;
@@ -321,10 +374,7 @@ impl SslService for SslServiceImpl {
                 }))
             }
             crate::acme::RequestOutcome::Issued(cert) => {
-                crate::acme::install_certificate(&domain, &cert, &cert_root())
-                    .await
-                    .map_err(|e| Status::internal(format!("acme install: {e}")))?;
-                clear_bootstrap_marker(&domain).await;
+                install_acme_certificate(&domain, &cert).await?;
                 let item = certificate_item(&domain, CertificateState::Issued).await?;
                 // reload 是 side-effect,失败也只是 output 里多一行说明,
                 // 不影响 cert 已经签下来并装盘的事实。output 内容会被前端
@@ -477,32 +527,54 @@ pub async fn renew_due_certificates() -> Result<(), Status> {
             tracing::info!(%domain, "certificate managed outside RustPanel, skipping");
             continue;
         }
-        let Some(webroot) = crate::site::find_site_webroot_by_domain(&domain).await else {
-            tracing::warn!(%domain, "no site webroot for HTTP-01, manual DNS-01 renewal needed");
+        // 用户导入的证书(Origin CA / 商业证书)不擅自换成 LE,只提醒
+        if is_imported(&domain).await {
+            crate::notification::notify_event(
+                crate::proto::rustpanel::v1::NotificationEventKind::CertExpiry,
+                "导入的证书即将到期",
+                &format!(
+                    "{domain} 的证书剩余 {} 天;它是手动导入的,请重新导入新证书。",
+                    item.days_until_expiry
+                ),
+            )
+            .await;
+            continue;
+        }
+        if email.is_empty() {
+            failures.push(format!("{domain}: 未设置 ACME 联系邮箱"));
+            continue;
+        }
+        // 优先 DNS-01(Cloudflare,NAT 也能用),其次站点 webroot 的 HTTP-01,都不行就提醒手动
+        let webroot = crate::site::find_site_webroot_by_domain(&domain).await;
+        let (method, issued) = if crate::dns::cloudflare_configured().await {
+            (
+                "dns-01 (cloudflare)",
+                crate::acme::issue_dns01_cloudflare(&domain, &email).await,
+            )
+        } else if let Some(webroot) = webroot {
+            (
+                "http-01",
+                crate::acme::request_http01_blocking(&domain, &email, &webroot).await,
+            )
+        } else {
+            tracing::warn!(%domain, "no automatic challenge available, manual DNS-01 needed");
             crate::notification::notify_event(
                 crate::proto::rustpanel::v1::NotificationEventKind::CertExpiry,
                 "证书需要手动续签",
                 &format!(
-                    "{domain} 的证书剩余 {} 天;它不是 HTTP-01 可自动续签的站点证书,\
-                     请在面板里走 DNS-01 续签。",
+                    "{domain} 的证书剩余 {} 天;未配置 Cloudflare DNS 且不是 HTTP-01 站点,\
+                     请在面板里走 DNS-01 续签,或在 DNS 页配置 Cloudflare 以后自动续签。",
                     item.days_until_expiry
                 ),
             )
             .await;
             continue;
         };
-        if email.is_empty() {
-            failures.push(format!("{domain}: 未设置 ACME 联系邮箱"));
-            continue;
-        }
-        match crate::acme::request_http01_blocking(&domain, &email, &webroot).await {
+        match issued {
             Ok(cert) => {
-                crate::acme::install_certificate(&domain, &cert, &cert_root())
-                    .await
-                    .map_err(|e| Status::internal(format!("acme install {domain}: {e}")))?;
-                clear_bootstrap_marker(&domain).await;
+                install_acme_certificate(&domain, &cert).await?;
                 let reload = reload_active_proxy().await;
-                tracing::info!(%domain, %reload, "certificate renewed via http-01");
+                tracing::info!(%domain, %reload, method, "certificate renewed");
             }
             Err(error) => {
                 tracing::warn!(%domain, %error, "certificate renewal failed");
@@ -518,6 +590,29 @@ pub async fn renew_due_certificates() -> Result<(), Status> {
             failures.join("; ")
         )))
     }
+}
+
+/// ACME 签下的证书落盘:写证书、清掉自签占位与「导入」标记。
+async fn install_acme_certificate(
+    domain: &str,
+    cert: &crate::acme::IssuedCertificate,
+) -> Result<(), Status> {
+    crate::acme::install_certificate(domain, cert, &cert_root())
+        .await
+        .map_err(|e| Status::internal(format!("acme install {domain}: {e}")))?;
+    clear_bootstrap_marker(domain).await;
+    let _ = tokio::fs::remove_file(imported_marker_path(domain)).await;
+    Ok(())
+}
+
+fn imported_marker_path(domain: &str) -> PathBuf {
+    domain_cert_dir(domain).join("rustpanel-imported")
+}
+
+async fn is_imported(domain: &str) -> bool {
+    tokio::fs::try_exists(imported_marker_path(domain))
+        .await
+        .unwrap_or(false)
 }
 
 /// certbot 的 live/<domain>/fullchain.pem 是指向 archive/ 的符号链接;

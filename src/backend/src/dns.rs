@@ -174,6 +174,97 @@ impl DnsService for DnsServiceImpl {
     }
 }
 
+// ===== ACME DNS-01 自动化(ssl / acme 模块用) =====
+
+/// DNS 页已填好 Cloudflare API Token + Zone ID。
+pub(crate) async fn cloudflare_configured() -> bool {
+    DnsStore::from_env().load().await.is_ok_and(|config| {
+        !config.api_token.trim().is_empty() && !config.zone_id.trim().is_empty()
+    })
+}
+
+/// 在已配置的 Cloudflare zone 里写一条 TXT(ttl 60,不走代理),返回记录 id 供事后删除。
+pub(crate) async fn cloudflare_create_txt(name: &str, value: &str) -> Result<String, String> {
+    let config = DnsStore::from_env()
+        .load()
+        .await
+        .map_err(|error| error.message().to_owned())?;
+    if config.api_token.trim().is_empty() || config.zone_id.trim().is_empty() {
+        return Err("未配置 Cloudflare API Token / Zone ID".to_owned());
+    }
+    let body = serde_json::json!({
+        "type": "TXT",
+        "name": name,
+        "content": value,
+        "ttl": 60,
+        "proxied": false,
+    });
+    let json = cf_request(
+        &config.api_token,
+        "POST",
+        &cf_records_url(&cloudflare_api_base(), &config.zone_id),
+        Some(body),
+    )
+    .await?;
+    let record = parse_single(&json)?;
+    if record.id.is_empty() {
+        return Err("cloudflare 未返回记录 id".to_owned());
+    }
+    Ok(record.id)
+}
+
+pub(crate) async fn cloudflare_delete_record(id: &str) -> Result<(), String> {
+    let config = DnsStore::from_env()
+        .load()
+        .await
+        .map_err(|error| error.message().to_owned())?;
+    let url = cf_record_url(&cloudflare_api_base(), &config.zone_id, id);
+    cf_request(&config.api_token, "DELETE", &url, None)
+        .await
+        .map(|_| ())
+}
+
+fn doh_base() -> String {
+    env::var("RUSTPANEL_DOH_URL")
+        .unwrap_or_else(|_| "https://cloudflare-dns.com/dns-query".to_owned())
+}
+
+/// 通过 DoH(默认 cloudflare-dns.com)查 TXT 是否已生效,绕开本机 resolver 缓存。
+pub(crate) async fn txt_record_visible(name: &str, value: &str) -> bool {
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+    else {
+        return false;
+    };
+    let response = client
+        .get(doh_base())
+        .query(&[("name", name), ("type", "TXT")])
+        .header("accept", "application/dns-json")
+        .send()
+        .await;
+    let Ok(response) = response else {
+        return false;
+    };
+    let Ok(json) = response.json::<Value>().await else {
+        return false;
+    };
+    doh_answer_contains(&json, value)
+}
+
+fn doh_answer_contains(json: &Value, value: &str) -> bool {
+    json.get("Answer")
+        .and_then(Value::as_array)
+        .is_some_and(|answers| {
+            answers.iter().any(|answer| {
+                answer
+                    .get("data")
+                    .and_then(Value::as_str)
+                    .is_some_and(|data| data.trim_matches('"') == value)
+            })
+        })
+}
+
 fn validate_record(record: &DnsRecord) -> Result<(), Status> {
     if record.r#type.trim().is_empty() {
         return Err(Status::invalid_argument("记录类型不能为空"));
@@ -384,6 +475,23 @@ fn io_status(error: impl std::fmt::Display) -> Status {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn doh_answer_matches_quoted_txt() {
+        let json = serde_json::json!({
+            "Status": 0,
+            "Answer": [
+                {"name": "_acme-challenge.a.com", "type": 16, "data": "\"other\""},
+                {"name": "_acme-challenge.a.com", "type": 16, "data": "\"tok123\""}
+            ]
+        });
+        assert!(doh_answer_contains(&json, "tok123"));
+        assert!(!doh_answer_contains(&json, "missing"));
+        assert!(!doh_answer_contains(
+            &serde_json::json!({"Status": 3}),
+            "tok123"
+        ));
+    }
 
     #[test]
     fn builds_cloudflare_urls() {

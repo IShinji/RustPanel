@@ -13,7 +13,7 @@
 use std::{
     env,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use instant_acme::{
@@ -42,6 +42,8 @@ pub enum AcmeError {
     NoHttp01Challenge(String),
     #[error("authorization timeout for {0}")]
     Timeout(String),
+    #[error("dns: {0}")]
+    Dns(String),
 }
 
 /// 调用方拿到的"第一次"结果:面板需要把 TXT 写到这里。
@@ -337,6 +339,64 @@ async fn finalize_order(state: PendingOrder) -> Result<RequestOutcome, AcmeError
         certificate_pem: cert_chain_pem,
         private_key_pem,
     }))
+}
+
+/// TXT 生效的最长等待。面板经 Cloudflare 代理访问时单个请求超过 100s 会被切断,
+/// 留出 LE 验证 + finalize 的时间。
+const DNS_PROPAGATION_TIMEOUT: Duration = Duration::from_secs(60);
+const DNS_PROPAGATION_POLL: Duration = Duration::from_secs(5);
+
+/// DNS-01 全自动签发(Cloudflare):写 TXT → DoH 确认生效 → 让 ACME 验证并签发 →
+/// 删掉临时 TXT。NAT 小鸡拿不到 80 端口,这是唯一能无人值守续签 LE 证书的路径。
+/// 需要先在面板 DNS 页配好 Cloudflare API Token(Zone.DNS 编辑权限)与 Zone ID。
+pub async fn issue_dns01_cloudflare(
+    domain: &str,
+    email: &str,
+) -> Result<IssuedCertificate, AcmeError> {
+    // 上次没走完的手动订单作废:自动流程总是新开一单
+    let _ = delete_pending(domain).await;
+    let challenge = match start_order(domain, email).await? {
+        RequestOutcome::Challenge(challenge) => challenge,
+        RequestOutcome::Issued(cert) => return Ok(cert),
+    };
+    let record_id =
+        crate::dns::cloudflare_create_txt(&challenge.record_name, &challenge.record_value)
+            .await
+            .map_err(AcmeError::Dns)?;
+    let result = async {
+        wait_for_txt(&challenge.record_name, &challenge.record_value).await?;
+        let state = read_pending(domain)
+            .await?
+            .ok_or_else(|| AcmeError::Dns("ACME 订单状态丢失".to_owned()))?;
+        match finalize_order(state).await? {
+            RequestOutcome::Issued(cert) => Ok(cert),
+            RequestOutcome::Challenge(_) => Err(AcmeError::Dns("ACME 仍在要求 TXT".to_owned())),
+        }
+    }
+    .await;
+    if let Err(error) = crate::dns::cloudflare_delete_record(&record_id).await {
+        tracing::warn!(%domain, %error, "failed to delete ACME TXT record");
+    }
+    if result.is_err() {
+        let _ = delete_pending(domain).await;
+    }
+    result
+}
+
+async fn wait_for_txt(name: &str, value: &str) -> Result<(), AcmeError> {
+    let deadline = Instant::now() + DNS_PROPAGATION_TIMEOUT;
+    loop {
+        if crate::dns::txt_record_visible(name, value).await {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(AcmeError::Dns(format!(
+                "TXT 记录 {name} 在 {} 秒内未生效",
+                DNS_PROPAGATION_TIMEOUT.as_secs()
+            )));
+        }
+        tokio::time::sleep(DNS_PROPAGATION_POLL).await;
+    }
 }
 
 /// HTTP-01 单次阻塞签发 —— 与 DNS-01 不同,HTTP-01 不需要两步交互:
