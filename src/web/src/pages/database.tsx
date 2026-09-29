@@ -9,11 +9,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow as UITabl
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { CronRunState, CronTask, CronTaskState } from "../gen/rustpanel/v1/cron_pb";
 import { RedisInfo, SqliteFile } from "../gen/rustpanel/v1/db_pb";
-import { formatBytes, formatDuration, safeError } from "../lib/format";
+import { formatBytes, formatDateTime, formatDuration, safeError } from "../lib/format";
 import { type Clients } from "../lib/rpc";
 import { Clock, Download, FileText, Pause, Pencil, Play, Plus, RefreshCw, RotateCw, Save, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useMountEffect } from "../lib/hooks";
+import { useLocale } from "../lib/i18n/locale-provider";
+import { type MessageKey } from "../lib/i18n/translate";
 
 function downloadCsv(columns: string[], rows: string[][], filename: string) {
   const escape = (value: string) => `"${String(value ?? "").replace(/"/g, '""')}"`;
@@ -28,6 +30,7 @@ function downloadCsv(columns: string[], rows: string[][], filename: string) {
 }
 
 export function DatabasePanel({ clients }: { clients: Clients }) {
+  const { t, locale } = useLocale();
   const [dsn, setDsn] = useState("sqlite::memory:");
   const [sql, setSql] = useState("select 1 as value");
   const [columns, setColumns] = useState<string[]>([]);
@@ -76,12 +79,12 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
 
   const createSqliteFile = async () => {
     if (!newSqlitePath.trim()) {
-      setError("请填写 SQLite 文件路径");
+      setError(t("database.sqlitePathRequired"));
       return;
     }
     try {
       await clients.database.createSqliteFile({ path: newSqlitePath.trim() });
-      setMessage(`已创建 ${newSqlitePath}`);
+      setMessage(t("database.sqliteCreated", { path: newSqlitePath }));
       setNewSqlitePath("");
       void refreshSqlite();
     } catch (err) {
@@ -95,7 +98,9 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
       const saved =
         Number(response.sizeBeforeBytes) - Number(response.sizeAfterBytes);
       setMessage(
-        `VACUUM 完成,${saved > 0 ? `节省 ${formatBytes(BigInt(saved))}` : "无空间可压缩"}`
+        saved > 0
+          ? t("database.vacuumDoneSaved", { size: formatBytes(BigInt(saved)) })
+          : t("database.vacuumDoneNoSpace")
       );
       void refreshSqlite();
     } catch (err) {
@@ -122,18 +127,18 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
     try {
       const response = await clients.database.listDatabases({ dsn });
       setDatabases(response.databases.map((database) => database.name));
-      setMessage(`已连接,共 ${response.databases.length} 个数据库`);
+      setMessage(t("database.connectedCount", { count: response.databases.length }));
       setError("");
     } catch (err) {
       setError(safeError(err));
     }
-  }, [clients, dsn]);
+  }, [clients, dsn, t]);
 
   const createDatabase = async () => {
     if (!newDbName.trim()) return;
     try {
       await clients.database.createDatabase({ dsn, name: newDbName.trim() });
-      setMessage(`数据库 ${newDbName} 已创建`);
+      setMessage(t("database.databaseCreated", { name: newDbName }));
       setNewDbName("");
       void listDatabases();
     } catch (err) {
@@ -144,7 +149,7 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
   const backupDatabase = async (database: string) => {
     try {
       const response = await clients.database.backupDatabase({ dsn, database });
-      setMessage(`备份完成:${response.downloadUrl || "下载链接已生成"}`);
+      setMessage(t("database.backupDone", { url: response.downloadUrl || t("database.backupLinkGenerated") }));
       setError("");
     } catch (err) {
       setError(safeError(err));
@@ -159,7 +164,7 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
         password: userForm.password,
         database: userForm.database
       });
-      setMessage(`用户 ${userForm.username} 已创建并授权 ${userForm.database}`);
+      setMessage(t("database.userCreated", { username: userForm.username, database: userForm.database }));
       setUserForm((prev) => ({ ...prev, password: "" }));
       setError("");
     } catch (err) {
@@ -172,7 +177,7 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
       const response = await clients.database.executeSql({ dsn, sql, maxRows: 200 });
       setColumns(response.columns);
       setRows(response.rows.map((row) => row.values));
-      setMessage(`返回 ${response.rows.length} 行,影响 ${response.rowsAffected} 行`);
+      setMessage(t("database.queryResult", { rows: response.rows.length, affected: response.rowsAffected }));
       setError("");
     } catch (err) {
       setError(safeError(err));
@@ -212,7 +217,7 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
             dsn,
             sql: String(reader.result ?? "")
           });
-          setMessage(`已执行 ${response.statementsExecuted} 条语句`);
+          setMessage(t("database.sqlImported", { count: response.statementsExecuted }));
           setError("");
         } catch (err) {
           setError(safeError(err));
@@ -239,10 +244,8 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
   return (
     <section className="flex flex-col gap-5">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight m-0">数据库</h1>
-        <p className="text-sm text-muted-foreground m-0">
-          轻量优先:SQLite 单文件 → Redis(可选)→ 通用 DSN(MySQL / PostgreSQL,需 ≥ 256MB RAM)
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight m-0">{t("database.title")}</h1>
+        <p className="text-sm text-muted-foreground m-0">{t("database.subtitle")}</p>
       </header>
 
       {error && (
@@ -260,58 +263,53 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
         <TabsList>
           <TabsTrigger value="sqlite">SQLite</TabsTrigger>
           <TabsTrigger value="redis">Redis</TabsTrigger>
-          <TabsTrigger value="dsn">通用 DSN</TabsTrigger>
+          <TabsTrigger value="dsn">{t("database.tabDsn")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sqlite" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>SQLite 文件</CardTitle>
-              <CardDescription>
-                嵌入式数据库,无需常驻进程,RustPanel 在低配 VPS 上的默认推荐。每个站点
-                一个 .db 文件即可。
-              </CardDescription>
+              <CardTitle>{t("database.sqliteCardTitle")}</CardTitle>
+              <CardDescription>{t("database.sqliteCardDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="grid gap-2">
-                <UILabel htmlFor="sqlite-dirs">扫描目录(可选,空格或逗号分隔)</UILabel>
+                <UILabel htmlFor="sqlite-dirs">{t("database.sqliteDirsLabel")}</UILabel>
                 <div className="flex gap-2">
                   <UIInput
                     id="sqlite-dirs"
-                    placeholder="留空使用默认 /var/lib/rustpanel/sqlite, /srv/sqlite ..."
+                    placeholder={t("database.sqliteDirsPlaceholder")}
                     value={scanDirs}
                     onChange={(event) => setScanDirs(event.target.value)}
                   />
                   <UIButton variant="outline" onClick={() => void refreshSqlite()}>
                     <RefreshCw className="size-4" />
-                    扫描
+                    {t("database.scan")}
                   </UIButton>
                 </div>
               </div>
               <div className="flex gap-2">
                 <UIInput
                   className="flex-1"
-                  placeholder="新建文件,如 /var/lib/rustpanel/sqlite/blog.db"
+                  placeholder={t("database.newSqlitePlaceholder")}
                   value={newSqlitePath}
                   onChange={(event) => setNewSqlitePath(event.target.value)}
                 />
                 <UIButton onClick={() => void createSqliteFile()}>
                   <Plus className="size-4" />
-                  创建
+                  {t("database.create")}
                 </UIButton>
               </div>
               {sqliteFiles.length === 0 ? (
-                <div className="empty-state text-sm">
-                  未发现 SQLite 文件 —— 检查扫描目录是否存在,或先创建一个
-                </div>
+                <div className="empty-state text-sm">{t("database.noSqliteFiles")}</div>
               ) : (
                 <Table>
                   <TableHeader>
                     <UITableRow>
-                      <TableHead>路径</TableHead>
-                      <TableHead className="text-right">大小</TableHead>
-                      <TableHead>修改时间</TableHead>
-                      <TableHead className="text-right">操作</TableHead>
+                      <TableHead>{t("database.colPath")}</TableHead>
+                      <TableHead className="text-right">{t("database.colSize")}</TableHead>
+                      <TableHead>{t("database.colModifiedAt")}</TableHead>
+                      <TableHead className="text-right">{t("database.colActions")}</TableHead>
                     </UITableRow>
                   </TableHeader>
                   <TableBody>
@@ -323,7 +321,7 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {file.modifiedAtSeconds > 0n
-                            ? new Date(Number(file.modifiedAtSeconds) * 1000).toLocaleString()
+                            ? formatDateTime(new Date(Number(file.modifiedAtSeconds) * 1000), locale)
                             : "-"}
                         </TableCell>
                         <TableCell className="text-right">
@@ -348,11 +346,8 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
         <TabsContent value="redis" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>Redis 连接监控</CardTitle>
-              <CardDescription>
-                小内存机器推荐安装 redis-tuned(maxmemory 30MB + LRU)。这里读 INFO 命令展示
-                关键指标。
-              </CardDescription>
+              <CardTitle>{t("database.redisCardTitle")}</CardTitle>
+              <CardDescription>{t("database.redisCardDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="grid gap-2">
@@ -360,13 +355,13 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
                 <div className="flex gap-2">
                   <UIInput
                     id="redis-url"
-                    placeholder="redis://127.0.0.1:6379 或 rediss://user:pass@host:6380/0"
+                    placeholder={t("database.redisUrlPlaceholder")}
                     value={redisUrl}
                     onChange={(event) => setRedisUrl(event.target.value)}
                   />
                   <UIButton onClick={() => void refreshRedis()}>
                     <RefreshCw className="size-4" />
-                    连接
+                    {t("database.connect")}
                   </UIButton>
                 </div>
               </div>
@@ -382,61 +377,58 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
           <Card>
             <CardContent className="flex flex-col gap-3">
               <div className="grid gap-2">
-                <UILabel htmlFor="db-dsn">数据库连接 DSN</UILabel>
+                <UILabel htmlFor="db-dsn">{t("database.dsnLabel")}</UILabel>
                 <div className="flex gap-2">
                   <UIInput
                     id="db-dsn"
-                    placeholder="mysql://user:pass@host/db 或 postgres://user:pass@host/db"
+                    placeholder={t("database.dsnPlaceholder")}
                     value={dsn}
                     onChange={(event) => setDsn(event.target.value)}
                   />
                   <UIButton onClick={() => void listDatabases()}>
                     <RefreshCw className="size-4" />
-                    连接
+                    {t("database.connect")}
                   </UIButton>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  提示:MySQL/PostgreSQL 容器运行时建议 ≥ 256MB RAM。低配机器请优先使用
-                  SQLite Tab。
-                </span>
+                <span className="text-xs text-muted-foreground">{t("database.dsnHint")}</span>
               </div>
             </CardContent>
           </Card>
 
           <Tabs defaultValue="databases" className="mt-4">
             <TabsList>
-              <TabsTrigger value="databases">数据库</TabsTrigger>
-              <TabsTrigger value="users">用户</TabsTrigger>
-              <TabsTrigger value="sql">SQL 控制台</TabsTrigger>
+              <TabsTrigger value="databases">{t("database.databasesTab")}</TabsTrigger>
+              <TabsTrigger value="users">{t("database.usersTab")}</TabsTrigger>
+              <TabsTrigger value="sql">{t("database.sqlConsoleTab")}</TabsTrigger>
             </TabsList>
 
         <TabsContent value="databases" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>数据库列表</CardTitle>
-              <CardDescription>新建数据库,或对已有库一键备份</CardDescription>
+              <CardTitle>{t("database.databaseListTitle")}</CardTitle>
+              <CardDescription>{t("database.databaseListDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div className="flex flex-wrap gap-2">
                 <UIInput
                   className="flex-1 min-w-[200px]"
-                  placeholder="新数据库名"
+                  placeholder={t("database.newDbPlaceholder")}
                   value={newDbName}
                   onChange={(event) => setNewDbName(event.target.value)}
                 />
                 <UIButton onClick={() => void createDatabase()}>
                   <Plus className="size-4" />
-                  创建数据库
+                  {t("database.createDatabase")}
                 </UIButton>
               </div>
               {databases.length === 0 ? (
-                <div className="empty-state text-sm">先连接 DSN 以加载数据库列表</div>
+                <div className="empty-state text-sm">{t("database.connectDsnFirst")}</div>
               ) : (
                 <Table>
                   <TableHeader>
                     <UITableRow>
-                      <TableHead>名称</TableHead>
-                      <TableHead className="text-right">操作</TableHead>
+                      <TableHead>{t("database.colName")}</TableHead>
+                      <TableHead className="text-right">{t("database.colActions")}</TableHead>
                     </UITableRow>
                   </TableHeader>
                   <TableBody>
@@ -450,7 +442,7 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
                             onClick={() => void backupDatabase(database)}
                           >
                             <Download className="size-3.5" />
-                            备份
+                            {t("database.backup")}
                           </UIButton>
                         </TableCell>
                       </UITableRow>
@@ -465,13 +457,13 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
         <TabsContent value="users" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>创建数据库用户</CardTitle>
-              <CardDescription>为指定数据库创建独立账号并授权</CardDescription>
+              <CardTitle>{t("database.createUserTitle")}</CardTitle>
+              <CardDescription>{t("database.createUserDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="grid gap-2">
-                  <UILabel htmlFor="db-user">用户名</UILabel>
+                  <UILabel htmlFor="db-user">{t("database.username")}</UILabel>
                   <UIInput
                     id="db-user"
                     value={userForm.username}
@@ -479,7 +471,7 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <UILabel htmlFor="db-pass">密码</UILabel>
+                  <UILabel htmlFor="db-pass">{t("database.password")}</UILabel>
                   <UIInput
                     id="db-pass"
                     type="password"
@@ -488,7 +480,7 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <UILabel htmlFor="db-target">授权数据库</UILabel>
+                  <UILabel htmlFor="db-target">{t("database.grantDatabase")}</UILabel>
                   <UIInput
                     id="db-target"
                     value={userForm.database}
@@ -499,7 +491,7 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
               <div className="flex justify-end">
                 <UIButton onClick={() => void createDatabaseUser()}>
                   <Plus className="size-4" />
-                  创建并授权
+                  {t("database.createAndGrant")}
                 </UIButton>
               </div>
             </CardContent>
@@ -509,8 +501,8 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
         <TabsContent value="sql" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>SQL 控制台</CardTitle>
-              <CardDescription>仅返回最多 200 行结果</CardDescription>
+              <CardTitle>{t("database.sqlConsoleTitle")}</CardTitle>
+              <CardDescription>{t("database.sqlConsoleDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div className="border border-border rounded-md overflow-hidden">
@@ -525,10 +517,10 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
               <div className="flex justify-between items-center gap-2 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
                   <UIButton variant="outline" size="sm" onClick={() => void loadOverview()}>
-                    连接概览
+                    {t("database.connectionOverview")}
                   </UIButton>
                   <label className="text-xs text-muted-foreground flex items-center gap-1">
-                    导入 .sql
+                    {t("database.importSql")}
                     <input
                       type="file"
                       accept=".sql"
@@ -547,20 +539,24 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
                       onClick={() => downloadCsv(columns, rows, "query.csv")}
                     >
                       <Download className="size-4" />
-                      导出 CSV
+                      {t("database.exportCsv")}
                     </UIButton>
                   )}
                   <UIButton onClick={() => void execute()}>
                     <Play className="size-4" />
-                    执行
+                    {t("database.execute")}
                   </UIButton>
                 </div>
               </div>
               {overview && (
                 <div className="text-xs text-muted-foreground flex gap-4 flex-wrap">
-                  <span>版本: {overview.version || "-"}</span>
-                  <span>活动连接: {overview.connections}</span>
-                  <span>运行: {overview.uptime > 0 ? formatDuration(overview.uptime) : "-"}</span>
+                  <span>{t("database.overviewVersion", { value: overview.version || "-" })}</span>
+                  <span>{t("database.overviewConnections", { value: overview.connections })}</span>
+                  <span>
+                    {t("database.overviewUptime", {
+                      value: overview.uptime > 0 ? formatDuration(overview.uptime, t) : "-"
+                    })}
+                  </span>
                 </div>
               )}
               {columns.length > 0 && (
@@ -590,14 +586,14 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
 
           <Card className="mt-4">
             <CardHeader>
-              <CardTitle>表浏览</CardTitle>
-              <CardDescription>列出当前 DSN 下的表,分页查看数据(每页 50 行)</CardDescription>
+              <CardTitle>{t("database.tableBrowseTitle")}</CardTitle>
+              <CardDescription>{t("database.tableBrowseDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <UIButton variant="outline" size="sm" onClick={() => void loadTables()}>
                   <RefreshCw className="size-3.5" />
-                  加载表
+                  {t("database.loadTables")}
                 </UIButton>
                 {tables.map((table) => (
                   <UIButton
@@ -614,8 +610,12 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
                 <>
                   <div className="flex items-center justify-between text-sm text-muted-foreground flex-wrap gap-2">
                     <span>
-                      {browseName} · 共 {browseTotal} 行 · 显示 {browseRows.length ? browseOffset + 1 : 0}-
-                      {browseOffset + browseRows.length}
+                      {t("database.browseSummary", {
+                        name: browseName,
+                        total: browseTotal,
+                        from: browseRows.length ? browseOffset + 1 : 0,
+                        to: browseOffset + browseRows.length
+                      })}
                     </span>
                     <div className="flex gap-2">
                       <UIButton
@@ -624,21 +624,21 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
                         onClick={() => downloadCsv(browseColumns, browseRows, `${browseName}.csv`)}
                       >
                         <Download className="size-3.5" />
-                        导出 CSV
+                        {t("database.exportCsv")}
                       </UIButton>
                       <UIButton
                         size="sm"
                         variant="outline"
                         onClick={() => void browse(browseName, Math.max(0, browseOffset - 50))}
                       >
-                        上一页
+                        {t("database.prevPage")}
                       </UIButton>
                       <UIButton
                         size="sm"
                         variant="outline"
                         onClick={() => void browse(browseName, browseOffset + 50)}
                       >
-                        下一页
+                        {t("database.nextPage")}
                       </UIButton>
                     </div>
                   </div>
@@ -675,10 +675,11 @@ export function DatabasePanel({ clients }: { clients: Clients }) {
 }
 
 function RedisInfoView({ info }: { info: RedisInfo }) {
+  const { t } = useLocale();
   if (!info.reachable) {
     return (
       <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-        无法连接 Redis:{info.error || "未知错误"}
+        {t("database.redisUnreachable", { error: info.error || t("database.unknownError") })}
       </div>
     );
   }
@@ -692,26 +693,26 @@ function RedisInfoView({ info }: { info: RedisInfo }) {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-      <RedisStat label="版本" value={info.version || "-"} />
-      <RedisStat label="模式" value={info.mode || "-"} />
-      <RedisStat label="客户端" value={String(info.connectedClients)} />
+      <RedisStat label={t("database.statVersion")} value={info.version || "-"} />
+      <RedisStat label={t("database.statMode")} value={info.mode || "-"} />
+      <RedisStat label={t("database.statClients")} value={String(info.connectedClients)} />
       <RedisStat
-        label="已用内存"
+        label={t("database.statUsedMemory")}
         value={formatBytes(info.usedMemoryBytes)}
         detail={
           info.maxMemoryBytes > 0n
             ? `${memoryPercent.toFixed(1)}% / ${formatBytes(info.maxMemoryBytes)}`
-            : "无 maxmemory 限制"
+            : t("database.statNoMaxMemory")
         }
       />
-      <RedisStat label="淘汰策略" value={info.maxMemoryPolicy || "noeviction"} />
+      <RedisStat label={t("database.statEvictionPolicy")} value={info.maxMemoryPolicy || "noeviction"} />
       <RedisStat
-        label="命中率"
+        label={t("database.statHitRate")}
         value={`${hitRate.toFixed(1)}%`}
-        detail={`${hits} 命中 / ${misses} 未命中`}
+        detail={t("database.statHitRateDetail", { hits, misses })}
       />
-      <RedisStat label="累计命令" value={String(info.totalCommandsProcessed)} />
-      <RedisStat label="运行时长" value={formatDuration(info.uptimeSeconds)} />
+      <RedisStat label={t("database.statTotalCommands")} value={String(info.totalCommandsProcessed)} />
+      <RedisStat label={t("database.statUptime")} value={formatDuration(info.uptimeSeconds, t)} />
     </div>
   );
 }
@@ -735,46 +736,48 @@ function RedisStat({
 }
 
 // Phase E:常见 Cron 任务预设,适合微型 VPS 上的日常维护。
-const CRON_PRESETS: Array<{ id: string; label: string; cron: string; command: string }> = [
+// label 用 MessageKey 而不是字面量,因为这是 module 级常量,渲染时才知道当前语言。
+const CRON_PRESETS: Array<{ id: string; labelKey: MessageKey; cron: string; command: string }> = [
   {
     id: "sqlite-daily-backup",
-    label: "每日 SQLite 备份",
+    labelKey: "database.cronPresetSqliteDaily",
     cron: "0 0 3 * * *",
     command: "tar czf /var/backups/sqlite-$(date +%F).tgz /var/lib/rustpanel/sqlite/"
   },
   {
     id: "restic-weekly",
-    label: "每周 restic 增量备份",
+    labelKey: "database.cronPresetResticWeekly",
     cron: "0 0 4 * * 0",
     command: "restic -r $RESTIC_REPO backup /var/lib /etc --tag weekly"
   },
   {
     id: "logrotate-monthly",
-    label: "每月清理日志",
+    labelKey: "database.cronPresetLogrotateMonthly",
     cron: "0 0 5 1 * *",
     command: "find /var/log -name '*.log' -mtime +30 -delete"
   },
   {
     id: "disk-alert",
-    label: "磁盘 80% 告警",
+    labelKey: "database.cronPresetDiskAlert",
     cron: "0 */15 * * * *",
     command: "df / | awk 'NR==2 && $5+0>80 {print \"disk \"$5}' | logger -t rustpanel"
   },
   {
     id: "ssl-renew-check",
-    label: "SSL 续期检查(每天 02:00)",
+    labelKey: "database.cronPresetSslRenew",
     cron: "0 0 2 * * *",
     command: "rustpanel-backend --renew-certs"
   },
   {
     id: "fail2ban-status",
-    label: "fail2ban 状态汇报",
+    labelKey: "database.cronPresetFail2ban",
     cron: "0 0 */6 * * *",
     command: "fail2ban-client status | logger -t rustpanel"
   }
 ];
 
 export function CronPanel({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [tasks, setTasks] = useState<CronTask[]>([]);
   const [form, setForm] = useState({ name: "daily-backup", cron: "0 0 2 * * *", command: "echo ok" });
   const [presetId, setPresetId] = useState("custom");
@@ -803,7 +806,7 @@ export function CronPanel({ clients }: { clients: Clients }) {
           nextRunAt: ""
         }
       });
-      setLog(`${form.name} 已保存`);
+      setLog(t("database.taskSaved", { name: form.name }));
       setEditing(null);
       await load();
     } catch (err) {
@@ -833,11 +836,11 @@ export function CronPanel({ clients }: { clients: Clients }) {
   };
 
   const deleteTask = async (task: CronTask) => {
-    if (!window.confirm(`删除计划任务「${task.name}」?系统 crontab 里的对应条目也会移除。`)) return;
+    if (!window.confirm(t("database.confirmDeleteTask", { name: task.name }))) return;
     try {
       await clients.cron.deleteCronTask({ taskId: task.id });
       if (editing?.id === task.id) cancelEdit();
-      setLog(`${task.name} 已删除`);
+      setLog(t("database.taskDeleted", { name: task.name }));
       await load();
     } catch (err) {
       setLog(safeError(err));
@@ -846,7 +849,12 @@ export function CronPanel({ clients }: { clients: Clients }) {
 
   const runTask = async (task: CronTask) => {
     const run = await clients.cron.runCronTask({ taskId: task.id });
-    setLog(`${task.name}: ${CronRunState[run.run?.state ?? CronRunState.UNSPECIFIED]}`);
+    setLog(
+      t("database.taskRunResult", {
+        name: task.name,
+        state: CronRunState[run.run?.state ?? CronRunState.UNSPECIFIED]
+      })
+    );
     const logResponse = await clients.cron.getCronTaskLog({ taskId: task.id });
     setLog(logResponse.content);
   };
@@ -855,15 +863,18 @@ export function CronPanel({ clients }: { clients: Clients }) {
     <section className="page-grid">
       <header className="section-header full-span">
         <div>
-          <h1>计划任务</h1>
-          <p>{tasks.length} 个任务</p>
+          <h1>{t("database.cronTitle")}</h1>
+          <p>{t("database.taskCount", { count: tasks.length })}</p>
         </div>
       </header>
 
       <div className="panel">
-        <div className="panel-title"><Clock size={18} /><span>{editing ? `编辑任务:${editing.name}` : "创建任务"}</span></div>
+        <div className="panel-title">
+          <Clock size={18} />
+          <span>{editing ? t("database.editingTask", { name: editing.name }) : t("database.createTask")}</span>
+        </div>
         <div className="input-row">
-          <span>常用模板</span>
+          <span>{t("database.commonTemplate")}</span>
           <Select
             value={presetId}
             onValueChange={(value) => {
@@ -875,52 +886,58 @@ export function CronPanel({ clients }: { clients: Clients }) {
             }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="自定义" />
+              <SelectValue placeholder={t("database.custom")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="custom">自定义</SelectItem>
+              <SelectItem value="custom">{t("database.custom")}</SelectItem>
               {CRON_PRESETS.map((preset) => (
                 <SelectItem key={preset.id} value={preset.id}>
-                  {preset.label}
+                  {t(preset.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
-        <Input label="名称" value={form.name} onChange={(name) => setForm({ ...form, name })} />
+        <Input label={t("database.nameLabel")} value={form.name} onChange={(name) => setForm({ ...form, name })} />
         <Input label="Cron" value={form.cron} onChange={(cron) => setForm({ ...form, cron })} />
-        <Input label="脚本" value={form.command} onChange={(command) => setForm({ ...form, command })} />
+        <Input label={t("database.scriptLabel")} value={form.command} onChange={(command) => setForm({ ...form, command })} />
         <div className="flex gap-2">
-          <button onClick={() => void saveTask()} type="button"><Save size={15} />{editing ? "保存修改" : "保存"}</button>
+          <button onClick={() => void saveTask()} type="button">
+            <Save size={15} />
+            {editing ? t("database.saveChanges") : t("database.save")}
+          </button>
           {editing && (
-            <button onClick={cancelEdit} type="button">取消编辑</button>
+            <button onClick={cancelEdit} type="button">{t("database.cancelEdit")}</button>
           )}
         </div>
       </div>
 
       <div className="panel wide-panel">
-        <div className="panel-title"><Clock size={18} /><span>任务列表</span></div>
+        <div className="panel-title"><Clock size={18} /><span>{t("database.taskList")}</span></div>
         {tasks.map((task) => (
           <div className="table-row" key={task.id}>
             <div>
               <strong>{task.name}</strong>
               <small>{task.cronExpression} · {task.command}</small>
             </div>
-            <StatusPill label={task.state === CronTaskState.ENABLED ? "启用" : "暂停"} tone={task.state === CronTaskState.ENABLED ? "good" : "muted"} />
-            <IconButton label="运行" icon={Play} onClick={() => void runTask(task)} />
+            <StatusPill
+              label={task.state === CronTaskState.ENABLED ? t("database.enabled") : t("database.paused")}
+              tone={task.state === CronTaskState.ENABLED ? "good" : "muted"}
+            />
+            <IconButton label={t("database.run")} icon={Play} onClick={() => void runTask(task)} />
             <IconButton
-              label={task.state === CronTaskState.ENABLED ? "暂停" : "启用"}
+              label={task.state === CronTaskState.ENABLED ? t("database.paused") : t("database.enabled")}
               icon={task.state === CronTaskState.ENABLED ? Pause : RotateCw}
               onClick={() => void toggleTask(task)}
             />
-            <IconButton label="编辑" icon={Pencil} onClick={() => startEdit(task)} />
-            <IconButton label="删除" icon={Trash2} onClick={() => void deleteTask(task)} />
+            <IconButton label={t("database.edit")} icon={Pencil} onClick={() => startEdit(task)} />
+            <IconButton label={t("database.delete")} icon={Trash2} onClick={() => void deleteTask(task)} />
           </div>
         ))}
       </div>
 
       <div className="panel log-panel">
-        <div className="panel-title"><FileText size={18} /><span>执行日志</span></div>
+        <div className="panel-title"><FileText size={18} /><span>{t("database.executionLog")}</span></div>
         <pre>{log}</pre>
       </div>
     </section>

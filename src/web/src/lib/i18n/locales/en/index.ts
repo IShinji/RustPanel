@@ -4,6 +4,7 @@ import { apps } from "./apps";
 import { common } from "./common";
 import { components } from "./components";
 import { dashboard } from "./dashboard";
+import { database } from "./database";
 import { files } from "./files";
 import { network } from "./network";
 import { ops } from "./ops";
@@ -16,6 +17,7 @@ export const en: Messages = {
   apps,
   components,
   dashboard,
+  database,
   files,
   network,
   ops,
