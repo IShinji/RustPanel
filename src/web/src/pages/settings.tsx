@@ -12,7 +12,7 @@ import { AuditEvent } from "../gen/rustpanel/v1/audit_pb";
 import { ClusterNode, DistributionRecord } from "../gen/rustpanel/v1/cluster_pb";
 import { AcmeChallengeType, CertificateItem } from "../gen/rustpanel/v1/ssl_pb";
 import { RuntimeModule } from "../gen/rustpanel/v1/system_pb";
-import { safeError } from "../lib/format";
+import { formatDateTime, safeError } from "../lib/format";
 import { auditLevelVariant } from "../lib/labels";
 import { type Clients } from "../lib/rpc";
 import { Activity, FileText, FileUp, HardDrive, Info, LogOut, RefreshCw, Save, Server, Settings as SettingsIcon, ShieldAlert, ShieldCheck, Trash2, Upload } from "lucide-react";
@@ -26,8 +26,10 @@ import {
   type SecurityOptionsForm
 } from "../lib/forms";
 import { useMountEffect } from "../lib/hooks";
+import { useLocale } from "../lib/i18n/locale-provider";
 
 export function ClusterAudit({ clients }: { clients: Clients }) {
+  const { t, locale } = useLocale();
   const [nodes, setNodes] = useState<ClusterNode[]>([]);
   const [records, setRecords] = useState<DistributionRecord[]>([]);
   const [events, setEvents] = useState<AuditEvent[]>([]);
@@ -62,7 +64,7 @@ export function ClusterAudit({ clients }: { clients: Clients }) {
       if (response.node) {
         setNodeSecrets((current) => ({ ...current, [response.node!.id]: response.nodeSecret }));
       }
-      setStatus(response.node ? `节点密钥 ${response.nodeSecret}` : "节点已接入");
+      setStatus(response.node ? t("settings.nodeSecretMsg", { secret: response.nodeSecret }) : t("settings.nodeJoined"));
       await load();
     } catch (err) {
       setStatus(safeError(err));
@@ -73,7 +75,7 @@ export function ClusterAudit({ clients }: { clients: Clients }) {
     try {
       const nodeSecret = nodeSecrets[node.id];
       if (!nodeSecret) {
-        setStatus("当前会话没有该节点密钥，请重新接入后发送心跳");
+        setStatus(t("settings.noNodeSecret"));
         return;
       }
       await clients.cluster.heartbeatClusterNode({
@@ -124,51 +126,51 @@ export function ClusterAudit({ clients }: { clients: Clients }) {
     <section className="page-grid">
       <header className="section-header full-span">
         <div>
-          <h1>集群与审计</h1>
-          <p>{status || `${nodes.length} 个节点 · ${events.length} 条审计事件`}</p>
+          <h1>{t("settings.clusterAuditTitle")}</h1>
+          <p>{status || t("settings.clusterAuditSummary", { nodes: nodes.length, events: events.length })}</p>
         </div>
-        <IconButton label="刷新" icon={RefreshCw} onClick={() => void load()} />
+        <IconButton label={t("settings.refresh")} icon={RefreshCw} onClick={() => void load()} />
       </header>
 
       <div className="panel">
-        <div className="panel-title"><Server size={18} /><span>节点接入</span></div>
-        <Input label="节点名" value={pairForm.name} onChange={(name) => setPairForm({ ...pairForm, name })} />
+        <div className="panel-title"><Server size={18} /><span>{t("settings.nodePairing")}</span></div>
+        <Input label={t("settings.nodeName")} value={pairForm.name} onChange={(name) => setPairForm({ ...pairForm, name })} />
         <Input label="Endpoint" value={pairForm.endpoint} onChange={(endpoint) => setPairForm({ ...pairForm, endpoint })} />
-        <Input label="配对密钥" value={pairForm.pairingSecret} onChange={(pairingSecret) => setPairForm({ ...pairForm, pairingSecret })} />
-        <button onClick={() => void pairNode()} type="button"><ShieldCheck size={15} />接入</button>
+        <Input label={t("settings.pairingSecret")} value={pairForm.pairingSecret} onChange={(pairingSecret) => setPairForm({ ...pairForm, pairingSecret })} />
+        <button onClick={() => void pairNode()} type="button"><ShieldCheck size={15} />{t("settings.pair")}</button>
       </div>
 
       <div className="panel wide-panel">
-        <div className="panel-title"><Server size={18} /><span>节点列表</span></div>
+        <div className="panel-title"><Server size={18} /><span>{t("settings.nodeList")}</span></div>
         <div className="table-list">
           {nodes.map((node) => (
             <div className="table-row" key={node.id}>
               <div>
                 <strong>{node.name}</strong>
-                <small>{node.endpoint} · heartbeat {new Date(Number(node.lastHeartbeatSeconds) * 1000).toLocaleString()}</small>
+                <small>{node.endpoint} · heartbeat {formatDateTime(new Date(Number(node.lastHeartbeatSeconds) * 1000), locale)}</small>
               </div>
-              <StatusPill label={node.status || "unknown"} tone={node.status === "online" ? "good" : "muted"} />
-              <IconButton label="心跳" icon={Activity} onClick={() => void sendHeartbeat(node)} />
+              <StatusPill label={node.status || t("settings.colStatus")} tone={node.status === "online" ? "good" : "muted"} />
+              <IconButton label={t("settings.heartbeat")} icon={Activity} onClick={() => void sendHeartbeat(node)} />
             </div>
           ))}
-          {!nodes.length && <div className="empty-state">暂无节点</div>}
+          {!nodes.length && <div className="empty-state">{t("settings.noNodes")}</div>}
         </div>
       </div>
 
       <div className="panel">
-        <div className="panel-title"><Upload size={18} /><span>统一分发</span></div>
-        <Input label="目标节点 ID" value={distributionForm.targetNodeId} onChange={(targetNodeId) => setDistributionForm({ ...distributionForm, targetNodeId })} />
-        <Input label="目标路径" value={distributionForm.path} onChange={(path) => setDistributionForm({ ...distributionForm, path })} />
+        <div className="panel-title"><Upload size={18} /><span>{t("settings.unifiedDistribution")}</span></div>
+        <Input label={t("settings.targetNodeId")} value={distributionForm.targetNodeId} onChange={(targetNodeId) => setDistributionForm({ ...distributionForm, targetNodeId })} />
+        <Input label={t("settings.targetPath")} value={distributionForm.path} onChange={(path) => setDistributionForm({ ...distributionForm, path })} />
         <textarea
           className="pem-input code-input"
           value={distributionForm.content}
           onChange={(event) => setDistributionForm({ ...distributionForm, content: event.target.value })}
         />
-        <button onClick={() => void distributeFile()} type="button"><FileUp size={15} />分发</button>
+        <button onClick={() => void distributeFile()} type="button"><FileUp size={15} />{t("settings.distribute")}</button>
       </div>
 
       <div className="panel wide-panel">
-        <div className="panel-title"><FileText size={18} /><span>分发记录</span></div>
+        <div className="panel-title"><FileText size={18} /><span>{t("settings.distributionRecords")}</span></div>
         <div className="table-list">
           {records.map((record) => (
             <div className="table-row" key={record.id}>
@@ -179,35 +181,35 @@ export function ClusterAudit({ clients }: { clients: Clients }) {
               <StatusPill label={record.status} tone={record.status === "delivered" ? "good" : "muted"} />
             </div>
           ))}
-          {!records.length && <div className="empty-state">暂无分发记录</div>}
+          {!records.length && <div className="empty-state">{t("settings.noDistributionRecords")}</div>}
         </div>
       </div>
 
       <div className="panel full-span">
-        <div className="panel-title"><ShieldAlert size={18} /><span>操作黑匣子</span></div>
+        <div className="panel-title"><ShieldAlert size={18} /><span>{t("settings.auditBlackbox")}</span></div>
         <div className="toolbar backup-actions">
-          <Input label="关键词" value={auditQuery} onChange={setAuditQuery} />
-          <button onClick={() => void load()} type="button"><RefreshCw size={15} />检索</button>
-          <button onClick={() => void analyzeAudit()} type="button"><Activity size={15} />AI 分析</button>
-          <button onClick={() => void clearAudit()} type="button"><Trash2 size={15} />清空</button>
+          <Input label={t("settings.keyword")} value={auditQuery} onChange={setAuditQuery} />
+          <button onClick={() => void load()} type="button"><RefreshCw size={15} />{t("settings.search")}</button>
+          <button onClick={() => void analyzeAudit()} type="button"><Activity size={15} />{t("settings.aiAnalysis")}</button>
+          <button onClick={() => void clearAudit()} type="button"><Trash2 size={15} />{t("settings.clear")}</button>
         </div>
         <div className="table-list">
           {events.map((event) => (
             <div className="table-row audit-row" key={event.id}>
               <div>
                 <strong>{event.module} · {event.action}</strong>
-                <small>{event.description} · {event.sourceIp} · {new Date(Number(event.timestampSeconds) * 1000).toLocaleString()}</small>
+                <small>{event.description} · {event.sourceIp} · {formatDateTime(new Date(Number(event.timestampSeconds) * 1000), locale)}</small>
               </div>
               <StatusPill label={event.level || "info"} tone={event.level === "warning" ? "danger" : "muted"} />
             </div>
           ))}
-          {!events.length && <div className="empty-state">暂无审计事件</div>}
+          {!events.length && <div className="empty-state">{t("settings.noAuditEvents")}</div>}
         </div>
       </div>
 
       <div className="panel full-span">
-        <div className="panel-title"><ShieldCheck size={18} /><span>日志风险分析</span></div>
-        <pre className="report-output">{analysis || "暂无分析结果"}</pre>
+        <div className="panel-title"><ShieldCheck size={18} /><span>{t("settings.logRiskAnalysis")}</span></div>
+        <pre className="report-output">{analysis || t("settings.noAnalysisResult")}</pre>
       </div>
     </section>
   );
@@ -215,6 +217,7 @@ export function ClusterAudit({ clients }: { clients: Clients }) {
 
 // ====== 面板设置 ======
 export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout: () => void }) {
+  const { t } = useLocale();
   const [options, setOptions] = useState<SecurityOptionsForm>(defaultSecurityOptions);
   const [systemInfo, setSystemInfo] = useState({ hostname: "-", os: "-", kernel: "-", arch: "-" });
   const [certs, setCerts] = useState<CertificateItem[]>([]);
@@ -279,7 +282,7 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
       if (response.options) {
         setOptions({ ...defaultSecurityOptions, ...response.options });
       }
-      setMessage(response.options?.lastApplyMessage || "设置已保存");
+      setMessage(response.options?.lastApplyMessage || t("settings.optionsSaved"));
       setError("");
     } catch (err) {
       setError(safeError(err));
@@ -289,7 +292,7 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
   const importCert = async () => {
     try {
       const response = await clients.ssl.importCertificate(importForm);
-      setMessage(response.status?.message || "证书已导入");
+      setMessage(response.status?.message || t("settings.certImported"));
       setImportForm({ domain: "", group: "default", certificatePem: "", privateKeyPem: "" });
       void refresh();
     } catch (err) {
@@ -299,7 +302,7 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
 
   const requestAcmeCert = async () => {
     if (!acmeForm.domain.trim() || !acmeForm.email.trim()) {
-      setError("域名和邮箱必填");
+      setError(t("settings.domainEmailRequired"));
       return;
     }
     try {
@@ -318,10 +321,10 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
           name: response.dnsRecordName,
           value: response.dnsRecordValue
         });
-        setMessage(response.status?.message || "请添加下方 TXT 记录后再点一次申请");
+        setMessage(response.status?.message || t("settings.txtHintMsg"));
       } else {
         setAcmeChallengeHint(null);
-        setMessage("证书已签发");
+        setMessage(t("settings.certIssued"));
         void refresh();
       }
       setError("");
@@ -333,8 +336,8 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
   return (
     <section className="flex flex-col gap-5 max-w-4xl">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight m-0">面板设置</h1>
-        <p className="text-sm text-muted-foreground m-0">控制面板访问入口、安全策略与 SSL 证书</p>
+        <h1 className="text-2xl font-semibold tracking-tight m-0">{t("settings.panelSettingsTitle")}</h1>
+        <p className="text-sm text-muted-foreground m-0">{t("settings.panelSettingsSubtitle")}</p>
       </header>
 
       {error && (
@@ -350,11 +353,11 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
 
       <Tabs defaultValue="basic">
         <TabsList>
-          <TabsTrigger value="basic">基础</TabsTrigger>
-          <TabsTrigger value="security">安全</TabsTrigger>
+          <TabsTrigger value="basic">{t("settings.tabBasic")}</TabsTrigger>
+          <TabsTrigger value="security">{t("settings.tabSecurity")}</TabsTrigger>
           <TabsTrigger value="ssl">SSL</TabsTrigger>
-          <TabsTrigger value="modules">模块</TabsTrigger>
-          <TabsTrigger value="about">关于</TabsTrigger>
+          <TabsTrigger value="modules">{t("settings.tabModules")}</TabsTrigger>
+          <TabsTrigger value="about">{t("settings.tabAbout")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="modules" className="mt-4">
@@ -364,12 +367,12 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
         <TabsContent value="basic" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>访问入口</CardTitle>
-              <CardDescription>修改面板监听地址与访问路径以增强安全</CardDescription>
+              <CardTitle>{t("settings.entryTitle")}</CardTitle>
+              <CardDescription>{t("settings.entryDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="grid gap-2">
-                <UILabel htmlFor="settings-listen">监听地址</UILabel>
+                <UILabel htmlFor="settings-listen">{t("settings.listenAddr")}</UILabel>
                 <UIInput
                   id="settings-listen"
                   placeholder="0.0.0.0:8443"
@@ -378,12 +381,10 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
                     setOptions((prev) => ({ ...prev, panelListenAddr: event.target.value }))
                   }
                 />
-                <span className="text-xs text-muted-foreground">
-                  修改监听地址需要重启面板服务才能生效
-                </span>
+                <span className="text-xs text-muted-foreground">{t("settings.listenAddrHint")}</span>
               </div>
               <div className="grid gap-2">
-                <UILabel htmlFor="settings-path">访问路径</UILabel>
+                <UILabel htmlFor="settings-path">{t("settings.accessPath")}</UILabel>
                 <UIInput
                   id="settings-path"
                   placeholder="/admin"
@@ -392,14 +393,12 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
                     setOptions((prev) => ({ ...prev, panelAccessPath: event.target.value }))
                   }
                 />
-                <span className="text-xs text-muted-foreground">
-                  设置自定义路径可降低被扫描器探测到的概率
-                </span>
+                <span className="text-xs text-muted-foreground">{t("settings.accessPathHint")}</span>
               </div>
               <div className="flex justify-end">
                 <UIButton onClick={() => void saveOptions()}>
                   <Save className="size-4" />
-                  保存基础设置
+                  {t("settings.saveBasic")}
                 </UIButton>
               </div>
             </CardContent>
@@ -410,16 +409,14 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
           <TwoFactorCard clients={clients} />
           <Card>
             <CardHeader>
-              <CardTitle>登录与请求保护</CardTitle>
-              <CardDescription>两步验证、ICMP 与端口扫描防护</CardDescription>
+              <CardTitle>{t("settings.loginProtectionTitle")}</CardTitle>
+              <CardDescription>{t("settings.loginProtectionDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3">
                 <div className="flex flex-col gap-0.5">
-                  <span className="font-medium">强制两步验证</span>
-                  <span className="text-xs text-muted-foreground">
-                    所有面板用户登录时必须输入 TOTP 验证码
-                  </span>
+                  <span className="font-medium">{t("settings.force2fa")}</span>
+                  <span className="text-xs text-muted-foreground">{t("settings.force2faDesc")}</span>
                 </div>
                 <Switch
                   checked={options.twoFactorRequired}
@@ -430,10 +427,8 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
               </div>
               <div className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3">
                 <div className="flex flex-col gap-0.5">
-                  <span className="font-medium">禁用 ICMP Ping</span>
-                  <span className="text-xs text-muted-foreground">
-                    阻止外部使用 ping 探测主机存活
-                  </span>
+                  <span className="font-medium">{t("settings.disablePing")}</span>
+                  <span className="text-xs text-muted-foreground">{t("settings.disablePingDesc")}</span>
                 </div>
                 <Switch
                   checked={options.disablePing}
@@ -444,9 +439,12 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
               </div>
               <div className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3">
                 <div className="flex flex-col gap-0.5">
-                  <span className="font-medium">端口扫描防护</span>
+                  <span className="font-medium">{t("settings.portScanProtection")}</span>
                   <span className="text-xs text-muted-foreground">
-                    阈值 {options.scanBurst} 次 / {options.scanWindowSeconds} 秒
+                    {t("settings.portScanProtectionDesc", {
+                      burst: options.scanBurst,
+                      window: options.scanWindowSeconds
+                    })}
                   </span>
                 </div>
                 <Switch
@@ -459,7 +457,7 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
               <div className="flex justify-end">
                 <UIButton onClick={() => void saveOptions()}>
                   <Save className="size-4" />
-                  保存安全设置
+                  {t("settings.saveSecurity")}
                 </UIButton>
               </div>
             </CardContent>
@@ -470,15 +468,13 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
           <AcmeSettingsCard clients={clients} onMessage={setMessage} onError={setError} />
           <Card>
             <CardHeader>
-              <CardTitle>申请 Let's Encrypt 证书</CardTitle>
-              <CardDescription>
-                NAT VPS 拿不到公网 80,默认 DNS-01 挑战:面板返回 TXT 记录,你加到 DNS 后再点一次申请。
-              </CardDescription>
+              <CardTitle>{t("settings.acmeCertTitle")}</CardTitle>
+              <CardDescription>{t("settings.acmeCertDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="grid gap-2">
-                  <UILabel htmlFor="acme-domain">域名</UILabel>
+                  <UILabel htmlFor="acme-domain">{t("settings.domain")}</UILabel>
                   <UIInput
                     id="acme-domain"
                     placeholder="example.com"
@@ -489,7 +485,7 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
                   />
                 </div>
                 <div className="grid gap-2">
-                  <UILabel htmlFor="acme-email">联系邮箱</UILabel>
+                  <UILabel htmlFor="acme-email">{t("settings.contactEmail")}</UILabel>
                   <UIInput
                     id="acme-email"
                     type="email"
@@ -501,7 +497,7 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
                   />
                 </div>
                 <div className="grid gap-2">
-                  <UILabel htmlFor="acme-challenge">挑战方式</UILabel>
+                  <UILabel htmlFor="acme-challenge">{t("settings.challengeType")}</UILabel>
                   <Select
                     value={acmeForm.challenge}
                     onValueChange={(value) =>
@@ -515,15 +511,15 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="dns01">DNS-01(NAT VPS 推荐)</SelectItem>
-                      <SelectItem value="http01">HTTP-01(需开放 80 端口)</SelectItem>
+                      <SelectItem value="dns01">{t("settings.challengeDns01")}</SelectItem>
+                      <SelectItem value="http01">{t("settings.challengeHttp01")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               {acmeChallengeHint && (
                 <div className="rounded-md border border-info/40 bg-info/10 px-3 py-3 text-sm flex flex-col gap-2">
-                  <div className="font-medium text-info">需要添加 DNS TXT 记录</div>
+                  <div className="font-medium text-info">{t("settings.needTxtRecord")}</div>
                   <div className="grid grid-cols-[80px_1fr] gap-x-3 gap-y-1 text-xs font-mono">
                     <span className="text-muted-foreground">RR Name</span>
                     <span>{acmeChallengeHint.name}</span>
@@ -533,14 +529,14 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
                     <span className="break-all">{acmeChallengeHint.value}</span>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    DNS 生效后(可用 <code>dig +short TXT {acmeChallengeHint.name}</code> 验证),再点击下方"申请证书"完成签发。
+                    {t("settings.dnsVerifyBefore")}<code>dig +short TXT {acmeChallengeHint.name}</code>{t("settings.dnsVerifyAfter")}
                   </div>
                 </div>
               )}
               <div className="flex justify-end">
                 <UIButton onClick={() => void requestAcmeCert()}>
                   <ShieldCheck className="size-4" />
-                  申请证书
+                  {t("settings.requestCert")}
                 </UIButton>
               </div>
             </CardContent>
@@ -548,13 +544,13 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
 
           <Card>
             <CardHeader>
-              <CardTitle>导入已有证书</CardTitle>
-              <CardDescription>手工签发或商用 SSL 证书直接粘贴 PEM</CardDescription>
+              <CardTitle>{t("settings.importExistingCertTitle")}</CardTitle>
+              <CardDescription>{t("settings.importExistingCertDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="grid gap-2">
-                  <UILabel htmlFor="ssl-domain">域名</UILabel>
+                  <UILabel htmlFor="ssl-domain">{t("settings.domain")}</UILabel>
                   <UIInput
                     id="ssl-domain"
                     placeholder="example.com"
@@ -565,7 +561,7 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
                   />
                 </div>
                 <div className="grid gap-2">
-                  <UILabel htmlFor="ssl-group">分组</UILabel>
+                  <UILabel htmlFor="ssl-group">{t("settings.group")}</UILabel>
                   <UIInput
                     id="ssl-group"
                     placeholder="default"
@@ -577,7 +573,7 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
                 </div>
               </div>
               <div className="grid gap-2">
-                <UILabel htmlFor="ssl-cert">证书 PEM</UILabel>
+                <UILabel htmlFor="ssl-cert">{t("settings.certPem")}</UILabel>
                 <textarea
                   id="ssl-cert"
                   className="pem-input"
@@ -589,7 +585,7 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
                 />
               </div>
               <div className="grid gap-2">
-                <UILabel htmlFor="ssl-key">私钥 PEM</UILabel>
+                <UILabel htmlFor="ssl-key">{t("settings.privateKeyPem")}</UILabel>
                 <textarea
                   id="ssl-key"
                   className="pem-input"
@@ -603,21 +599,21 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
               <div className="flex justify-end">
                 <UIButton onClick={() => void importCert()}>
                   <Upload className="size-4" />
-                  导入证书
+                  {t("settings.importCert")}
                 </UIButton>
               </div>
 
               <div className="mt-2">
-                <h3 className="text-sm font-medium mb-2">已托管证书 ({certs.length})</h3>
+                <h3 className="text-sm font-medium mb-2">{t("settings.managedCertsCount", { count: certs.length })}</h3>
                 {certs.length === 0 ? (
-                  <div className="empty-state text-sm">尚未导入任何证书</div>
+                  <div className="empty-state text-sm">{t("settings.noCertsImported")}</div>
                 ) : (
                   <Table>
                     <TableHeader>
                       <UITableRow>
-                        <TableHead>域名</TableHead>
-                        <TableHead>分组</TableHead>
-                        <TableHead>状态</TableHead>
+                        <TableHead>{t("settings.colDomain")}</TableHead>
+                        <TableHead>{t("settings.colGroup")}</TableHead>
+                        <TableHead>{t("settings.colStatus")}</TableHead>
                       </UITableRow>
                     </TableHeader>
                     <TableBody>
@@ -627,12 +623,12 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
                           <TableCell>{cert.group || "default"}</TableCell>
                           <TableCell>
                             {cert.warningLevel === "self-signed-bootstrap" ? (
-                              <Badge variant="warning" title="占位自签证书,等待真 ACME 签发">
-                                占位 · 待签发
+                              <Badge variant="warning" title={t("settings.placeholderPendingTitle")}>
+                                {t("settings.placeholderPendingIssuance")}
                               </Badge>
                             ) : (
                               <Badge variant="muted">
-                                {cert.warningLevel || "已导入"}
+                                {cert.warningLevel || t("settings.imported")}
                               </Badge>
                             )}
                           </TableCell>
@@ -649,25 +645,25 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
         <TabsContent value="about" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>关于</CardTitle>
-              <CardDescription>面板与系统信息</CardDescription>
+              <CardTitle>{t("settings.aboutTitle")}</CardTitle>
+              <CardDescription>{t("settings.aboutDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">主机名</span>
+                  <span className="text-xs text-muted-foreground">{t("settings.hostname")}</span>
                   <span className="font-medium">{systemInfo.hostname}</span>
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">操作系统</span>
+                  <span className="text-xs text-muted-foreground">{t("settings.operatingSystem")}</span>
                   <span className="font-medium">{systemInfo.os}</span>
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">内核</span>
+                  <span className="text-xs text-muted-foreground">{t("settings.kernel")}</span>
                   <span className="font-medium">{systemInfo.kernel}</span>
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">架构</span>
+                  <span className="text-xs text-muted-foreground">{t("settings.architecture")}</span>
                   <span className="font-medium">{systemInfo.arch}</span>
                 </div>
               </div>
@@ -675,12 +671,12 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
                 <UIButton variant="outline" asChild>
                   <a href="https://github.com/" target="_blank" rel="noopener noreferrer">
                     <Info className="size-4" />
-                    查看项目仓库
+                    {t("settings.viewRepo")}
                   </a>
                 </UIButton>
                 <UIButton variant="outline" onClick={onLogout}>
                   <LogOut className="size-4" />
-                  退出登录
+                  {t("settings.logout")}
                 </UIButton>
               </div>
             </CardContent>
@@ -696,6 +692,7 @@ export function SettingsPage({ clients, onLogout }: { clients: Clients; onLogout
 // 用户不用 ssh 改 .env 再 restart backend,直接 UI 里勾。
 // 两步验证绑定:生成密钥 → 扫码 → 输入验证码确认才生效;关闭同样要验证码。
 function TwoFactorCard({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [enabled, setEnabled] = useState(false);
   const [source, setSource] = useState("");
   const [setup, setSetup] = useState<{ secret: string; qrSvg: string } | null>(null);
@@ -752,13 +749,13 @@ function TwoFactorCard({ clients }: { clients: Clients }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>两步验证</CardTitle>
+        <CardTitle>{t("settings.twoFactorTitle")}</CardTitle>
         <CardDescription>
           {enabled
             ? source === "env"
-              ? "已启用(由环境变量 RUSTPANEL_TOTP_SECRET 管理)"
-              : "已启用:登录时需要输入验证器里的 6 位验证码"
-            : "未启用:面板暴露在公网时强烈建议开启"}
+              ? t("settings.twoFactorEnabledEnv")
+              : t("settings.twoFactorEnabledPanel")
+            : t("settings.twoFactorDisabledHint")}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -768,26 +765,24 @@ function TwoFactorCard({ clients }: { clients: Clients }) {
           <div>
             <UIButton size="sm" onClick={() => void begin()}>
               <ShieldCheck className="size-4" />
-              开始绑定
+              {t("settings.startBinding")}
             </UIButton>
           </div>
         )}
         {!enabled && setup && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">
-              用 Google Authenticator / 1Password / Authy 等验证器扫描二维码,再输入显示的 6 位验证码。
-            </p>
+            <p className="text-sm text-muted-foreground">{t("settings.scanQrHint")}</p>
             {/* SVG 由后端 qrcode crate 生成,只含矩形路径 */}
             <div
               className="w-[200px] rounded-md border border-border bg-white p-1 [&>svg]:h-auto [&>svg]:w-full"
               dangerouslySetInnerHTML={{ __html: setup.qrSvg }}
             />
             <p className="text-xs text-muted-foreground break-all">
-              不能扫码时手动输入密钥:<span className="font-mono">{setup.secret}</span>
+              {t("settings.manualSecretBefore")}<span className="font-mono">{setup.secret}</span>
             </p>
             <div className="flex items-end gap-2">
               <div className="grid gap-1">
-                <UILabel htmlFor="twofa-code">验证码</UILabel>
+                <UILabel htmlFor="twofa-code">{t("settings.verificationCode")}</UILabel>
                 <UIInput
                   id="twofa-code"
                   inputMode="numeric"
@@ -797,10 +792,10 @@ function TwoFactorCard({ clients }: { clients: Clients }) {
                 />
               </div>
               <UIButton size="sm" onClick={() => void confirm()} disabled={code.length !== 6}>
-                确认启用
+                {t("settings.confirmEnable")}
               </UIButton>
               <UIButton size="sm" variant="outline" onClick={() => setSetup(null)}>
-                取消
+                {t("settings.cancel")}
               </UIButton>
             </div>
           </div>
@@ -808,7 +803,7 @@ function TwoFactorCard({ clients }: { clients: Clients }) {
         {enabled && source === "panel" && (
           <div className="flex items-end gap-2">
             <div className="grid gap-1">
-              <UILabel htmlFor="twofa-disable-code">当前验证码</UILabel>
+              <UILabel htmlFor="twofa-disable-code">{t("settings.currentCode")}</UILabel>
               <UIInput
                 id="twofa-disable-code"
                 inputMode="numeric"
@@ -823,7 +818,7 @@ function TwoFactorCard({ clients }: { clients: Clients }) {
               disabled={code.length !== 6}
               onClick={() => void run(() => clients.security.disableTwoFactor({ code }))}
             >
-              关闭两步验证
+              {t("settings.disable2fa")}
             </UIButton>
           </div>
         )}
@@ -841,6 +836,7 @@ function AcmeSettingsCard({
   onMessage: (text: string) => void;
   onError: (text: string) => void;
 }) {
+  const { t } = useLocale();
   const [email, setEmail] = useState("");
   const [production, setProduction] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -874,7 +870,9 @@ function AcmeSettingsCard({
       setEmail(resp.settings?.contactEmail ?? email);
       setProduction(resp.settings?.production ?? production);
       onMessage(
-        `ACME 设置已保存 · 模式: ${production ? "production(真证书,浏览器认)" : "staging(测试,浏览器红色)"}`
+        t("settings.acmeSavedMsg", {
+          mode: production ? t("settings.acmeModeProduction") : t("settings.acmeModeStaging")
+        })
       );
     } catch (err) {
       onError(safeError(err));
@@ -886,14 +884,12 @@ function AcmeSettingsCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>ACME 设置</CardTitle>
-        <CardDescription>
-          面板级 Let&apos;s Encrypt 偏好,所有站点共用。改完点保存,下次申请 / 续签立即生效,无需重启后端。
-        </CardDescription>
+        <CardTitle>{t("settings.acmeSettingsTitle")}</CardTitle>
+        <CardDescription>{t("settings.acmeSettingsDesc")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="grid gap-2">
-          <UILabel htmlFor="acme-settings-email">联系邮箱</UILabel>
+          <UILabel htmlFor="acme-settings-email">{t("settings.contactEmail")}</UILabel>
           <UIInput
             id="acme-settings-email"
             type="email"
@@ -903,7 +899,7 @@ function AcmeSettingsCard({
             onChange={(event) => setEmail(event.target.value)}
           />
           <p className="text-xs text-muted-foreground m-0">
-            LE 用这个邮箱发证书快过期提醒。<code>example.com / .org / .net</code> 会被服务端拒。
+            {t("settings.acmeEmailHintBefore")}<code>example.com / .org / .net</code>{t("settings.acmeEmailHintAfter")}
           </p>
         </div>
         <div className="flex items-start gap-3">
@@ -915,18 +911,18 @@ function AcmeSettingsCard({
           />
           <div className="flex flex-col gap-1">
             <UILabel htmlFor="acme-production" className="cursor-pointer">
-              使用 production(真证书)
+              {t("settings.useProduction")}
             </UILabel>
             <p className="text-xs text-muted-foreground m-0">
-              关闭 = staging 测试目录(Issuer 含 <code>STAGING</code>,浏览器不信任,但有 IP/域名速率限制宽松)。
+              {t("settings.acmeProdHintOffBefore")}<code>STAGING</code>{t("settings.acmeProdHintOffAfter")}
               <br />
-              开启 = LE production(Issuer 是 R10/R11/E5/E6 之类,浏览器认,**用前先确认 staging 全流程跑通**)。
+              {t("settings.acmeProdHintOn")}
             </p>
           </div>
         </div>
         <div>
           <UIButton onClick={save} disabled={!loaded || saving || !email.trim()}>
-            {saving ? "保存中..." : "保存"}
+            {saving ? t("settings.saving") : t("settings.save")}
           </UIButton>
         </div>
       </CardContent>
@@ -939,6 +935,7 @@ function AcmeSettingsCard({
 // 切换后立即生效(后端写 modules.json override),不需要改 .env / 重启。
 // 同时 dispatch 自定义事件 rustpanel:modules-changed,让侧栏刷新可见 Tab。
 function ModulesPanel({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [modules, setModules] = useState<RuntimeModule[]>([]);
   const [profile, setProfile] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -970,7 +967,11 @@ function ModulesPanel({ clients }: { clients: Clients }) {
       });
       setModules(response.modules);
       setProfile(response.profile);
-      setMessage(`${module.name} 已${enabled ? "启用" : "禁用"}`);
+      setMessage(
+        enabled
+          ? t("settings.moduleEnabled", { name: module.name })
+          : t("settings.moduleDisabled", { name: module.name })
+      );
       setError("");
       // 通知 AppShell 重新拉模块清单刷新侧栏
       window.dispatchEvent(new CustomEvent("rustpanel:modules-changed"));
@@ -986,10 +987,10 @@ function ModulesPanel({ clients }: { clients: Clients }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <SettingsIcon className="size-4 text-primary" />
-          功能模块开关
+          {t("settings.modulesTitle")}
         </CardTitle>
         <CardDescription>
-          启用/禁用立即生效,不需要重启面板。当前 profile:
+          {t("settings.modulesDesc")}
           <Badge variant="muted" className="ml-2">{profile || "custom"}</Badge>
         </CardDescription>
       </CardHeader>
@@ -1016,7 +1017,7 @@ function ModulesPanel({ clients }: { clients: Clients }) {
                   <Badge variant="outline" className="font-mono text-[10px]">
                     {m.id}
                   </Badge>
-                  {m.required && <Badge variant="info">核心</Badge>}
+                  {m.required && <Badge variant="info">{t("settings.core")}</Badge>}
                 </div>
                 <span className="text-xs text-muted-foreground truncate">
                   {m.reason}
@@ -1031,9 +1032,11 @@ function ModulesPanel({ clients }: { clients: Clients }) {
           ))}
         </div>
         <p className="text-xs text-muted-foreground">
-          配置写到 <code className="font-mono">/var/lib/rustpanel/runtime/modules.json</code>,优先级高于 .env 中
-          的 <code className="font-mono">RUSTPANEL_ENABLED_MODULES</code> /
-          <code className="font-mono">RUSTPANEL_DISABLED_MODULES</code>。
+          {t("settings.modulesConfigBefore")}<code className="font-mono">/var/lib/rustpanel/runtime/modules.json</code>
+          {t("settings.modulesConfigMiddle")}
+          <code className="font-mono">RUSTPANEL_ENABLED_MODULES</code> /{" "}
+          <code className="font-mono">RUSTPANEL_DISABLED_MODULES</code>
+          {t("settings.modulesConfigEnd")}
         </p>
       </CardContent>
     </Card>
@@ -1041,30 +1044,31 @@ function ModulesPanel({ clients }: { clients: Clients }) {
 }
 
 export function FtpPage() {
+  const { t } = useLocale();
   return (
     <section className="flex flex-col gap-5 max-w-4xl">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight m-0">FTP</h1>
-        <p className="text-sm text-muted-foreground m-0">FTP 用户与共享目录管理</p>
+        <h1 className="text-2xl font-semibold tracking-tight m-0">{t("settings.ftpTitle")}</h1>
+        <p className="text-sm text-muted-foreground m-0">{t("settings.ftpSubtitle")}</p>
       </header>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <HardDrive className="size-5 text-muted-foreground" />
-            尚未实现
+            {t("settings.notImplemented")}
           </CardTitle>
-          <CardDescription>
-            FTP 服务后端尚未实现,该功能已计入 v3.x 任务规划。当前可使用文件管理器或 SFTP/Web 终端替代。
-          </CardDescription>
+          <CardDescription>{t("settings.notImplementedDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
-            状态:<Badge variant="warning" className="ml-2">BLOCKED · 后端待实现</Badge>
+            {t("settings.statusLabel")}<Badge variant="warning" className="ml-2">{t("settings.blockedBadge")}</Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            如需提前传输文件,可访问 <Badge variant="muted">资源 → 文件</Badge> 模块进行上传/下载;或在
-            <Badge variant="muted" className="mx-1">工具 → 终端</Badge> 中通过 sftp/scp 命令操作。
+            {t("settings.alternativeHintBefore")}<Badge variant="muted">{t("settings.resourceFilesBadge")}</Badge>
+            {t("settings.alternativeHintMiddle")}
+            <Badge variant="muted" className="mx-1">{t("settings.toolsTerminalBadge")}</Badge>
+            {t("settings.alternativeHintAfter")}
           </p>
         </CardContent>
       </Card>
@@ -1074,6 +1078,7 @@ export function FtpPage() {
 
 // ====== 审计日志 ======
 export function AuditPage({ clients }: { clients: Clients }) {
+  const { t, locale } = useLocale();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [moduleFilter, setModuleFilter] = useState("");
   const [query, setQuery] = useState("");
@@ -1101,12 +1106,12 @@ export function AuditPage({ clients }: { clients: Clients }) {
     <section className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight m-0">操作日志</h1>
-          <p className="text-sm text-muted-foreground m-0">面板内所有操作的审计追踪</p>
+          <h1 className="text-2xl font-semibold tracking-tight m-0">{t("settings.auditPageTitle")}</h1>
+          <p className="text-sm text-muted-foreground m-0">{t("settings.auditPageSubtitle")}</p>
         </div>
         <UIButton variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="size-4" />
-          刷新
+          {t("settings.refresh")}
         </UIButton>
       </header>
 
@@ -1115,19 +1120,19 @@ export function AuditPage({ clients }: { clients: Clients }) {
           <div className="flex flex-wrap items-center gap-2">
             <UIInput
               className="flex-1 min-w-[160px]"
-              placeholder="模块,如 security / files"
+              placeholder={t("settings.moduleFilterPlaceholder")}
               value={moduleFilter}
               onChange={(event) => setModuleFilter(event.target.value)}
             />
             <UIInput
               className="flex-1 min-w-[200px]"
-              placeholder="搜索关键字"
+              placeholder={t("settings.searchPlaceholder")}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
             <UIButton size="sm" onClick={() => void load()}>
               <RefreshCw className="size-4" />
-              查询
+              {t("settings.query")}
             </UIButton>
           </div>
 
@@ -1138,25 +1143,25 @@ export function AuditPage({ clients }: { clients: Clients }) {
           )}
 
           {events.length === 0 ? (
-            <div className="empty-state text-sm">暂无符合条件的日志</div>
+            <div className="empty-state text-sm">{t("settings.noMatchingLogs")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>时间</TableHead>
-                  <TableHead>用户</TableHead>
-                  <TableHead>模块</TableHead>
-                  <TableHead>动作</TableHead>
-                  <TableHead>级别</TableHead>
-                  <TableHead>来源 IP</TableHead>
-                  <TableHead>说明</TableHead>
+                  <TableHead>{t("settings.colTime")}</TableHead>
+                  <TableHead>{t("settings.colUser")}</TableHead>
+                  <TableHead>{t("settings.colModule")}</TableHead>
+                  <TableHead>{t("settings.colAction")}</TableHead>
+                  <TableHead>{t("settings.colLevel")}</TableHead>
+                  <TableHead>{t("settings.colSourceIp")}</TableHead>
+                  <TableHead>{t("settings.colDescription")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
                 {events.map((event) => (
                   <UITableRow key={event.id}>
                     <TableCell className="text-xs whitespace-nowrap">
-                      {new Date(Number(event.timestampSeconds) * 1000).toLocaleString()}
+                      {formatDateTime(new Date(Number(event.timestampSeconds) * 1000), locale)}
                     </TableCell>
                     <TableCell className="font-medium">{event.user || "-"}</TableCell>
                     <TableCell>{event.module}</TableCell>

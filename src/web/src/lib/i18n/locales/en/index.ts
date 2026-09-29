@@ -10,6 +10,7 @@ import { files } from "./files";
 import { network } from "./network";
 import { ops } from "./ops";
 import { security } from "./security";
+import { settings } from "./settings";
 import { terminal } from "./terminal";
 
 export const en: Messages = {
@@ -24,5 +25,6 @@ export const en: Messages = {
   network,
   ops,
   security,
+  settings,
   terminal
 };

@@ -9,6 +9,7 @@ import { files } from "./files";
 import { network } from "./network";
 import { ops } from "./ops";
 import { security } from "./security";
+import { settings } from "./settings";
 import { terminal } from "./terminal";
 
 // 迁移到哪个页面就在这里加一个命名空间;en/index.ts 用 `typeof zhCN` 做类型,
@@ -25,6 +26,7 @@ export const zhCN = {
   network,
   ops,
   security,
+  settings,
   terminal
 };
 
