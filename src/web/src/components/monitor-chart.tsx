@@ -1,5 +1,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
 
+import { useLocale } from "../lib/i18n/locale-provider";
+import type { MessageKey } from "../lib/i18n/translate";
+
 export type ChartPoint = {
   time: string;
   timestamp: number;
@@ -14,9 +17,9 @@ export type ChartClickState = {
 const HEIGHT = 260;
 const PAD = { top: 10, right: 12, bottom: 24, left: 40 };
 const Y_TICKS = [0, 25, 50, 75, 100];
-const SERIES = [
-  { key: "cpu" as const, label: "CPU", color: "var(--chart-1)" },
-  { key: "memory" as const, label: "内存", color: "var(--chart-2)" }
+const SERIES: Array<{ key: "cpu" | "memory"; labelKey: MessageKey; color: string }> = [
+  { key: "cpu", labelKey: "components.chartCpu", color: "var(--chart-1)" },
+  { key: "memory", labelKey: "components.chartMemory", color: "var(--chart-2)" }
 ];
 
 // 手写 SVG 折线图:只画 CPU / 内存两条 0~100% 的线,外加网格、坐标轴、悬浮提示和点选。
@@ -28,6 +31,7 @@ export default function MonitorChart({
   data: ChartPoint[];
   onPointClick: (state: ChartClickState) => void;
 }) {
+  const { t } = useLocale();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -79,7 +83,7 @@ export default function MonitorChart({
       }}
     >
       {width > 0 && (
-        <svg width={width} height={HEIGHT} role="img" aria-label="CPU 与内存使用率趋势">
+        <svg width={width} height={HEIGHT} role="img" aria-label={t("components.chartAriaLabel")}>
           {Y_TICKS.map((tick) => (
             <g key={tick}>
               <line
@@ -162,7 +166,7 @@ export default function MonitorChart({
           {SERIES.map((series) => (
             <div key={series.key} className="flex items-center gap-2">
               <span className="inline-block size-2 rounded-full" style={{ background: series.color }} />
-              <span>{series.label}</span>
+              <span>{t(series.labelKey)}</span>
               <span className="ml-auto tabular-nums">{hovered[series.key].toFixed(1)}%</span>
             </div>
           ))}

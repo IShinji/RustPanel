@@ -92,7 +92,7 @@ import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { ThemeToggle } from "./components/theme-toggle";
 import { LanguageToggle } from "./components/language-toggle";
 import { useLocale } from "./lib/i18n/locale-provider";
-import type { MessageKey } from "./lib/i18n/translate";
+import type { Locale, MessageKey } from "./lib/i18n/translate";
 import { cn } from "./lib/utils";
 import {
   clearAuthToken,
@@ -102,7 +102,7 @@ import {
   setAuthToken,
   type Clients
 } from "./lib/rpc";
-import { formatBytes, formatDuration, formatPercent, safeError } from "./lib/format";
+import { formatBytes, formatDateTime, formatDuration, formatPercent, safeError } from "./lib/format";
 import {
   DockerApps,
   MicroPanel,
@@ -174,12 +174,12 @@ type NavTab = {
 };
 type MonitorRange = "1h" | "24h" | "7d" | "custom";
 
-// monitorRanges 只在 Dashboard 里用,label 随 Dashboard 一起迁移(见后续 i18n 提交)。
-const monitorRanges: Array<{ id: MonitorRange; label: string }> = [
+// "1h"/"24h"/"7d" 中英文一样,不查字典;"自定义" 走 labelKey 保持数组类型统一。
+const monitorRanges: Array<{ id: MonitorRange; label?: string; labelKey?: MessageKey }> = [
   { id: "1h", label: "1h" },
   { id: "24h", label: "24h" },
   { id: "7d", label: "7d" },
-  { id: "custom", label: "自定义" }
+  { id: "custom", labelKey: "dashboard.rangeCustom" }
 ];
 const tabs: NavTab[] = [
   { id: "dashboard", labelKey: "app.navDashboard", icon: Activity, group: "overview" },
@@ -661,6 +661,7 @@ function Topbar({ title, onLogout }: { title: string; onLogout: () => void }) {
 }
 
 function Dashboard({ clients }: { clients: Clients }) {
+  const { t, locale } = useLocale();
   const current = useMonitorStore((state) => state.current);
   const history = useMonitorStore((state) => state.history);
   const setCurrent = useMonitorStore((state) => state.setCurrent);
@@ -781,17 +782,17 @@ function Dashboard({ clients }: { clients: Clients }) {
             : 0;
 
         return {
-          time: formatChartTimestamp(sample.timestampSeconds, range),
+          time: formatChartTimestamp(sample.timestampSeconds, range, locale),
           timestamp: Number(sample.timestampSeconds),
           cpu: sample.cpuUsagePercent,
           memory: memoryPercent
         };
       }),
-    [chartSource, range]
+    [chartSource, range, locale]
   );
   const selectedLabel = selectedTimestamp
-    ? new Date(selectedTimestamp * 1000).toLocaleString()
-    : "未选择";
+    ? formatDateTime(new Date(selectedTimestamp * 1000), locale)
+    : t("dashboard.notSelected");
 
   const loadProcessSnapshot = async (timestamp: number) => {
     try {
@@ -844,11 +845,11 @@ function Dashboard({ clients }: { clients: Clients }) {
     <section className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight m-0">仪表盘</h1>
-          <p className="text-sm text-muted-foreground m-0">服务器实时状态总览</p>
+          <h1 className="text-2xl font-semibold tracking-tight m-0">{t("app.navDashboard")}</h1>
+          <p className="text-sm text-muted-foreground m-0">{t("dashboard.subtitle")}</p>
         </div>
         <Badge variant={error ? "destructive" : "success"}>
-          {error ? "离线" : "运行中"}
+          {error ? t("dashboard.offline") : t("dashboard.online")}
         </Badge>
       </header>
 
@@ -857,13 +858,13 @@ function Dashboard({ clients }: { clients: Clients }) {
       <Card>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-3 text-sm">
-            <ServerInfoCell label="主机名" value={system.hostname} />
-            <ServerInfoCell label="操作系统" value={system.os} />
-            <ServerInfoCell label="内核" value={system.kernel} />
-            <ServerInfoCell label="架构" value={system.arch} />
-            <ServerInfoCell label="运行时间" value={formatDuration(current?.uptimeSeconds ?? 0)} />
+            <ServerInfoCell label={t("dashboard.hostname")} value={system.hostname} />
+            <ServerInfoCell label={t("dashboard.os")} value={system.os} />
+            <ServerInfoCell label={t("dashboard.kernel")} value={system.kernel} />
+            <ServerInfoCell label={t("dashboard.arch")} value={system.arch} />
+            <ServerInfoCell label={t("dashboard.uptime")} value={formatDuration(current?.uptimeSeconds ?? 0, t)} />
             <ServerInfoCell
-              label="负载"
+              label={t("dashboard.load")}
               value={`${(current?.loadAverage?.oneMinute ?? 0).toFixed(2)} / ${(current?.loadAverage?.fiveMinutes ?? 0).toFixed(2)} / ${(current?.loadAverage?.fifteenMinutes ?? 0).toFixed(2)}`}
             />
           </div>
@@ -873,23 +874,27 @@ function Dashboard({ clients }: { clients: Clients }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           icon={Cpu}
-          label="CPU 使用率"
+          label={t("dashboard.cpuUsage")}
           value={formatPercent(current?.cpuUsagePercent ?? 0)}
-          detail={`${current?.cpuCores.length ?? 0} 核心`}
+          detail={t("dashboard.cores", { count: current?.cpuCores.length ?? 0 })}
           percent={current?.cpuUsagePercent ?? 0}
         />
         <MetricCard
           icon={MemoryStick}
-          label="内存使用"
+          label={t("dashboard.memoryUsage")}
           value={`${memoryPercent.toFixed(1)}%`}
           detail={`${formatBytes(current?.memory?.usedBytes ?? 0)} / ${formatBytes(current?.memory?.totalBytes ?? 0)}`}
           percent={memoryPercent}
         />
         <MetricCard
           icon={HardDrive}
-          label="磁盘使用"
+          label={t("dashboard.diskUsage")}
           value={diskTotal > 0 ? `${diskPercent.toFixed(1)}%` : "-"}
-          detail={diskTotal > 0 ? `${formatBytes(BigInt(diskUsed))} / ${formatBytes(BigInt(diskTotal))}` : "无磁盘数据"}
+          detail={
+            diskTotal > 0
+              ? `${formatBytes(BigInt(diskUsed))} / ${formatBytes(BigInt(diskTotal))}`
+              : t("dashboard.noDiskData")
+          }
           percent={diskPercent}
         />
         <NetworkMetricCard
@@ -905,14 +910,14 @@ function Dashboard({ clients }: { clients: Clients }) {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <LineChartIcon className="size-4 text-primary" />
-                <CardTitle className="text-base">CPU / 内存趋势</CardTitle>
+                <CardTitle className="text-base">{t("dashboard.cpuMemoryTrend")}</CardTitle>
               </div>
               <div className="flex items-center gap-2">
                 <Tabs value={range} onValueChange={(value) => setRange(value as MonitorRange)}>
                   <TabsList className="h-8">
                     {monitorRanges.map((item) => (
                       <TabsTrigger key={item.id} value={item.id} className="h-6 text-xs">
-                        {item.label}
+                        {item.label ?? t(item.labelKey as MessageKey)}
                       </TabsTrigger>
                     ))}
                   </TabsList>
@@ -921,7 +926,7 @@ function Dashboard({ clients }: { clients: Clients }) {
                   variant="ghost"
                   size="icon"
                   className="size-8"
-                  aria-label="刷新历史"
+                  aria-label={t("dashboard.refreshHistory")}
                   onClick={() => void loadMetricHistory()}
                 >
                   <RefreshCw className="size-4" />
@@ -933,14 +938,14 @@ function Dashboard({ clients }: { clients: Clients }) {
             {range === "custom" && (
               <div className="flex flex-wrap items-center gap-2 mb-3">
                 <UIInput
-                  aria-label="开始时间"
+                  aria-label={t("dashboard.startTime")}
                   className="h-8 w-auto text-xs"
                   onChange={(event) => setCustomStart(event.target.value)}
                   type="datetime-local"
                   value={customStart}
                 />
                 <UIInput
-                  aria-label="结束时间"
+                  aria-label={t("dashboard.endTime")}
                   className="h-8 w-auto text-xs"
                   onChange={(event) => setCustomEnd(event.target.value)}
                   type="datetime-local"
@@ -949,7 +954,11 @@ function Dashboard({ clients }: { clients: Clients }) {
               </div>
             )}
             <Suspense
-              fallback={<div className="h-[260px] flex items-center justify-center text-xs text-muted-foreground">图表加载中…</div>}
+              fallback={
+                <div className="h-[260px] flex items-center justify-center text-xs text-muted-foreground">
+                  {t("dashboard.chartLoading")}
+                </div>
+              }
             >
               <MonitorChart data={chartData} onPointClick={handleChartClick} />
             </Suspense>
@@ -960,13 +969,13 @@ function Dashboard({ clients }: { clients: Clients }) {
           <CardHeader className="pb-3 [.border-b]:pb-3 border-b border-border">
             <div className="flex items-center gap-2">
               <Boxes className="size-4 text-primary" />
-              <CardTitle className="text-base">已安装软件</CardTitle>
+              <CardTitle className="text-base">{t("dashboard.installedApps")}</CardTitle>
             </div>
-            <CardDescription>当前面板部署的应用与运行状态</CardDescription>
+            <CardDescription>{t("dashboard.installedAppsDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="pt-4">
             {installedApps.length === 0 ? (
-              <div className="empty-state">尚未安装任何应用</div>
+              <div className="empty-state">{t("dashboard.noAppsInstalled")}</div>
             ) : (
               <ul className="flex flex-col gap-2">
                 {installedApps.slice(0, 8).map((app) => (
@@ -995,21 +1004,21 @@ function Dashboard({ clients }: { clients: Clients }) {
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
                 <Server className="size-4 text-primary" />
-                <CardTitle className="text-base">异常时刻进程</CardTitle>
+                <CardTitle className="text-base">{t("dashboard.processSnapshot")}</CardTitle>
               </div>
               <span className="text-xs text-muted-foreground">{selectedLabel}</span>
             </div>
           </CardHeader>
           <CardContent className="pt-4">
             {processes.length === 0 ? (
-              <div className="empty-state">点击趋势图查看该时刻进程资源</div>
+              <div className="empty-state">{t("dashboard.clickChartHint")}</div>
             ) : (
               <Table>
                 <TableHeader>
                   <UITableRow>
-                    <TableHead>进程</TableHead>
-                    <TableHead className="text-right">CPU</TableHead>
-                    <TableHead className="text-right">内存</TableHead>
+                    <TableHead>{t("dashboard.colProcess")}</TableHead>
+                    <TableHead className="text-right">{t("dashboard.colCpu")}</TableHead>
+                    <TableHead className="text-right">{t("dashboard.colMemory")}</TableHead>
                   </UITableRow>
                 </TableHeader>
                 <TableBody>
@@ -1035,9 +1044,9 @@ function Dashboard({ clients }: { clients: Clients }) {
           <CardHeader className="pb-3 [.border-b]:pb-3 border-b border-border">
             <div className="flex items-center gap-2">
               <FileText className="size-4 text-primary" />
-              <CardTitle className="text-base">运行报告</CardTitle>
+              <CardTitle className="text-base">{t("dashboard.reportTitle")}</CardTitle>
             </div>
-            <CardDescription>面板自动汇总日报或周报</CardDescription>
+            <CardDescription>{t("dashboard.reportDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3 pt-4">
             <div className="flex gap-2">
@@ -1046,16 +1055,16 @@ function Dashboard({ clients }: { clients: Clients }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="daily">日报</SelectItem>
-                  <SelectItem value="weekly">周报</SelectItem>
+                  <SelectItem value="daily">{t("dashboard.daily")}</SelectItem>
+                  <SelectItem value="weekly">{t("dashboard.weekly")}</SelectItem>
                 </SelectContent>
               </Select>
               <UIButton size="sm" onClick={() => void generateReport()}>
                 <RefreshCw className="size-3.5" />
-                生成
+                {t("dashboard.generate")}
               </UIButton>
             </div>
-            <pre className="report-output text-xs">{healthReport || "暂无报告"}</pre>
+            <pre className="report-output text-xs">{healthReport || t("dashboard.noReportYet")}</pre>
           </CardContent>
         </Card>
       </div>
@@ -1114,12 +1123,13 @@ function NetworkMetricCard({
   receivedBytes: number;
   transmittedBytes: number;
 }) {
+  const { t } = useLocale();
   return (
     <Card>
       <CardContent>
         <div className="flex items-center justify-between gap-2 mb-2">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            网络吞吐
+            {t("dashboard.networkThroughput")}
           </span>
           <Wifi className="size-4 text-primary" />
         </div>
@@ -1130,14 +1140,14 @@ function NetworkMetricCard({
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <ArrowDownToLine className="size-3.5 text-info" />
-              <span>下行</span>
+              <span>{t("dashboard.download")}</span>
             </div>
             <span className="font-medium text-foreground">{formatBytes(BigInt(receivedBytes))}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <ArrowUpFromLine className="size-3.5 text-warning" />
-              <span>上行</span>
+              <span>{t("dashboard.upload")}</span>
             </div>
             <span className="font-medium text-foreground">{formatBytes(BigInt(transmittedBytes))}</span>
           </div>
@@ -1155,6 +1165,7 @@ function BudgetBars({
   budget?: ResourceBudget;
   capabilities?: Capabilities;
 }) {
+  const { t } = useLocale();
   const memory = budget?.memory;
   const memoryPercent =
     memory && memory.totalBytes > 0n
@@ -1177,17 +1188,17 @@ function BudgetBars({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Activity className="size-4 text-primary" />
-            <span className="text-sm font-medium">资源预算</span>
+            <span className="text-sm font-medium">{t("dashboard.budgetTitle")}</span>
           </div>
           {capabilities?.isOpenvz && (
-            <Badge variant="warning" title={capabilities.dockerBlockReason || "OpenVZ 容器"}>
+            <Badge variant="warning" title={capabilities.dockerBlockReason || t("dashboard.openvzContainer")}>
               OpenVZ
             </Badge>
           )}
         </div>
 
         <BudgetRow
-          label="内存"
+          label={t("dashboard.memory")}
           icon={MemoryStick}
           percent={memoryPercent}
           detail={
@@ -1199,7 +1210,7 @@ function BudgetBars({
           dangerAt={90}
         />
         <BudgetRow
-          label="磁盘"
+          label={t("dashboard.disk")}
           icon={HardDrive}
           percent={diskPercent}
           detail={
@@ -1211,10 +1222,14 @@ function BudgetBars({
           dangerAt={92}
         />
         <BudgetRow
-          label="NAT 端口"
+          label={t("dashboard.natPorts")}
           icon={Wifi}
           percent={portPercent}
-          detail={portTotal > 0 ? `${portReserved} / ${portTotal} 已预留` : "未配置 NAT 端口预算"}
+          detail={
+            portTotal > 0
+              ? t("dashboard.natReserved", { reserved: portReserved, total: portTotal })
+              : t("dashboard.natNotConfigured")
+          }
           warnAt={70}
           dangerAt={90}
         />
@@ -1223,7 +1238,9 @@ function BudgetBars({
           <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground flex items-center gap-2">
             <Info className="size-3.5" />
             <span>
-              Docker 在本机不可用 —— {capabilities.dockerBlockReason || "缺少必要内核能力"}
+              {t("dashboard.dockerUnavailable", {
+                reason: capabilities.dockerBlockReason || t("dashboard.missingKernelCapability")
+              })}
             </span>
           </div>
         )}
@@ -1277,6 +1294,7 @@ function BudgetRow({
 // ====== Phase A: 网络与端口管理页 ======
 
 function NetworkPage({ clients }: { clients: Clients }) {
+  const { t, locale } = useLocale();
   const [budget, setBudget] = useState<ResourceBudget | undefined>(undefined);
   const [capabilities, setCapabilities] = useState<Capabilities | undefined>(undefined);
   const [reservedPorts, setReservedPorts] = useState<ReservedPort[]>([]);
@@ -1317,11 +1335,11 @@ function NetworkPage({ clients }: { clients: Clients }) {
   const reservePort = async () => {
     const port = Number.parseInt(reserveForm.port, 10);
     if (!Number.isFinite(port) || port < 1 || port > 65535) {
-      setError("端口号需为 1-65535");
+      setError(t("network.portRangeError"));
       return;
     }
     if (!reserveForm.owner.trim()) {
-      setError("请填写预留方");
+      setError(t("network.ownerRequired"));
       return;
     }
     try {
@@ -1332,7 +1350,7 @@ function NetworkPage({ clients }: { clients: Clients }) {
         protocol: reserveForm.protocol
       });
       setReserveForm({ port: "", owner: "", description: "", protocol: "tcp" });
-      setMessage(`端口 ${port} 已预留`);
+      setMessage(t("network.portReserved", { port }));
       setError("");
       void refresh();
     } catch (err) {
@@ -1343,7 +1361,7 @@ function NetworkPage({ clients }: { clients: Clients }) {
   const releasePort = async (port: number) => {
     try {
       await clients.capability.releasePort({ port });
-      setMessage(`端口 ${port} 已释放`);
+      setMessage(t("network.portReleased", { port }));
       void refresh();
     } catch (err) {
       setError(safeError(err));
@@ -1354,14 +1372,12 @@ function NetworkPage({ clients }: { clients: Clients }) {
     <section className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight m-0">网络与端口</h1>
-          <p className="text-sm text-muted-foreground m-0">
-            管理 NAT VPS 的 20 个公网端口预算 + 公网 IPv6 地址池
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight m-0">{t("app.navNetwork")}</h1>
+          <p className="text-sm text-muted-foreground m-0">{t("network.subtitle")}</p>
         </div>
         <UIButton variant="outline" size="sm" onClick={() => void refresh()}>
           <RefreshCw className="size-4" />
-          刷新
+          {t("network.refresh")}
         </UIButton>
       </header>
 
@@ -1382,16 +1398,14 @@ function NetworkPage({ clients }: { clients: Clients }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Wifi className="size-4 text-primary" />
-            NAT 端口预算
+            {t("network.natBudgetTitle")}
           </CardTitle>
-          <CardDescription>
-            登记每个端口给了谁用,避免装新软件时撞端口。建议把面板/SSH/已上线服务都登记一遍。
-          </CardDescription>
+          <CardDescription>{t("network.natBudgetDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="grid gap-3 md:grid-cols-[120px_1fr_1fr_120px_auto] md:items-end">
             <div className="grid gap-1">
-              <UILabel htmlFor="port-num">端口</UILabel>
+              <UILabel htmlFor="port-num">{t("network.port")}</UILabel>
               <UIInput
                 id="port-num"
                 type="number"
@@ -1404,10 +1418,10 @@ function NetworkPage({ clients }: { clients: Clients }) {
               />
             </div>
             <div className="grid gap-1">
-              <UILabel htmlFor="port-owner">预留方</UILabel>
+              <UILabel htmlFor="port-owner">{t("network.owner")}</UILabel>
               <UIInput
                 id="port-owner"
-                placeholder="例如 panel / site:my-blog"
+                placeholder={t("network.ownerPlaceholder")}
                 value={reserveForm.owner}
                 onChange={(event) =>
                   setReserveForm((prev) => ({ ...prev, owner: event.target.value }))
@@ -1415,10 +1429,10 @@ function NetworkPage({ clients }: { clients: Clients }) {
               />
             </div>
             <div className="grid gap-1">
-              <UILabel htmlFor="port-desc">说明</UILabel>
+              <UILabel htmlFor="port-desc">{t("network.description")}</UILabel>
               <UIInput
                 id="port-desc"
-                placeholder="可选"
+                placeholder={t("network.optional")}
                 value={reserveForm.description}
                 onChange={(event) =>
                   setReserveForm((prev) => ({ ...prev, description: event.target.value }))
@@ -1426,7 +1440,7 @@ function NetworkPage({ clients }: { clients: Clients }) {
               />
             </div>
             <div className="grid gap-1">
-              <UILabel htmlFor="port-proto">协议</UILabel>
+              <UILabel htmlFor="port-proto">{t("network.protocol")}</UILabel>
               <Select
                 value={reserveForm.protocol}
                 onValueChange={(value) =>
@@ -1445,22 +1459,22 @@ function NetworkPage({ clients }: { clients: Clients }) {
             </div>
             <UIButton onClick={() => void reservePort()}>
               <Plus className="size-4" />
-              预留
+              {t("network.reserve")}
             </UIButton>
           </div>
 
           {reservedPorts.length === 0 ? (
-            <div className="empty-state text-sm">尚未登记任何端口</div>
+            <div className="empty-state text-sm">{t("network.noPortsRegistered")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>端口</TableHead>
-                  <TableHead>协议</TableHead>
-                  <TableHead>预留方</TableHead>
-                  <TableHead>说明</TableHead>
-                  <TableHead>登记时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("network.port")}</TableHead>
+                  <TableHead>{t("network.protocol")}</TableHead>
+                  <TableHead>{t("network.owner")}</TableHead>
+                  <TableHead>{t("network.description")}</TableHead>
+                  <TableHead>{t("network.registeredAt")}</TableHead>
+                  <TableHead className="text-right">{t("network.actions")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
@@ -1474,7 +1488,7 @@ function NetworkPage({ clients }: { clients: Clients }) {
                     <TableCell className="text-muted-foreground">{port.description || "-"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {port.reservedAtSeconds > 0n
-                        ? new Date(Number(port.reservedAtSeconds) * 1000).toLocaleString()
+                        ? formatDateTime(new Date(Number(port.reservedAtSeconds) * 1000), locale)
                         : "-"}
                     </TableCell>
                     <TableCell className="text-right">
@@ -1484,7 +1498,7 @@ function NetworkPage({ clients }: { clients: Clients }) {
                         onClick={() => void releasePort(port.port)}
                       >
                         <Trash2 className="size-3.5" />
-                        释放
+                        {t("network.release")}
                       </UIButton>
                     </TableCell>
                   </UITableRow>
@@ -1499,16 +1513,14 @@ function NetworkPage({ clients }: { clients: Clients }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Globe className="size-4 text-primary" />
-            公网 IPv6 地址池
+            {t("network.ipv6PoolTitle")}
           </CardTitle>
-          <CardDescription>
-            NAT VPS 上 IPv6 是绕过 20 端口约束的关键 —— 每个站点直接绑一个 v6,无需占用 NAT 端口。
-          </CardDescription>
+          <CardDescription>{t("network.ipv6PoolDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {ipv6Prefixes.length > 0 && (
             <div className="rounded-md border border-info/40 bg-info/10 px-3 py-2 text-sm">
-              <div className="font-medium text-info mb-1">检测到的公网前缀</div>
+              <div className="font-medium text-info mb-1">{t("network.detectedPrefixes")}</div>
               <div className="flex flex-wrap gap-2">
                 {ipv6Prefixes.map((prefix) => (
                   <Badge key={prefix} variant="info" className="font-mono">
@@ -1519,15 +1531,15 @@ function NetworkPage({ clients }: { clients: Clients }) {
             </div>
           )}
           {ipv6Addresses.length === 0 ? (
-            <div className="empty-state text-sm">未检测到公网 IPv6 地址(可能未开启 IPv6 或处于 link-local 模式)</div>
+            <div className="empty-state text-sm">{t("network.noIpv6Detected")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>地址</TableHead>
-                  <TableHead>前缀</TableHead>
-                  <TableHead>接口</TableHead>
-                  <TableHead>类型</TableHead>
+                  <TableHead>{t("network.address")}</TableHead>
+                  <TableHead>{t("network.prefix")}</TableHead>
+                  <TableHead>{t("network.interface")}</TableHead>
+                  <TableHead>{t("network.type")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
@@ -1538,7 +1550,7 @@ function NetworkPage({ clients }: { clients: Clients }) {
                     <TableCell>{addr.interfaceName}</TableCell>
                     <TableCell>
                       <Badge variant={addr.isGlobal ? "success" : "muted"}>
-                        {addr.isGlobal ? "公网" : "本地"}
+                        {addr.isGlobal ? t("network.global") : t("network.local")}
                       </Badge>
                     </TableCell>
                   </UITableRow>
@@ -1554,28 +1566,29 @@ function NetworkPage({ clients }: { clients: Clients }) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Info className="size-4 text-primary" />
-              主机能力探测
+              {t("network.capabilityTitle")}
             </CardTitle>
-            <CardDescription>开机探测一次,1 小时刷新一次</CardDescription>
+            <CardDescription>{t("network.capabilityDesc")}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 text-sm">
-              <CapabilityRow label="OpenVZ 容器" value={capabilities.isOpenvz} />
-              <CapabilityRow label="Docker / LXC 内" value={capabilities.isContainer} />
-              <CapabilityRow label="Docker 守护进程" value={capabilities.dockerRunning} />
-              <CapabilityRow label="Docker 可用" value={capabilities.canRunDocker} />
-              <CapabilityRow label="overlay2 文件系统" value={capabilities.hasOverlay2} />
-              <CapabilityRow label="FUSE" value={capabilities.hasFuse} />
-              <CapabilityRow label="iptables 二进制" value={capabilities.hasIptables} />
-              <CapabilityRow label="nf_nat 模块" value={capabilities.hasNfNat} />
-              <CapabilityRow label="Swap 分区" value={capabilities.hasSwap} />
-              <CapabilityRow label="BBR 拥塞控制" value={capabilities.hasBbr} />
-              <CapabilityRow label="cgroups v2" value={capabilities.hasCgroupsV2} />
-              <CapabilityRow label="user namespaces" value={capabilities.hasUserNamespaces} />
+              <CapabilityRow label={t("network.capOpenvz")} value={capabilities.isOpenvz} />
+              <CapabilityRow label={t("network.capContainer")} value={capabilities.isContainer} />
+              <CapabilityRow label={t("network.capDockerDaemon")} value={capabilities.dockerRunning} />
+              <CapabilityRow label={t("network.capDockerAvailable")} value={capabilities.canRunDocker} />
+              <CapabilityRow label={t("network.capOverlay2")} value={capabilities.hasOverlay2} />
+              <CapabilityRow label={t("network.capFuse")} value={capabilities.hasFuse} />
+              <CapabilityRow label={t("network.capIptables")} value={capabilities.hasIptables} />
+              <CapabilityRow label={t("network.capNfNat")} value={capabilities.hasNfNat} />
+              <CapabilityRow label={t("network.capSwap")} value={capabilities.hasSwap} />
+              <CapabilityRow label={t("network.capBbr")} value={capabilities.hasBbr} />
+              <CapabilityRow label={t("network.capCgroupsV2")} value={capabilities.hasCgroupsV2} />
+              <CapabilityRow label={t("network.capUserNamespaces")} value={capabilities.hasUserNamespaces} />
             </div>
             {capabilities.kernelVersion && (
               <div className="mt-4 text-xs text-muted-foreground">
-                内核:<span className="font-mono">{capabilities.kernelVersion}</span>
+                {t("network.kernelPrefix")}
+                <span className="font-mono">{capabilities.kernelVersion}</span>
               </div>
             )}
           </CardContent>
@@ -1616,18 +1629,23 @@ function localInputToSeconds(value: string) {
   return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : 0;
 }
 
-function formatChartTimestamp(timestampSeconds: bigint, range: MonitorRange) {
+function formatChartTimestamp(timestampSeconds: bigint, range: MonitorRange, locale: Locale) {
   const date = new Date(Number(timestampSeconds) * 1000);
   if (range === "7d") {
-    return date.toLocaleDateString(undefined, { month: "2-digit", day: "2-digit" });
+    return date.toLocaleDateString(locale, { month: "2-digit", day: "2-digit" });
   }
-  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 }
 
 function TerminalPanel({ cwd }: { cwd: string }) {
+  const { t } = useLocale();
   return (
     <Suspense
-      fallback={<section className="page-grid terminal-layout"><p className="text-xs text-muted-foreground">终端加载中…</p></section>}
+      fallback={
+        <section className="page-grid terminal-layout">
+          <p className="text-xs text-muted-foreground">{t("terminal.loadingFallback")}</p>
+        </section>
+      }
     >
       <WebTerminal cwd={cwd} />
     </Suspense>

@@ -2,6 +2,7 @@ import { Badge } from "../components/ui/badge";
 import { Button as UIButton } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { AppCategory, AppTemplate, CompatibilityStatus, InstallMethod } from "../gen/rustpanel/v1/appstore_pb";
+import { useLocale } from "../lib/i18n/locale-provider";
 import { cn } from "../lib/utils";
 import { ChevronDown, ExternalLink, Play, Store } from "lucide-react";
 import { useState } from "react";
@@ -265,10 +266,13 @@ export function installMethodLabel(method: InstallMethod): string {
 }
 
 export function CapabilityRow({ label, value }: { label: string; value: boolean }) {
+  const { t } = useLocale();
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-muted-foreground">{label}</span>
-      <Badge variant={value ? "success" : "muted"}>{value ? "可用" : "不可用"}</Badge>
+      <Badge variant={value ? "success" : "muted"}>
+        {value ? t("components.available") : t("components.unavailable")}
+      </Badge>
     </div>
   );
 }

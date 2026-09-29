@@ -1,7 +1,10 @@
 import { app } from "./app";
 import { common } from "./common";
 import { components } from "./components";
+import { dashboard } from "./dashboard";
+import { network } from "./network";
 import { security } from "./security";
+import { terminal } from "./terminal";
 
 // 迁移到哪个页面就在这里加一个命名空间;en/index.ts 用 `typeof zhCN` 做类型,
 // 少一个命名空间或少一个 key 都是编译错误。
@@ -9,7 +12,10 @@ export const zhCN = {
   common,
   app,
   components,
-  security
+  dashboard,
+  network,
+  security,
+  terminal
 };
 
 export type Messages = typeof zhCN;

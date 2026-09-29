@@ -3,11 +3,13 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef } from "react";
 
+import { useLocale } from "@/lib/i18n/locale-provider";
 import { appendAuthQuery } from "@/lib/rpc";
 
 // xterm + fit addon + 样式表将近 300KB,只有开终端页时才用得到。
 // 整个面板放在这个单独模块里,由 App 侧 lazy() 加载,首屏不再下发。
 export default function WebTerminal({ cwd }: { cwd: string }) {
+  const { t } = useLocale();
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -72,8 +74,10 @@ export default function WebTerminal({ cwd }: { cwd: string }) {
     <section className="page-grid terminal-layout">
       <header className="section-header full-span">
         <div>
-          <h1>Web 终端</h1>
-          <p>{cwd} · PTY 会话</p>
+          <h1>{t("components.webTerminalTitle")}</h1>
+          <p>
+            {cwd} · {t("components.ptySession")}
+          </p>
         </div>
       </header>
       <div className="terminal-surface full-span" ref={terminalRef} />

@@ -5,5 +5,15 @@ export const components: ComponentsMessages = {
   themeLight: "Light",
   themeDark: "Dark",
   themeSystem: "System",
-  languageToggleLabel: "Switch language"
+  languageToggleLabel: "Switch language",
+
+  chartCpu: "CPU",
+  chartMemory: "Memory",
+  chartAriaLabel: "CPU and memory usage trend",
+
+  webTerminalTitle: "Web Terminal",
+  ptySession: "PTY session",
+
+  available: "Available",
+  unavailable: "Unavailable"
 };

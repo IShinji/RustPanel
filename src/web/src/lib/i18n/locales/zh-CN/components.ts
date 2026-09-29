@@ -4,7 +4,20 @@ export const components = {
   themeLight: "浅色",
   themeDark: "深色",
   themeSystem: "跟随系统",
-  languageToggleLabel: "切换语言"
+  languageToggleLabel: "切换语言",
+
+  // monitor-chart.tsx 的图例/坐标轴
+  chartCpu: "CPU",
+  chartMemory: "内存",
+  chartAriaLabel: "CPU 与内存使用率趋势",
+
+  // web-terminal.tsx
+  webTerminalTitle: "Web 终端",
+  ptySession: "PTY 会话",
+
+  // software-store.tsx 的 CapabilityRow,同时被 App.tsx 的 NetworkPage 复用
+  available: "可用",
+  unavailable: "不可用"
 };
 
 export type ComponentsMessages = typeof components;

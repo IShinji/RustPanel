@@ -1,0 +1,52 @@
+// App.tsx 的 NetworkPage(网络与端口管理)。
+export const network = {
+  subtitle: "管理 NAT VPS 的 20 个公网端口预算 + 公网 IPv6 地址池",
+  refresh: "刷新",
+  portRangeError: "端口号需为 1-65535",
+  ownerRequired: "请填写预留方",
+  portReserved: "端口 {port} 已预留",
+  portReleased: "端口 {port} 已释放",
+
+  natBudgetTitle: "NAT 端口预算",
+  natBudgetDesc: "登记每个端口给了谁用,避免装新软件时撞端口。建议把面板/SSH/已上线服务都登记一遍。",
+  port: "端口",
+  owner: "预留方",
+  description: "说明",
+  protocol: "协议",
+  ownerPlaceholder: "例如 panel / site:my-blog",
+  optional: "可选",
+  reserve: "预留",
+  noPortsRegistered: "尚未登记任何端口",
+  registeredAt: "登记时间",
+  actions: "操作",
+  release: "释放",
+
+  ipv6PoolTitle: "公网 IPv6 地址池",
+  ipv6PoolDesc: "NAT VPS 上 IPv6 是绕过 20 端口约束的关键 —— 每个站点直接绑一个 v6,无需占用 NAT 端口。",
+  detectedPrefixes: "检测到的公网前缀",
+  noIpv6Detected: "未检测到公网 IPv6 地址(可能未开启 IPv6 或处于 link-local 模式)",
+  address: "地址",
+  prefix: "前缀",
+  interface: "接口",
+  type: "类型",
+  global: "公网",
+  local: "本地",
+
+  capabilityTitle: "主机能力探测",
+  capabilityDesc: "开机探测一次,1 小时刷新一次",
+  capOpenvz: "OpenVZ 容器",
+  capContainer: "Docker / LXC 内",
+  capDockerDaemon: "Docker 守护进程",
+  capDockerAvailable: "Docker 可用",
+  capOverlay2: "overlay2 文件系统",
+  capFuse: "FUSE",
+  capIptables: "iptables 二进制",
+  capNfNat: "nf_nat 模块",
+  capSwap: "Swap 分区",
+  capBbr: "BBR 拥塞控制",
+  capCgroupsV2: "cgroups v2",
+  capUserNamespaces: "user namespaces",
+  kernelPrefix: "内核:"
+};
+
+export type NetworkMessages = typeof network;
