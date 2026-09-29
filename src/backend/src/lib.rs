@@ -300,6 +300,8 @@ pub async fn serve_with_listener(
         }
     })
     .await?;
+    // 空闲退出:下次被 socket 唤醒时接着画趋势图
+    tokio::task::spawn_blocking(monitor::flush_history).await?;
 
     Ok(())
 }

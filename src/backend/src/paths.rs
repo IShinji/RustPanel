@@ -26,6 +26,7 @@ pub const MODULES: &[(&str, &str)] = &[
     ("compose", "RUSTPANEL_DOCKER_COMPOSE_ROOT"),
     ("cron", "RUSTPANEL_CRON_ROOT"),
     ("dns", "RUSTPANEL_DNS_ROOT"),
+    ("monitor", "RUSTPANEL_MONITOR_ROOT"),
     ("files", "RUSTPANEL_FILE_STATE_ROOT"),
     ("notification", "RUSTPANEL_NOTIFICATION_ROOT"),
     ("proxy", "RUSTPANEL_PROXY_ROOT"),

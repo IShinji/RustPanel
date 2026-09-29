@@ -30,6 +30,11 @@ const STATUS_CHANNEL_SIZE: usize = 32;
 const HISTORY_SAMPLE_INTERVAL_SECONDS: u64 = 60;
 const HISTORY_RETENTION_SECONDS: u64 = 7 * 24 * 60 * 60;
 const HISTORY_MAX_SAMPLES: usize = 7 * 24 * 60;
+// 进程快照体积大(每条 20 个进程),只留 24 小时
+const PROCESS_HISTORY_RETENTION_SECONDS: u64 = 24 * 60 * 60;
+const PROCESS_HISTORY_MAX_SAMPLES: usize = 24 * 60;
+// 指标历史落盘间隔;空闲退出前也会再落一次
+const HISTORY_PERSIST_INTERVAL_SECONDS: u64 = 10 * 60;
 const PROCESS_SNAPSHOT_LIMIT: usize = 20;
 const PROCESS_SNAPSHOT_MAX_LIMIT: usize = 100;
 
@@ -44,7 +49,8 @@ impl MonitorServiceImpl {
     pub fn new() -> Self {
         let collector = Arc::new(SystemCollector::new());
         let (events, _) = broadcast::channel(STATUS_CHANNEL_SIZE);
-        let history = Arc::new(Mutex::new(MonitorHistory::default()));
+        let history = Arc::new(Mutex::new(MonitorHistory::load_persisted()));
+        let _ = HISTORY_HANDLE.set(history.clone());
         start_monitor_loop(collector.clone(), events.clone(), history.clone());
 
         Self {
@@ -190,11 +196,100 @@ impl MonitorService for MonitorServiceImpl {
     }
 }
 
+/// 进程内唯一的监控历史,供空闲退出前落盘([`flush_history`])。
+static HISTORY_HANDLE: std::sync::OnceLock<Arc<Mutex<MonitorHistory>>> = std::sync::OnceLock::new();
+
+/// 指标历史的紧凑形态:图表与健康报告只用到这些字段。完整 SystemStatus 带每核 CPU、
+/// 每块盘、每张网卡,7 天 × 每分钟一条在内存里能涨到几十 MB(128MB 小鸡扛不住)。
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+struct CompactSample {
+    t: u64,
+    cpu: f32,
+    cores: u32,
+    mem_total: u64,
+    mem_used: u64,
+    mem_avail: u64,
+    load: [f64; 3],
+    /// 占用率最高那块盘(报告里只看峰值磁盘占用)
+    disk_total: u64,
+    disk_avail: u64,
+    rx: u64,
+    tx: u64,
+}
+
+impl CompactSample {
+    fn from_status(status: &SystemStatus) -> Self {
+        let memory = status.memory.unwrap_or_default();
+        let load = status.load_average.unwrap_or_default();
+        let fullest = status
+            .disks
+            .iter()
+            .max_by(|a, b| disk_usage_percent(a).total_cmp(&disk_usage_percent(b)));
+        Self {
+            t: status.timestamp_seconds,
+            cpu: status.cpu_usage_percent,
+            cores: u32::try_from(status.cpu_cores.len()).unwrap_or(u32::MAX),
+            mem_total: memory.total_bytes,
+            mem_used: memory.used_bytes,
+            mem_avail: memory.available_bytes,
+            load: [load.one_minute, load.five_minutes, load.fifteen_minutes],
+            disk_total: fullest.map_or(0, |disk| disk.total_space_bytes),
+            disk_avail: fullest.map_or(0, |disk| disk.available_space_bytes),
+            rx: status.networks.iter().map(|net| net.received_bytes).sum(),
+            tx: status
+                .networks
+                .iter()
+                .map(|net| net.transmitted_bytes)
+                .sum(),
+        }
+    }
+
+    fn to_status(&self) -> SystemStatus {
+        SystemStatus {
+            timestamp_seconds: self.t,
+            cpu_usage_percent: self.cpu,
+            cpu_cores: (0..self.cores)
+                .map(|core_id| CpuCoreStatus {
+                    core_id,
+                    ..CpuCoreStatus::default()
+                })
+                .collect(),
+            memory: Some(MemoryStatus {
+                total_bytes: self.mem_total,
+                used_bytes: self.mem_used,
+                available_bytes: self.mem_avail,
+                swap_total_bytes: 0,
+                swap_used_bytes: 0,
+            }),
+            load_average: Some(LoadAverageStatus {
+                one_minute: self.load[0],
+                five_minutes: self.load[1],
+                fifteen_minutes: self.load[2],
+            }),
+            networks: vec![NetworkIoStatus {
+                interface_name: "total".to_owned(),
+                received_bytes: self.rx,
+                transmitted_bytes: self.tx,
+            }],
+            disks: vec![DiskIoStatus {
+                disk_name: "fullest".to_owned(),
+                mount_point: String::new(),
+                total_space_bytes: self.disk_total,
+                available_space_bytes: self.disk_avail,
+                read_bytes: 0,
+                written_bytes: 0,
+            }],
+            uptime_seconds: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 struct MonitorHistory {
-    metric_samples: Vec<SystemStatus>,
+    metric_samples: Vec<CompactSample>,
     process_samples: Vec<ProcessHistorySample>,
     last_sample_seconds: u64,
+    last_persist_seconds: u64,
 }
 
 impl MonitorHistory {
@@ -212,7 +307,8 @@ impl MonitorHistory {
         }
 
         self.last_sample_seconds = now_seconds;
-        self.metric_samples.push(sample);
+        self.metric_samples
+            .push(CompactSample::from_status(&sample));
         self.process_samples.push(ProcessHistorySample {
             timestamp_seconds: now_seconds,
             processes,
@@ -223,11 +319,47 @@ impl MonitorHistory {
     fn metric_samples(&self, start_seconds: u64, end_seconds: u64) -> Vec<SystemStatus> {
         self.metric_samples
             .iter()
-            .filter(|sample| {
-                sample.timestamp_seconds >= start_seconds && sample.timestamp_seconds <= end_seconds
-            })
-            .cloned()
+            .filter(|sample| sample.t >= start_seconds && sample.t <= end_seconds)
+            .map(CompactSample::to_status)
             .collect()
+    }
+
+    /// 下一次采样到点了吗(没人订阅实时流时,只在到点时才采集)。
+    fn sample_due(&self, now_seconds: u64) -> bool {
+        self.last_sample_seconds == 0
+            || now_seconds.saturating_sub(self.last_sample_seconds)
+                >= HISTORY_SAMPLE_INTERVAL_SECONDS
+    }
+
+    fn history_path() -> PathBuf {
+        crate::paths::state_root("monitor", "RUSTPANEL_MONITOR_ROOT").join("history.json")
+    }
+
+    /// 启动时读回上次落盘的指标历史(过期的丢掉);读不到就从空开始。
+    fn load_persisted() -> Self {
+        let mut history = Self::default();
+        if let Ok(content) = std::fs::read(Self::history_path()) {
+            if let Ok(samples) = serde_json::from_slice::<Vec<CompactSample>>(&content) {
+                history.metric_samples = samples;
+                history.prune(unix_timestamp());
+            }
+        }
+        history.last_persist_seconds = unix_timestamp();
+        history
+    }
+
+    fn persist(&mut self, now_seconds: u64) {
+        self.last_persist_seconds = now_seconds;
+        let path = Self::history_path();
+        let Ok(content) = serde_json::to_vec(&self.metric_samples) else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Err(error) = crate::statefile::write_atomic_blocking(&path, content) {
+            warn!(%error, "failed to persist monitor history");
+        }
     }
 
     fn nearest_process_snapshot(
@@ -250,17 +382,17 @@ impl MonitorHistory {
 
     fn prune(&mut self, now_seconds: u64) {
         let oldest = now_seconds.saturating_sub(HISTORY_RETENTION_SECONDS);
-        self.metric_samples
-            .retain(|sample| sample.timestamp_seconds >= oldest);
+        self.metric_samples.retain(|sample| sample.t >= oldest);
+        let oldest_process = now_seconds.saturating_sub(PROCESS_HISTORY_RETENTION_SECONDS);
         self.process_samples
-            .retain(|sample| sample.timestamp_seconds >= oldest);
+            .retain(|sample| sample.timestamp_seconds >= oldest_process);
 
         if self.metric_samples.len() > HISTORY_MAX_SAMPLES {
             let drain_count = self.metric_samples.len() - HISTORY_MAX_SAMPLES;
             self.metric_samples.drain(0..drain_count);
         }
-        if self.process_samples.len() > HISTORY_MAX_SAMPLES {
-            let drain_count = self.process_samples.len() - HISTORY_MAX_SAMPLES;
+        if self.process_samples.len() > PROCESS_HISTORY_MAX_SAMPLES {
+            let drain_count = self.process_samples.len() - PROCESS_HISTORY_MAX_SAMPLES;
             self.process_samples.drain(0..drain_count);
         }
     }
@@ -394,20 +526,53 @@ fn start_monitor_loop(
         let mut ticker = tokio::time::interval(DEFAULT_STATUS_INTERVAL);
         loop {
             ticker.tick().await;
+            let now_seconds = unix_timestamp();
+            let history_due = history
+                .lock()
+                .map(|history| history.sample_due(now_seconds))
+                .unwrap_or(false);
+            // 没人看实时流、历史也没到点:什么都不采(每秒全量采集在小鸡上是纯浪费)
+            if events.receiver_count() == 0 && !history_due {
+                continue;
+            }
             match collector.snapshot() {
                 Ok(snapshot) => {
-                    let now_seconds = snapshot.timestamp_seconds;
-                    let processes = collect_process_snapshot(PROCESS_SNAPSHOT_LIMIT);
-                    match history.lock() {
-                        Ok(mut history) => history.push(snapshot.clone(), processes, now_seconds),
-                        Err(_) => warn!("monitor history lock poisoned"),
+                    if history_due {
+                        // 进程快照只在落历史时采,别每秒扫一遍 /proc
+                        let processes = collect_process_snapshot(PROCESS_SNAPSHOT_LIMIT);
+                        match history.lock() {
+                            Ok(mut history) => {
+                                history.push(
+                                    snapshot.clone(),
+                                    processes,
+                                    snapshot.timestamp_seconds,
+                                );
+                                if now_seconds.saturating_sub(history.last_persist_seconds)
+                                    >= HISTORY_PERSIST_INTERVAL_SECONDS
+                                {
+                                    history.persist(now_seconds);
+                                }
+                            }
+                            Err(_) => warn!("monitor history lock poisoned"),
+                        }
                     }
-                    let _ = events.send(snapshot);
+                    if events.receiver_count() > 0 {
+                        let _ = events.send(snapshot);
+                    }
                 }
                 Err(error) => warn!(%error, "failed to collect system status"),
             }
         }
     });
+}
+
+/// 进程退出前(空闲退出 / 正常停止)把指标历史落盘,下次唤醒接着画。
+pub fn flush_history() {
+    if let Some(history) = HISTORY_HANDLE.get() {
+        if let Ok(mut history) = history.lock() {
+            history.persist(unix_timestamp());
+        }
+    }
 }
 
 fn unix_timestamp() -> u64 {
@@ -798,6 +963,43 @@ mod tests {
 
         assert_eq!(samples.len(), 1);
         assert_eq!(samples[0].timestamp_seconds, 200);
+    }
+
+    #[test]
+    fn compact_sample_round_trips_report_fields() {
+        let original = test_sample(100, 42.0, 60, 5_000);
+        let restored = CompactSample::from_status(&original).to_status();
+        assert_eq!(restored.timestamp_seconds, 100);
+        assert_eq!(restored.cpu_usage_percent, 42.0);
+        assert_eq!(restored.cpu_cores.len(), original.cpu_cores.len());
+        assert_eq!(restored.memory, original.memory);
+        assert_eq!(restored.load_average, original.load_average);
+        // 报告只关心峰值磁盘占用与网络总量
+        let original_summary = summarize_samples(std::slice::from_ref(&original));
+        let restored_summary = summarize_samples(&[restored]);
+        assert_eq!(
+            original_summary.peak_disk_usage_percent,
+            restored_summary.peak_disk_usage_percent
+        );
+        assert_eq!(original_summary.cpu_cores, restored_summary.cpu_cores);
+    }
+
+    #[test]
+    fn history_prunes_processes_sooner_than_metrics() {
+        let mut history = MonitorHistory::default();
+        let now = 10 * 24 * 60 * 60;
+        history.metric_samples.push(CompactSample {
+            t: now - 2 * 24 * 60 * 60,
+            ..CompactSample::default()
+        });
+        history.process_samples.push(ProcessHistorySample {
+            timestamp_seconds: now - 2 * 24 * 60 * 60,
+            processes: Vec::new(),
+        });
+        history.prune(now);
+        assert_eq!(history.metric_samples.len(), 1, "metrics kept for 7 days");
+        assert!(history.process_samples.is_empty(), "processes kept for 24h");
+        assert!(history.sample_due(now));
     }
 
     #[test]
