@@ -198,10 +198,9 @@ async fn save_aliases(aliases: &[VsmtpAlias]) -> Result<(), Status> {
         .map(StoredAlias::from_proto)
         .collect();
     let body = serde_json::to_vec_pretty(&stored).map_err(io_status)?;
-    let tmp = path.with_extension("json.rustpanel-tmp");
-    tokio::fs::write(&tmp, body).await.map_err(io_status)?;
-    tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
-    Ok(())
+    crate::statefile::write_atomic(&path, body)
+        .await
+        .map_err(io_status)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

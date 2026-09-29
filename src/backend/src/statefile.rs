@@ -21,6 +21,15 @@ pub async fn write_secret_atomic(path: &Path, content: impl AsRef<[u8]>) -> std:
     write_inner(path, content.as_ref(), true).await
 }
 
+/// 同步版 [`write_atomic`],给不在 async 上下文里的调用方(比如运行时模块开关)。
+pub fn write_atomic_blocking(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
+    let tmp = tmp_path(path);
+    std::fs::write(&tmp, content)?;
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
+}
+
 async fn write_inner(path: &Path, content: &[u8], secret: bool) -> std::io::Result<()> {
     let tmp = tmp_path(path);
     tokio::fs::write(&tmp, content).await?;

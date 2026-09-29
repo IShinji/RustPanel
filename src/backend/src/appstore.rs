@@ -835,11 +835,9 @@ pub(crate) async fn write_rpxy_site_fragment(
     let dir = rpxy_fragment_dir();
     tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
     let path = rpxy_fragment_path(site_name);
-    let tmp = path.with_extension("toml.rustpanel-tmp");
-    tokio::fs::write(&tmp, block.as_bytes())
+    crate::statefile::write_atomic(&path, block)
         .await
         .map_err(io_status)?;
-    tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
     assemble_rpxy_config().await?;
     Ok(path)
 }
@@ -915,11 +913,9 @@ async fn assemble_rpxy_config() -> Result<(), Status> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await.map_err(io_status)?;
     }
-    let tmp = path.with_extension("toml.rustpanel-tmp");
-    tokio::fs::write(&tmp, full.as_bytes())
+    crate::statefile::write_atomic(&path, full)
         .await
         .map_err(io_status)?;
-    tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
     Ok(())
 }
 
@@ -1005,11 +1001,9 @@ pub(crate) async fn ensure_sws_template_unit() -> Result<PathBuf, Status> {
     if tokio::fs::try_exists(&path).await.unwrap_or(false) {
         return Ok(path);
     }
-    let tmp = path.with_extension("service.rustpanel-tmp");
-    tokio::fs::write(&tmp, SWS_TEMPLATE_UNIT.as_bytes())
+    crate::statefile::write_atomic(&path, SWS_TEMPLATE_UNIT)
         .await
         .map_err(io_status)?;
-    tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
     Ok(path)
 }
 
@@ -1024,11 +1018,9 @@ pub(crate) async fn write_sws_site_config(
     tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
     let path = sws_site_config_path(site_name);
     let body = render_sws_site_config(root, port);
-    let tmp = path.with_extension("toml.rustpanel-tmp");
-    tokio::fs::write(&tmp, body.as_bytes())
+    crate::statefile::write_atomic(&path, body)
         .await
         .map_err(io_status)?;
-    tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
     Ok(path)
 }
 
@@ -2158,11 +2150,9 @@ async fn write_systemd_unit(slug: &str, content: &str) -> Result<PathBuf, Status
     let dir = systemd_unit_dir();
     tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
     let path = dir.join(format!("{slug}.service"));
-    let tmp = path.with_extension("service.rustpanel-tmp");
-    tokio::fs::write(&tmp, content.as_bytes())
+    crate::statefile::write_atomic(&path, content)
         .await
         .map_err(io_status)?;
-    tokio::fs::rename(&tmp, &path).await.map_err(io_status)?;
     Ok(path)
 }
 

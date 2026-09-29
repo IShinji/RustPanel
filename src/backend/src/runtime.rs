@@ -72,11 +72,8 @@ pub fn save_override(value: &ModuleOverride) -> Result<(), Status> {
     }
     let serialized = serde_json::to_string_pretty(value)
         .map_err(|e| Status::internal(format!("serialize override: {e}")))?;
-    // 写到临时文件再 rename 保证原子性,避免半写状态被读到。
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, serialized)
-        .map_err(|e| Status::internal(format!("write override tmp: {e}")))?;
-    std::fs::rename(&tmp, &path).map_err(|e| Status::internal(format!("rename override: {e}")))?;
+    crate::statefile::write_atomic_blocking(&path, serialized)
+        .map_err(|e| Status::internal(format!("write override: {e}")))?;
     if let Ok(mut guard) = cache().lock() {
         *guard = None; // 立即失效
     }
