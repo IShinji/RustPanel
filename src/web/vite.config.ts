@@ -11,7 +11,6 @@ export default defineConfig({
           if (!id.includes("node_modules")) return;
           if (id.includes("@monaco-editor") || id.includes("monaco-editor")) return "vendor-editor";
           if (id.includes("@xterm")) return "vendor-terminal";
-          if (id.includes("recharts") || id.includes("d3-")) return "vendor-charts";
           if (
             id.includes("@radix-ui") ||
             id.includes("lucide-react") ||
