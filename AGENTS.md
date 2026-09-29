@@ -22,6 +22,7 @@
 - Web/Admin: `bun lint`、`bun test`、`bun run build`。
 - Unified: `./scripts/verify-all.sh`。
 - Terminal CI Gate: `bun run scripts:build && node dist/node-scripts/scripts/check-latest-ci.js --commit <sha> --wait`。
+- Web/Admin UI 文案必须走 `t()` + `lib/i18n/locales/**` 字典，禁止新增硬编码中文；`verify-all.sh` 内的 `scripts/check-cjk.ts` 会扫描并拦截，真正的例外用行尾 `i18n-ignore` 逃生舱。
 
 ## 提交规范
 

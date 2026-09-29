@@ -3,6 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import * as React from "react";
 
+import { useLocale } from "@/lib/i18n/locale-provider";
 import { cn } from "@/lib/utils";
 
 // Sheet 复用 Radix Dialog 底座(与 dialog.tsx 同一个包),只在动效 +
@@ -55,6 +56,7 @@ type SheetContentProps = React.ComponentProps<typeof DialogPrimitive.Content> &
   VariantProps<typeof sheetVariants>;
 
 function SheetContent({ side, className, children, ...props }: SheetContentProps) {
+  const { t } = useLocale();
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -66,7 +68,7 @@ function SheetContent({ side, className, children, ...props }: SheetContentProps
         {children}
         <DialogPrimitive.Close className="absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none">
           <X className="size-4" />
-          <span className="sr-only">关闭</span>
+          <span className="sr-only">{t("components.close")}</span>
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
     </SheetPortal>

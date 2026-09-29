@@ -17,7 +17,13 @@ export const components = {
 
   // software-store.tsx 的 CapabilityRow,同时被 App.tsx 的 NetworkPage 复用
   available: "可用",
-  unavailable: "不可用"
+  unavailable: "不可用",
+
+  // code-editor.tsx:Monaco 懒加载完成前的占位骨架
+  editorLoading: "编辑器加载中…",
+
+  // ui/dialog.tsx、ui/sheet.tsx 的关闭按钮 sr-only 文案
+  close: "关闭"
 };
 
 export type ComponentsMessages = typeof components;

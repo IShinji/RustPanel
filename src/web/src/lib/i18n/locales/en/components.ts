@@ -15,5 +15,9 @@ export const components: ComponentsMessages = {
   ptySession: "PTY session",
 
   available: "Available",
-  unavailable: "Unavailable"
+  unavailable: "Unavailable",
+
+  editorLoading: "Loading editor…",
+
+  close: "Close"
 };

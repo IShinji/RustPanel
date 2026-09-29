@@ -27,7 +27,7 @@ export function LanguageToggle() {
           data-active={locale === "zh-CN"}
           className="data-[active=true]:bg-accent"
         >
-          <span>简体中文</span>
+          <span>简体中文</span> {/* i18n-ignore: 语言名用母语自己写,不查字典 */}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => setLocale("en")}
