@@ -1,0 +1,148 @@
+import type { BackupMessages } from "../zh-CN/backup";
+
+export const backup: BackupMessages = {
+  refresh: "Refresh",
+  save: "Save",
+  update: "Update",
+  cancel: "Cancel",
+  edit: "Edit",
+  enabled: "Enabled",
+  disabled: "Disabled",
+  unknown: "Unknown",
+
+  backupTargetKindLocal: "Local",
+  backupTargetKindWebdav: "WebDAV (offsite)",
+  backupTargetKindS3: "S3-compatible (R2/MinIO/OSS/COS)",
+
+  title: "Backup & Restore",
+  subtitle:
+    "Archives directories as tar.gz (always lands locally first); WebDAV targets also push an offsite copy. One-click restore supported.",
+
+  targetNameRequired: "Target name is required",
+  targetSaved: "Target {name} saved",
+  targetDeleted: "Target {name} deleted",
+  dsnRequired: "Please enter a database DSN",
+  pathRequired: "Please enter the absolute path to back up",
+  creatingBackup: "Creating backup...",
+  backupCreated: "Backup created",
+  confirmRestore: "Restore backup \"{name}\" to {path}? Existing contents there will be overwritten.",
+  restoring: "Restoring {name}...",
+  restoredTo: "Restored to {path}",
+  backupDeleted: "Backup {name} deleted",
+
+  targetsCardTitle: "Backup Targets",
+  targetsCardDesc:
+    "Local needs no configuration; WebDAV needs the full directory URL + credentials; S3 needs endpoint / region / bucket / access key / secret key (compatible with R2 / MinIO / OSS / COS, path-style).",
+  targetName: "Target Name",
+  kind: "Type",
+  addressLabel: "Address (WebDAV directory URL / S3 endpoint)",
+  usernameLabel: "Username / S3 Access Key",
+  passwordLabelEdit: "Password / Secret Key (leave blank to keep)",
+  passwordLabelNew: "Password / S3 Secret Key",
+  s3Region: "S3 Region (e.g. us-east-1 / auto)",
+  s3Bucket: "S3 Bucket",
+  colName: "Name",
+  colKind: "Type",
+  colAddress: "Address",
+  colStatus: "Status",
+  colActions: "Actions",
+
+  createBackupCardTitle: "Create Backup",
+  createBackupCardDesc:
+    "Back up a directory (e.g. a site's webroot) or a database (mysqldump/pg_dump, must be installed; SQLite is copied directly).",
+  sourceLabel: "Source",
+  sourceDirectory: "Directory",
+  sourceDatabase: "Database",
+  dsnLabel: "Database DSN",
+  directoryPathLabel: "Absolute Directory Path",
+  backupNameLabel: "Backup Name (optional)",
+  targetLabel: "Target",
+  localOnly: "Local only",
+  createBackup: "Backup",
+
+  backupPointsTitle: "Backup Points",
+  countSuffix: "{count} total",
+  noBackups: "No backups yet",
+  colSource: "Source",
+  colSize: "Size",
+  colOffsite: "Offsite",
+  colTime: "Time",
+  offsiteUploaded: "Offsite",
+  localOnlyBadge: "Local only",
+  restore: "Restore",
+
+  notificationChannelWebhook: "Webhook (Generic)",
+  notificationChannelTelegram: "Telegram",
+  notificationChannelDingtalk: "DingTalk",
+  notificationChannelWecom: "WeCom",
+  notificationChannelBark: "Bark (iOS)",
+
+  eventTest: "Test",
+  eventCertExpiry: "Certificate Expiring",
+  eventHighLoad: "High Load",
+  eventDiskFull: "Disk Nearly Full",
+  eventSshAutoBan: "SSH Auto-ban",
+  eventLoginFailed: "Login Failed",
+  eventGeneric: "Event",
+
+  notifyTitle: "Notifications",
+  notifySubtitle:
+    "Push events like certificate expiry and SSH auto-bans to Webhook / Telegram / DingTalk / WeCom / Bark. Secrets aren't echoed back after saving — leave blank to keep the current value.",
+
+  channelNameRequired: "Channel name and target address are required",
+  channelSaved: "Channel {name} saved",
+  channelDeleted: "Channel {name} deleted",
+  testingChannel: "Sending a test to {name}...",
+  channelTestSuccess: "Test sent successfully to {name}",
+  channelTestFailed: "Test send failed: {channels}",
+  rulesSaved: "Notification rules saved",
+
+  editChannel: "Edit Channel",
+  addChannel: "Add Channel",
+  channelFormDesc:
+    "Target address: full URL for Webhook/DingTalk/WeCom, chat_id for Telegram, https://api.day.app/<key> for Bark.",
+  channelName: "Channel Name",
+  targetAddressLabel: "Target Address (URL / chat_id)",
+  secretLabelEdit: "Secret (leave blank to keep)",
+  secretLabelNew: "Secret (as needed, e.g. Telegram bot token)",
+
+  channelListTitle: "Channel List",
+  channelCountSuffix: "{count} channels",
+  noChannels: "No notification channels configured yet",
+  colTarget: "Target",
+  test: "Test",
+
+  eventRulesTitle: "Event Rules",
+  eventRulesDesc: "Only enabled events trigger notifications; threshold meaning depends on the event (e.g. certificate = days ahead).",
+  threshold: "Threshold",
+  saveRules: "Save Rules",
+
+  historyTitle: "Send History",
+  recentCountSuffix: "Last {count}",
+  noHistory: "No send records yet",
+  colEvent: "Event",
+  colTitle: "Title",
+  colResult: "Result",
+  succeededSuffix: "{count} succeeded",
+  failedSuffix: "{count} failed",
+
+  vsmtpTitle: "Mail Aliases (vSMTP)",
+  vsmtpSubtitle:
+    "Mail sent to alias@your-domain from outside is forwarded to forward_to per the rules below. Outbound mail must go through an SMTP relay configured in vSMTP (Resend / SES / Postmark) — **never connect directly to port 25**.",
+  aliasForwardRequired: "Both alias and forwarding address are required",
+  aliasSaved: "{alias} saved",
+  aliasDeleted: "{alias} deleted",
+
+  addUpdateAliasTitle: "Add / Update Alias",
+  addUpdateAliasDesc: "An alias with the same name is overwritten; the creation time is preserved",
+  aliasLabel: "Alias (lowercase / digits / . _ -)",
+  forwardToLabel: "forward_to",
+  noteLabel: "Note (optional)",
+
+  existingAliasTitle: "Existing Aliases",
+  colAlias: "Alias",
+  colForwardTo: "Forward To",
+  colNote: "Note",
+  noAliases: "No aliases configured yet",
+  delete: "Delete"
+};

@@ -9,19 +9,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow as UITabl
 import { BackupRecord, BackupSourceKind, BackupTarget, BackupTargetKind } from "../gen/rustpanel/v1/backup_pb";
 import { NotificationChannel, NotificationChannelKind, NotificationEventKind, NotificationRecord, NotificationRule } from "../gen/rustpanel/v1/notification_pb";
 import { VsmtpAlias } from "../gen/rustpanel/v1/vsmtp_pb";
-import { formatBytes, safeError } from "../lib/format";
+import { formatBytes, formatDateTime, safeError } from "../lib/format";
 import { type Clients } from "../lib/rpc";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "../lib/i18n/locale-provider";
+import { tGlobal, type MessageKey, type TFn } from "../lib/i18n/translate";
 
-const BACKUP_TARGET_KINDS: Array<{ value: BackupTargetKind; label: string }> = [
-  { value: BackupTargetKind.LOCAL, label: "本地" },
-  { value: BackupTargetKind.WEBDAV, label: "WebDAV (离站)" },
-  { value: BackupTargetKind.S3, label: "S3 兼容 (R2/MinIO/OSS/COS)" }
+const BACKUP_TARGET_KINDS: Array<{ value: BackupTargetKind; labelKey: MessageKey }> = [
+  { value: BackupTargetKind.LOCAL, labelKey: "backup.backupTargetKindLocal" },
+  { value: BackupTargetKind.WEBDAV, labelKey: "backup.backupTargetKindWebdav" },
+  { value: BackupTargetKind.S3, labelKey: "backup.backupTargetKindS3" }
 ];
 
-function backupTargetKindLabel(kind: BackupTargetKind): string {
-  return BACKUP_TARGET_KINDS.find((item) => item.value === kind)?.label ?? "未知";
+function backupTargetKindLabel(kind: BackupTargetKind, t: TFn = tGlobal): string {
+  const found = BACKUP_TARGET_KINDS.find((item) => item.value === kind);
+  return found ? t(found.labelKey) : t("backup.unknown");
 }
 
 type BackupTargetForm = {
@@ -49,6 +52,7 @@ const emptyBackupTargetForm: BackupTargetForm = {
 };
 
 export function BackupPage({ clients }: { clients: Clients }) {
+  const { t, locale } = useLocale();
   const [targets, setTargets] = useState<BackupTarget[]>([]);
   const [records, setRecords] = useState<BackupRecord[]>([]);
   const [targetForm, setTargetForm] = useState<BackupTargetForm>(emptyBackupTargetForm);
@@ -84,7 +88,7 @@ export function BackupPage({ clients }: { clients: Clients }) {
 
   const saveTarget = async () => {
     if (!targetForm.name.trim()) {
-      setError("去向名称不能为空");
+      setError(t("backup.targetNameRequired"));
       return;
     }
     try {
@@ -102,7 +106,7 @@ export function BackupPage({ clients }: { clients: Clients }) {
           bucket: targetForm.bucket.trim()
         }
       });
-      setMessage(`去向 ${targetForm.name} 已保存`);
+      setMessage(t("backup.targetSaved", { name: targetForm.name }));
       setTargetForm(emptyBackupTargetForm);
       void load();
     } catch (err) {
@@ -129,7 +133,7 @@ export function BackupPage({ clients }: { clients: Clients }) {
   const removeTarget = async (target: BackupTarget) => {
     try {
       await clients.backup.deleteBackupTarget({ id: target.id });
-      setMessage(`去向 ${target.name} 已删除`);
+      setMessage(t("backup.targetDeleted", { name: target.name }));
       if (targetForm.id === target.id) setTargetForm(emptyBackupTargetForm);
       void load();
     } catch (err) {
@@ -140,10 +144,10 @@ export function BackupPage({ clients }: { clients: Clients }) {
   const createBackup = async () => {
     const isDb = backupForm.sourceKind === BackupSourceKind.DATABASE;
     if (isDb ? !backupForm.sourceDsn.trim() : !backupForm.sourcePath.trim()) {
-      setError(isDb ? "请填写数据库 DSN" : "请填写要备份的目录绝对路径");
+      setError(isDb ? t("backup.dsnRequired") : t("backup.pathRequired"));
       return;
     }
-    setMessage("正在创建备份...");
+    setMessage(t("backup.creatingBackup"));
     setError("");
     try {
       const response = await clients.backup.createBackup({
@@ -153,7 +157,7 @@ export function BackupPage({ clients }: { clients: Clients }) {
         sourceKind: backupForm.sourceKind,
         sourceDsn: backupForm.sourceDsn.trim()
       });
-      setMessage(response.status?.message || "备份已创建");
+      setMessage(response.status?.message || t("backup.backupCreated"));
       setBackupForm({
         sourcePath: "",
         name: "",
@@ -170,16 +174,16 @@ export function BackupPage({ clients }: { clients: Clients }) {
   const restoreBackup = async (record: BackupRecord) => {
     if (
       !window.confirm(
-        `确定把备份「${record.name}」还原到 ${record.sourcePath}?该目录现有内容会被覆盖。`
+        t("backup.confirmRestore", { name: record.name, path: record.sourcePath })
       )
     ) {
       return;
     }
-    setMessage(`正在还原 ${record.name}...`);
+    setMessage(t("backup.restoring", { name: record.name }));
     setError("");
     try {
       const response = await clients.backup.restoreBackup({ id: record.id, restorePath: "" });
-      setMessage(`已还原到 ${response.restoredPath}`);
+      setMessage(t("backup.restoredTo", { path: response.restoredPath }));
       void load();
     } catch (err) {
       setError(safeError(err));
@@ -189,7 +193,7 @@ export function BackupPage({ clients }: { clients: Clients }) {
   const removeBackup = async (record: BackupRecord) => {
     try {
       await clients.backup.deleteBackup({ id: record.id });
-      setMessage(`备份 ${record.name} 已删除`);
+      setMessage(t("backup.backupDeleted", { name: record.name }));
       void load();
     } catch (err) {
       setError(safeError(err));
@@ -200,14 +204,12 @@ export function BackupPage({ clients }: { clients: Clients }) {
     <section className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight m-0">备份与还原</h1>
-          <p className="text-sm text-muted-foreground m-0">
-            把目录打成 tar.gz 归档(始终先落本地),WebDAV 去向额外推一份离站副本;支持一键还原。
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight m-0">{t("backup.title")}</h1>
+          <p className="text-sm text-muted-foreground m-0">{t("backup.subtitle")}</p>
         </div>
         <UIButton variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="size-4" />
-          刷新
+          {t("backup.refresh")}
         </UIButton>
       </header>
 
@@ -224,21 +226,18 @@ export function BackupPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>备份去向</CardTitle>
-          <CardDescription>
-            本地无需配置;WebDAV 填目录完整 URL + 账号密码;S3 填 endpoint / 区域 / 桶 / AK / SK
-            (兼容 R2 / MinIO / OSS / COS,路径风格)。
-          </CardDescription>
+          <CardTitle>{t("backup.targetsCardTitle")}</CardTitle>
+          <CardDescription>{t("backup.targetsCardDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2">
             <Input
-              label="去向名称"
+              label={t("backup.targetName")}
               value={targetForm.name}
               onChange={(name) => setTargetForm((prev) => ({ ...prev, name }))}
             />
             <div className="grid gap-1">
-              <UILabel htmlFor="backup-target-kind">类型</UILabel>
+              <UILabel htmlFor="backup-target-kind">{t("backup.kind")}</UILabel>
               <Select
                 value={String(targetForm.kind)}
                 onValueChange={(value) =>
@@ -251,24 +250,24 @@ export function BackupPage({ clients }: { clients: Clients }) {
                 <SelectContent>
                   {BACKUP_TARGET_KINDS.map((item) => (
                     <SelectItem key={item.value} value={String(item.value)}>
-                      {item.label}
+                      {t(item.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <Input
-              label="地址 (WebDAV 目录 URL / S3 endpoint)"
+              label={t("backup.addressLabel")}
               value={targetForm.endpoint}
               onChange={(endpoint) => setTargetForm((prev) => ({ ...prev, endpoint }))}
             />
             <Input
-              label="用户名 / S3 Access Key"
+              label={t("backup.usernameLabel")}
               value={targetForm.username}
               onChange={(username) => setTargetForm((prev) => ({ ...prev, username }))}
             />
             <Input
-              label={editingTarget ? "密码 / Secret Key (留空保持不变)" : "密码 / S3 Secret Key"}
+              label={editingTarget ? t("backup.passwordLabelEdit") : t("backup.passwordLabelNew")}
               type="password"
               value={targetForm.password}
               onChange={(password) => setTargetForm((prev) => ({ ...prev, password }))}
@@ -276,12 +275,12 @@ export function BackupPage({ clients }: { clients: Clients }) {
             {targetForm.kind === BackupTargetKind.S3 && (
               <>
                 <Input
-                  label="S3 区域 (region,如 us-east-1 / auto)"
+                  label={t("backup.s3Region")}
                   value={targetForm.region}
                   onChange={(region) => setTargetForm((prev) => ({ ...prev, region }))}
                 />
                 <Input
-                  label="S3 桶名 (bucket)"
+                  label={t("backup.s3Bucket")}
                   value={targetForm.bucket}
                   onChange={(bucket) => setTargetForm((prev) => ({ ...prev, bucket }))}
                 />
@@ -294,7 +293,7 @@ export function BackupPage({ clients }: { clients: Clients }) {
                 checked={targetForm.enabled}
                 onCheckedChange={(enabled) => setTargetForm((prev) => ({ ...prev, enabled }))}
               />
-              启用
+              {t("backup.enabled")}
             </label>
             <div className="flex gap-2">
               {editingTarget && (
@@ -303,12 +302,12 @@ export function BackupPage({ clients }: { clients: Clients }) {
                   variant="outline"
                   onClick={() => setTargetForm(emptyBackupTargetForm)}
                 >
-                  取消
+                  {t("backup.cancel")}
                 </UIButton>
               )}
               <UIButton size="sm" onClick={() => void saveTarget()}>
                 <Plus className="size-3.5" />
-                {editingTarget ? "更新" : "保存"}
+                {editingTarget ? t("backup.update") : t("backup.save")}
               </UIButton>
             </div>
           </div>
@@ -318,24 +317,24 @@ export function BackupPage({ clients }: { clients: Clients }) {
               <Table>
                 <TableHeader>
                   <UITableRow>
-                    <TableHead>名称</TableHead>
-                    <TableHead>类型</TableHead>
-                    <TableHead>地址</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
+                    <TableHead>{t("backup.colName")}</TableHead>
+                    <TableHead>{t("backup.colKind")}</TableHead>
+                    <TableHead>{t("backup.colAddress")}</TableHead>
+                    <TableHead>{t("backup.colStatus")}</TableHead>
+                    <TableHead className="text-right">{t("backup.colActions")}</TableHead>
                   </UITableRow>
                 </TableHeader>
                 <TableBody>
                   {targets.map((target) => (
                     <UITableRow key={target.id}>
                       <TableCell className="font-medium">{target.name}</TableCell>
-                      <TableCell>{backupTargetKindLabel(target.kind)}</TableCell>
+                      <TableCell>{backupTargetKindLabel(target.kind, t)}</TableCell>
                       <TableCell className="font-mono text-xs max-w-[260px] truncate">
                         {target.endpoint || "-"}
                       </TableCell>
                       <TableCell>
                         <Badge variant={target.enabled ? "success" : "secondary"}>
-                          {target.enabled ? "启用" : "停用"}
+                          {target.enabled ? t("backup.enabled") : t("backup.disabled")}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
@@ -345,7 +344,7 @@ export function BackupPage({ clients }: { clients: Clients }) {
                             variant="outline"
                             onClick={() => editTarget(target)}
                           >
-                            编辑
+                            {t("backup.edit")}
                           </UIButton>
                           <UIButton
                             size="sm"
@@ -367,14 +366,12 @@ export function BackupPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>创建备份</CardTitle>
-          <CardDescription>
-            备份目录(如站点 webroot)或数据库(mysqldump/pg_dump,需已安装;SQLite 直接拷文件)。
-          </CardDescription>
+          <CardTitle>{t("backup.createBackupCardTitle")}</CardTitle>
+          <CardDescription>{t("backup.createBackupCardDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <UILabel htmlFor="backup-source-kind">来源</UILabel>
+            <UILabel htmlFor="backup-source-kind">{t("backup.sourceLabel")}</UILabel>
             <Select
               value={String(backupForm.sourceKind)}
               onValueChange={(value) =>
@@ -388,38 +385,38 @@ export function BackupPage({ clients }: { clients: Clients }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={String(BackupSourceKind.DIRECTORY)}>目录</SelectItem>
-                <SelectItem value={String(BackupSourceKind.DATABASE)}>数据库</SelectItem>
+                <SelectItem value={String(BackupSourceKind.DIRECTORY)}>{t("backup.sourceDirectory")}</SelectItem>
+                <SelectItem value={String(BackupSourceKind.DATABASE)}>{t("backup.sourceDatabase")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
             {backupForm.sourceKind === BackupSourceKind.DATABASE ? (
               <Input
-                label="数据库 DSN"
+                label={t("backup.dsnLabel")}
                 value={backupForm.sourceDsn}
                 onChange={(sourceDsn) => setBackupForm((prev) => ({ ...prev, sourceDsn }))}
               />
             ) : (
               <Input
-                label="目录绝对路径"
+                label={t("backup.directoryPathLabel")}
                 value={backupForm.sourcePath}
                 onChange={(sourcePath) => setBackupForm((prev) => ({ ...prev, sourcePath }))}
               />
             )}
             <Input
-              label="备份名(可选)"
+              label={t("backup.backupNameLabel")}
               value={backupForm.name}
               onChange={(name) => setBackupForm((prev) => ({ ...prev, name }))}
             />
             <div className="grid gap-1">
-              <UILabel htmlFor="backup-target">去向</UILabel>
+              <UILabel htmlFor="backup-target">{t("backup.targetLabel")}</UILabel>
               <Select
                 value={backupForm.targetId}
                 onValueChange={(targetId) => setBackupForm((prev) => ({ ...prev, targetId }))}
               >
                 <SelectTrigger id="backup-target">
-                  <SelectValue placeholder="仅本地" />
+                  <SelectValue placeholder={t("backup.localOnly")} />
                 </SelectTrigger>
                 <SelectContent>
                   {targets
@@ -434,7 +431,7 @@ export function BackupPage({ clients }: { clients: Clients }) {
             </div>
             <UIButton size="sm" onClick={() => void createBackup()}>
               <Plus className="size-3.5" />
-              备份
+              {t("backup.createBackup")}
             </UIButton>
           </div>
         </CardContent>
@@ -442,22 +439,22 @@ export function BackupPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>备份点</CardTitle>
-          <CardDescription>共 {records.length} 个</CardDescription>
+          <CardTitle>{t("backup.backupPointsTitle")}</CardTitle>
+          <CardDescription>{t("backup.countSuffix", { count: records.length })}</CardDescription>
         </CardHeader>
         <CardContent>
           {records.length === 0 ? (
-            <div className="empty-state text-sm">暂无备份</div>
+            <div className="empty-state text-sm">{t("backup.noBackups")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>来源</TableHead>
-                  <TableHead>大小</TableHead>
-                  <TableHead>离站</TableHead>
-                  <TableHead>时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("backup.colName")}</TableHead>
+                  <TableHead>{t("backup.colSource")}</TableHead>
+                  <TableHead>{t("backup.colSize")}</TableHead>
+                  <TableHead>{t("backup.colOffsite")}</TableHead>
+                  <TableHead>{t("backup.colTime")}</TableHead>
+                  <TableHead className="text-right">{t("backup.colActions")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
@@ -470,13 +467,13 @@ export function BackupPage({ clients }: { clients: Clients }) {
                     <TableCell className="text-xs">{formatBytes(Number(record.sizeBytes))}</TableCell>
                     <TableCell>
                       {record.offsiteUploaded ? (
-                        <Badge variant="success">已离站</Badge>
+                        <Badge variant="success">{t("backup.offsiteUploaded")}</Badge>
                       ) : (
-                        <Badge variant="secondary">仅本地</Badge>
+                        <Badge variant="secondary">{t("backup.localOnlyBadge")}</Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {new Date(Number(record.createdAtSeconds) * 1000).toLocaleString()}
+                      {formatDateTime(new Date(Number(record.createdAtSeconds) * 1000), locale)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
@@ -485,7 +482,7 @@ export function BackupPage({ clients }: { clients: Clients }) {
                           variant="outline"
                           onClick={() => void restoreBackup(record)}
                         >
-                          还原
+                          {t("backup.restore")}
                         </UIButton>
                         <UIButton
                           size="sm"
@@ -507,29 +504,31 @@ export function BackupPage({ clients }: { clients: Clients }) {
   );
 }
 
-const NOTIFICATION_CHANNEL_KINDS: Array<{ value: NotificationChannelKind; label: string }> = [
-  { value: NotificationChannelKind.WEBHOOK, label: "Webhook (通用)" },
-  { value: NotificationChannelKind.TELEGRAM, label: "Telegram" },
-  { value: NotificationChannelKind.DINGTALK, label: "钉钉" },
-  { value: NotificationChannelKind.WECOM, label: "企业微信" },
-  { value: NotificationChannelKind.BARK, label: "Bark (iOS)" }
+const NOTIFICATION_CHANNEL_KINDS: Array<{ value: NotificationChannelKind; labelKey: MessageKey }> = [
+  { value: NotificationChannelKind.WEBHOOK, labelKey: "backup.notificationChannelWebhook" },
+  { value: NotificationChannelKind.TELEGRAM, labelKey: "backup.notificationChannelTelegram" },
+  { value: NotificationChannelKind.DINGTALK, labelKey: "backup.notificationChannelDingtalk" },
+  { value: NotificationChannelKind.WECOM, labelKey: "backup.notificationChannelWecom" },
+  { value: NotificationChannelKind.BARK, labelKey: "backup.notificationChannelBark" }
 ];
 
-const NOTIFICATION_EVENT_LABELS: Record<number, string> = {
-  [NotificationEventKind.TEST]: "测试",
-  [NotificationEventKind.CERT_EXPIRY]: "证书到期",
-  [NotificationEventKind.HIGH_LOAD]: "高负载",
-  [NotificationEventKind.DISK_FULL]: "磁盘将满",
-  [NotificationEventKind.SSH_AUTO_BAN]: "SSH 自动封禁",
-  [NotificationEventKind.LOGIN_FAILED]: "登录失败"
+const NOTIFICATION_EVENT_KEYS: Record<number, MessageKey> = {
+  [NotificationEventKind.TEST]: "backup.eventTest",
+  [NotificationEventKind.CERT_EXPIRY]: "backup.eventCertExpiry",
+  [NotificationEventKind.HIGH_LOAD]: "backup.eventHighLoad",
+  [NotificationEventKind.DISK_FULL]: "backup.eventDiskFull",
+  [NotificationEventKind.SSH_AUTO_BAN]: "backup.eventSshAutoBan",
+  [NotificationEventKind.LOGIN_FAILED]: "backup.eventLoginFailed"
 };
 
-function notificationChannelKindLabel(kind: NotificationChannelKind): string {
-  return NOTIFICATION_CHANNEL_KINDS.find((item) => item.value === kind)?.label ?? "未知";
+function notificationChannelKindLabel(kind: NotificationChannelKind, t: TFn = tGlobal): string {
+  const found = NOTIFICATION_CHANNEL_KINDS.find((item) => item.value === kind);
+  return found ? t(found.labelKey) : t("backup.unknown");
 }
 
-function notificationEventLabel(event: NotificationEventKind): string {
-  return NOTIFICATION_EVENT_LABELS[event] ?? "事件";
+function notificationEventLabel(event: NotificationEventKind, t: TFn = tGlobal): string {
+  const key = NOTIFICATION_EVENT_KEYS[event];
+  return key ? t(key) : t("backup.eventGeneric");
 }
 
 type NotificationChannelForm = {
@@ -551,6 +550,7 @@ const emptyNotificationChannelForm: NotificationChannelForm = {
 };
 
 export function NotificationPage({ clients }: { clients: Clients }) {
+  const { t, locale } = useLocale();
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [rules, setRules] = useState<NotificationRule[]>([]);
   const [history, setHistory] = useState<NotificationRecord[]>([]);
@@ -582,7 +582,7 @@ export function NotificationPage({ clients }: { clients: Clients }) {
 
   const saveChannel = async () => {
     if (!form.name.trim() || !form.target.trim()) {
-      setError("渠道名称与目标地址不能为空");
+      setError(t("backup.channelNameRequired"));
       return;
     }
     try {
@@ -598,7 +598,7 @@ export function NotificationPage({ clients }: { clients: Clients }) {
           updatedAtSeconds: 0n
         }
       });
-      setMessage(`渠道 ${form.name} 已保存`);
+      setMessage(t("backup.channelSaved", { name: form.name }));
       setForm(emptyNotificationChannelForm);
       void load();
     } catch (err) {
@@ -623,7 +623,7 @@ export function NotificationPage({ clients }: { clients: Clients }) {
   const removeChannel = async (channel: NotificationChannel) => {
     try {
       await clients.notification.deleteNotificationChannel({ id: channel.id });
-      setMessage(`渠道 ${channel.name} 已删除`);
+      setMessage(t("backup.channelDeleted", { name: channel.name }));
       if (form.id === channel.id) setForm(emptyNotificationChannelForm);
       void load();
     } catch (err) {
@@ -632,16 +632,16 @@ export function NotificationPage({ clients }: { clients: Clients }) {
   };
 
   const testChannel = async (channel: NotificationChannel) => {
-    setMessage(`正在向 ${channel.name} 发送测试...`);
+    setMessage(t("backup.testingChannel", { name: channel.name }));
     setError("");
     try {
       const response = await clients.notification.testNotificationChannel({ id: channel.id });
       const failed = response.record?.failedChannels ?? [];
       if (failed.length === 0) {
-        setMessage(`渠道 ${channel.name} 测试发送成功`);
+        setMessage(t("backup.channelTestSuccess", { name: channel.name }));
       } else {
         setMessage("");
-        setError(`测试发送失败:${failed.join(", ")}`);
+        setError(t("backup.channelTestFailed", { channels: failed.join(", ") }));
       }
       void load();
     } catch (err) {
@@ -652,7 +652,7 @@ export function NotificationPage({ clients }: { clients: Clients }) {
   const saveSettings = async () => {
     try {
       await clients.notification.updateNotificationSettings({ settings: { rules } });
-      setMessage("通知规则已保存");
+      setMessage(t("backup.rulesSaved"));
       void load();
     } catch (err) {
       setError(safeError(err));
@@ -663,15 +663,12 @@ export function NotificationPage({ clients }: { clients: Clients }) {
     <section className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight m-0">通知告警</h1>
-          <p className="text-sm text-muted-foreground m-0">
-            把证书到期、SSH 自动封禁等事件推送到 Webhook / Telegram / 钉钉 / 企业微信 / Bark。
-            密钥保存后不再回显,留空即保持不变。
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight m-0">{t("backup.notifyTitle")}</h1>
+          <p className="text-sm text-muted-foreground m-0">{t("backup.notifySubtitle")}</p>
         </div>
         <UIButton variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="size-4" />
-          刷新
+          {t("backup.refresh")}
         </UIButton>
       </header>
 
@@ -688,21 +685,18 @@ export function NotificationPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>{editing ? "编辑渠道" : "添加渠道"}</CardTitle>
-          <CardDescription>
-            目标地址:Webhook/钉钉/企业微信 填完整 URL,Telegram 填 chat_id,Bark 填
-            https://api.day.app/&lt;key&gt;。
-          </CardDescription>
+          <CardTitle>{editing ? t("backup.editChannel") : t("backup.addChannel")}</CardTitle>
+          <CardDescription>{t("backup.channelFormDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2">
             <Input
-              label="渠道名称"
+              label={t("backup.channelName")}
               value={form.name}
               onChange={(name) => setForm((prev) => ({ ...prev, name }))}
             />
             <div className="grid gap-1">
-              <UILabel htmlFor="notification-kind">类型</UILabel>
+              <UILabel htmlFor="notification-kind">{t("backup.kind")}</UILabel>
               <Select
                 value={String(form.kind)}
                 onValueChange={(value) =>
@@ -715,19 +709,19 @@ export function NotificationPage({ clients }: { clients: Clients }) {
                 <SelectContent>
                   {NOTIFICATION_CHANNEL_KINDS.map((item) => (
                     <SelectItem key={item.value} value={String(item.value)}>
-                      {item.label}
+                      {t(item.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <Input
-              label="目标地址 (URL / chat_id)"
+              label={t("backup.targetAddressLabel")}
               value={form.target}
               onChange={(target) => setForm((prev) => ({ ...prev, target }))}
             />
             <Input
-              label={editing ? "密钥 (留空保持不变)" : "密钥 (按需,如 Telegram bot token)"}
+              label={editing ? t("backup.secretLabelEdit") : t("backup.secretLabelNew")}
               type="password"
               value={form.secret}
               onChange={(secret) => setForm((prev) => ({ ...prev, secret }))}
@@ -739,7 +733,7 @@ export function NotificationPage({ clients }: { clients: Clients }) {
                 checked={form.enabled}
                 onCheckedChange={(enabled) => setForm((prev) => ({ ...prev, enabled }))}
               />
-              启用
+              {t("backup.enabled")}
             </label>
             <div className="flex gap-2">
               {editing && (
@@ -748,12 +742,12 @@ export function NotificationPage({ clients }: { clients: Clients }) {
                   variant="outline"
                   onClick={() => setForm(emptyNotificationChannelForm)}
                 >
-                  取消
+                  {t("backup.cancel")}
                 </UIButton>
               )}
               <UIButton size="sm" onClick={() => void saveChannel()}>
                 <Plus className="size-3.5" />
-                {editing ? "更新" : "保存"}
+                {editing ? t("backup.update") : t("backup.save")}
               </UIButton>
             </div>
           </div>
@@ -762,34 +756,34 @@ export function NotificationPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>渠道列表</CardTitle>
-          <CardDescription>共 {channels.length} 个渠道</CardDescription>
+          <CardTitle>{t("backup.channelListTitle")}</CardTitle>
+          <CardDescription>{t("backup.channelCountSuffix", { count: channels.length })}</CardDescription>
         </CardHeader>
         <CardContent>
           {channels.length === 0 ? (
-            <div className="empty-state text-sm">尚未配置任何通知渠道</div>
+            <div className="empty-state text-sm">{t("backup.noChannels")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>类型</TableHead>
-                  <TableHead>目标</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("backup.colName")}</TableHead>
+                  <TableHead>{t("backup.colKind")}</TableHead>
+                  <TableHead>{t("backup.colTarget")}</TableHead>
+                  <TableHead>{t("backup.colStatus")}</TableHead>
+                  <TableHead className="text-right">{t("backup.colActions")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
                 {channels.map((channel) => (
                   <UITableRow key={channel.id}>
                     <TableCell className="font-medium">{channel.name}</TableCell>
-                    <TableCell>{notificationChannelKindLabel(channel.kind)}</TableCell>
+                    <TableCell>{notificationChannelKindLabel(channel.kind, t)}</TableCell>
                     <TableCell className="font-mono text-xs max-w-[260px] truncate">
                       {channel.target}
                     </TableCell>
                     <TableCell>
                       <Badge variant={channel.enabled ? "success" : "secondary"}>
-                        {channel.enabled ? "启用" : "停用"}
+                        {channel.enabled ? t("backup.enabled") : t("backup.disabled")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
@@ -799,10 +793,10 @@ export function NotificationPage({ clients }: { clients: Clients }) {
                           variant="outline"
                           onClick={() => void testChannel(channel)}
                         >
-                          测试
+                          {t("backup.test")}
                         </UIButton>
                         <UIButton size="sm" variant="outline" onClick={() => editChannel(channel)}>
-                          编辑
+                          {t("backup.edit")}
                         </UIButton>
                         <UIButton
                           size="sm"
@@ -823,8 +817,8 @@ export function NotificationPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>事件规则</CardTitle>
-          <CardDescription>仅启用的事件会触发通知;阈值含义随事件而定(如证书=提前天数)。</CardDescription>
+          <CardTitle>{t("backup.eventRulesTitle")}</CardTitle>
+          <CardDescription>{t("backup.eventRulesDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-3">
@@ -844,11 +838,11 @@ export function NotificationPage({ clients }: { clients: Clients }) {
                       )
                     }
                   />
-                  <span className="font-medium">{notificationEventLabel(rule.event)}</span>
+                  <span className="font-medium">{notificationEventLabel(rule.event, t)}</span>
                 </label>
                 <div className="w-32">
                   <NumberInput
-                    label="阈值"
+                    label={t("backup.threshold")}
                     value={rule.threshold}
                     onChange={(threshold) =>
                       setRules((prev) =>
@@ -863,7 +857,7 @@ export function NotificationPage({ clients }: { clients: Clients }) {
             ))}
             <div>
               <UIButton size="sm" onClick={() => void saveSettings()}>
-                保存规则
+                {t("backup.saveRules")}
               </UIButton>
             </div>
           </div>
@@ -872,36 +866,38 @@ export function NotificationPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>发送历史</CardTitle>
-          <CardDescription>最近 {history.length} 条</CardDescription>
+          <CardTitle>{t("backup.historyTitle")}</CardTitle>
+          <CardDescription>{t("backup.recentCountSuffix", { count: history.length })}</CardDescription>
         </CardHeader>
         <CardContent>
           {history.length === 0 ? (
-            <div className="empty-state text-sm">暂无发送记录</div>
+            <div className="empty-state text-sm">{t("backup.noHistory")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>时间</TableHead>
-                  <TableHead>事件</TableHead>
-                  <TableHead>标题</TableHead>
-                  <TableHead>结果</TableHead>
+                  <TableHead>{t("backup.colTime")}</TableHead>
+                  <TableHead>{t("backup.colEvent")}</TableHead>
+                  <TableHead>{t("backup.colTitle")}</TableHead>
+                  <TableHead>{t("backup.colResult")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
                 {history.map((record) => (
                   <UITableRow key={record.id}>
                     <TableCell className="text-xs text-muted-foreground">
-                      {new Date(Number(record.occurredAtSeconds) * 1000).toLocaleString()}
+                      {formatDateTime(new Date(Number(record.occurredAtSeconds) * 1000), locale)}
                     </TableCell>
-                    <TableCell>{notificationEventLabel(record.event)}</TableCell>
+                    <TableCell>{notificationEventLabel(record.event, t)}</TableCell>
                     <TableCell className="max-w-[240px] truncate">{record.title}</TableCell>
                     <TableCell className="text-xs">
-                      <span className="text-success">{record.deliveredChannels.length} 成功</span>
+                      <span className="text-success">
+                        {t("backup.succeededSuffix", { count: record.deliveredChannels.length })}
+                      </span>
                       {record.failedChannels.length > 0 && (
                         <span className="text-destructive">
                           {" "}
-                          · {record.failedChannels.length} 失败
+                          · {t("backup.failedSuffix", { count: record.failedChannels.length })}
                         </span>
                       )}
                     </TableCell>
@@ -917,6 +913,7 @@ export function NotificationPage({ clients }: { clients: Clients }) {
 }
 
 export function VsmtpAliasPage({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [aliases, setAliases] = useState<VsmtpAlias[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -938,7 +935,7 @@ export function VsmtpAliasPage({ clients }: { clients: Clients }) {
 
   const upsert = async () => {
     if (!form.alias.trim() || !form.forwardTo.trim()) {
-      setError("alias 与转发邮箱都不能为空");
+      setError(t("backup.aliasForwardRequired"));
       return;
     }
     try {
@@ -951,7 +948,7 @@ export function VsmtpAliasPage({ clients }: { clients: Clients }) {
           updatedAtSeconds: 0n
         }
       });
-      setMessage(`${form.alias} 已保存`);
+      setMessage(t("backup.aliasSaved", { alias: form.alias }));
       setForm({ alias: "", forwardTo: "", note: "" });
       void load();
     } catch (err) {
@@ -962,7 +959,7 @@ export function VsmtpAliasPage({ clients }: { clients: Clients }) {
   const remove = async (alias: string) => {
     try {
       await clients.vsmtpAlias.deleteVsmtpAlias({ alias });
-      setMessage(`${alias} 已删除`);
+      setMessage(t("backup.aliasDeleted", { alias }));
       void load();
     } catch (err) {
       setError(safeError(err));
@@ -973,16 +970,12 @@ export function VsmtpAliasPage({ clients }: { clients: Clients }) {
     <section className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight m-0">邮件别名(vSMTP)</h1>
-          <p className="text-sm text-muted-foreground m-0">
-            外部发到 alias@你的域名 的邮件会按下方规则转发到 forward_to。
-            出站必须在 vSMTP 配置里走 SMTP relay(Resend / SES / Postmark),
-            **绝不直连 25 端口**。
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight m-0">{t("backup.vsmtpTitle")}</h1>
+          <p className="text-sm text-muted-foreground m-0">{t("backup.vsmtpSubtitle")}</p>
         </div>
         <UIButton variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="size-4" />
-          刷新
+          {t("backup.refresh")}
         </UIButton>
       </header>
 
@@ -999,13 +992,13 @@ export function VsmtpAliasPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>添加 / 更新 alias</CardTitle>
-          <CardDescription>同名 alias 会被覆盖,创建时间保留</CardDescription>
+          <CardTitle>{t("backup.addUpdateAliasTitle")}</CardTitle>
+          <CardDescription>{t("backup.addUpdateAliasDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
             <Input
-              label="alias(小写 / 数字 / . _ -)"
+              label={t("backup.aliasLabel")}
               value={form.alias}
               onChange={(alias) => setForm((prev) => ({ ...prev, alias }))}
             />
@@ -1015,13 +1008,13 @@ export function VsmtpAliasPage({ clients }: { clients: Clients }) {
               onChange={(forwardTo) => setForm((prev) => ({ ...prev, forwardTo }))}
             />
             <Input
-              label="备注(可选)"
+              label={t("backup.noteLabel")}
               value={form.note}
               onChange={(note) => setForm((prev) => ({ ...prev, note }))}
             />
             <UIButton size="sm" onClick={() => void upsert()}>
               <Plus className="size-3.5" />
-              保存
+              {t("backup.save")}
             </UIButton>
           </div>
         </CardContent>
@@ -1029,20 +1022,20 @@ export function VsmtpAliasPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>已有 alias</CardTitle>
-          <CardDescription>共 {aliases.length} 条</CardDescription>
+          <CardTitle>{t("backup.existingAliasTitle")}</CardTitle>
+          <CardDescription>{t("backup.countSuffix", { count: aliases.length })}</CardDescription>
         </CardHeader>
         <CardContent>
           {aliases.length === 0 ? (
-            <div className="empty-state text-sm">尚未配置任何 alias</div>
+            <div className="empty-state text-sm">{t("backup.noAliases")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>alias</TableHead>
-                  <TableHead>转发到</TableHead>
-                  <TableHead>备注</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("backup.colAlias")}</TableHead>
+                  <TableHead>{t("backup.colForwardTo")}</TableHead>
+                  <TableHead>{t("backup.colNote")}</TableHead>
+                  <TableHead className="text-right">{t("backup.colActions")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
@@ -1060,7 +1053,7 @@ export function VsmtpAliasPage({ clients }: { clients: Clients }) {
                         onClick={() => void remove(item.alias)}
                       >
                         <Trash2 className="size-3.5" />
-                        删除
+                        {t("backup.delete")}
                       </UIButton>
                     </TableCell>
                   </UITableRow>

@@ -1,5 +1,6 @@
 import { app } from "./app";
 import { apps } from "./apps";
+import { backup } from "./backup";
 import { common } from "./common";
 import { components } from "./components";
 import { dashboard } from "./dashboard";
@@ -16,6 +17,7 @@ export const zhCN = {
   common,
   app,
   apps,
+  backup,
   components,
   dashboard,
   database,
