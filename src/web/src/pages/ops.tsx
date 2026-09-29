@@ -11,6 +11,8 @@ import { formatBytes, safeError } from "../lib/format";
 import { type Clients } from "../lib/rpc";
 import { BarChart3, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useLocale } from "../lib/i18n/locale-provider";
+import { tGlobal, type MessageKey, type TFn } from "../lib/i18n/translate";
 
 type DnsFormState = {
   id: string;
@@ -31,6 +33,7 @@ const EMPTY_DNS_FORM: DnsFormState = {
 };
 
 export function DnsPage({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [zoneId, setZoneId] = useState("");
   const [apiToken, setApiToken] = useState("");
   const [configured, setConfigured] = useState(false);
@@ -76,7 +79,7 @@ export function DnsPage({ clients }: { clients: Clients }) {
         apiToken: apiToken.trim()
       });
       setApiToken("");
-      setMessage("DNS 配置已保存");
+      setMessage(t("ops.dnsConfigSaved"));
       setError("");
       const ok = await loadConfig();
       if (ok) void loadRecords();
@@ -98,7 +101,7 @@ export function DnsPage({ clients }: { clients: Clients }) {
         }
       });
       setForm(EMPTY_DNS_FORM);
-      setMessage("解析记录已保存");
+      setMessage(t("ops.dnsRecordSaved"));
       setError("");
       void loadRecords();
     } catch (err) {
@@ -107,10 +110,10 @@ export function DnsPage({ clients }: { clients: Clients }) {
   };
 
   const deleteRecord = async (id: string) => {
-    if (!window.confirm("确认删除该解析记录?")) return;
+    if (!window.confirm(t("ops.dnsConfirmDeleteRecord"))) return;
     try {
       await clients.dns.deleteDnsRecord({ id });
-      setMessage("解析记录已删除");
+      setMessage(t("ops.dnsRecordDeleted"));
       setError("");
       void loadRecords();
     } catch (err) {
@@ -121,10 +124,8 @@ export function DnsPage({ clients }: { clients: Clients }) {
   return (
     <section className="flex flex-col gap-5">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight m-0">DNS 解析托管</h1>
-        <p className="text-sm text-muted-foreground m-0">
-          对接 Cloudflare API 管理解析记录(亦可服务 ACME DNS-01 自动加 TXT)。API token 仅存于后端,0600 落盘。
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight m-0">{t("ops.dnsTitle")}</h1>
+        <p className="text-sm text-muted-foreground m-0">{t("ops.dnsSubtitle")}</p>
       </header>
 
       {error && (
@@ -140,9 +141,9 @@ export function DnsPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>服务商配置</CardTitle>
+          <CardTitle>{t("ops.dnsProviderConfig")}</CardTitle>
           <CardDescription>
-            Cloudflare · {configured ? "已配置(token 留空表示保留原值)" : "未配置"}
+            Cloudflare · {configured ? t("ops.dnsConfigured") : t("ops.dnsNotConfigured")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -155,13 +156,10 @@ export function DnsPage({ clients }: { clients: Clients }) {
               onChange={setApiToken}
             />
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            配置后,该 Zone 下域名的 Let&apos;s Encrypt 证书走 DNS-01 全自动签发与续签(NAT 机器也可用)。
-            Token 需要 Zone → DNS → Edit 权限。
-          </p>
+          <p className="mt-3 text-xs text-muted-foreground">{t("ops.dnsHelpText")}</p>
           <div className="mt-3">
             <UIButton size="sm" onClick={() => void saveConfig()}>
-              保存配置
+              {t("ops.dnsSaveConfig")}
             </UIButton>
           </div>
         </CardContent>
@@ -169,14 +167,14 @@ export function DnsPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>{form.id ? "编辑解析记录" : "新增解析记录"}</CardTitle>
+          <CardTitle>{form.id ? t("ops.dnsEditRecord") : t("ops.dnsNewRecord")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Input label="类型 (A/AAAA/CNAME/TXT…)" value={form.type} onChange={(v) => setForm({ ...form, type: v })} />
-            <Input label="名称" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-            <Input label="内容" value={form.content} onChange={(v) => setForm({ ...form, content: v })} />
-            <Input label="TTL (1=自动)" type="number" value={form.ttl} onChange={(v) => setForm({ ...form, ttl: v })} />
+            <Input label={t("ops.dnsType")} value={form.type} onChange={(v) => setForm({ ...form, type: v })} />
+            <Input label={t("ops.dnsName")} value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
+            <Input label={t("ops.dnsContent")} value={form.content} onChange={(v) => setForm({ ...form, content: v })} />
+            <Input label={t("ops.dnsTtl")} type="number" value={form.ttl} onChange={(v) => setForm({ ...form, ttl: v })} />
           </div>
           <label className="flex items-center gap-2 text-sm mt-3 select-none">
             <input
@@ -184,15 +182,15 @@ export function DnsPage({ clients }: { clients: Clients }) {
               checked={form.proxied}
               onChange={(event) => setForm({ ...form, proxied: event.target.checked })}
             />
-            Cloudflare 代理(橙云,仅 A/AAAA/CNAME)
+            {t("ops.dnsProxied")}
           </label>
           <div className="mt-3 flex gap-2">
             <UIButton size="sm" disabled={!configured} onClick={() => void saveRecord()}>
-              {form.id ? "更新" : "新增"}
+              {form.id ? t("ops.update") : t("ops.dnsNew")}
             </UIButton>
             {form.id && (
               <UIButton variant="outline" size="sm" onClick={() => setForm(EMPTY_DNS_FORM)}>
-                取消编辑
+                {t("ops.dnsCancelEdit")}
               </UIButton>
             )}
           </div>
@@ -201,22 +199,24 @@ export function DnsPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>解析记录</CardTitle>
-          <CardDescription>{configured ? `共 ${records.length} 条` : "请先配置服务商"}</CardDescription>
+          <CardTitle>{t("ops.dnsRecords")}</CardTitle>
+          <CardDescription>
+            {configured ? t("ops.dnsRecordCount", { count: records.length }) : t("ops.dnsConfigureProviderFirst")}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {records.length === 0 ? (
-            <div className="empty-state text-sm">无记录</div>
+            <div className="empty-state text-sm">{t("ops.dnsNoRecords")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>类型</TableHead>
-                  <TableHead>名称</TableHead>
-                  <TableHead>内容</TableHead>
-                  <TableHead>TTL</TableHead>
-                  <TableHead>代理</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("ops.dnsColType")}</TableHead>
+                  <TableHead>{t("ops.dnsColName")}</TableHead>
+                  <TableHead>{t("ops.dnsColContent")}</TableHead>
+                  <TableHead>{t("ops.dnsColTtl")}</TableHead>
+                  <TableHead>{t("ops.dnsColProxied")}</TableHead>
+                  <TableHead className="text-right">{t("ops.actions")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
@@ -225,8 +225,8 @@ export function DnsPage({ clients }: { clients: Clients }) {
                     <TableCell className="font-mono text-xs">{record.type}</TableCell>
                     <TableCell className="break-all">{record.name}</TableCell>
                     <TableCell className="font-mono text-xs break-all">{record.content}</TableCell>
-                    <TableCell className="tabular-nums">{record.ttl === 1 ? "自动" : record.ttl}</TableCell>
-                    <TableCell>{record.proxied ? "是" : "否"}</TableCell>
+                    <TableCell className="tabular-nums">{record.ttl === 1 ? t("ops.dnsAutoTtl") : record.ttl}</TableCell>
+                    <TableCell>{record.proxied ? t("ops.yes") : t("ops.no")}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <UIButton
@@ -243,10 +243,10 @@ export function DnsPage({ clients }: { clients: Clients }) {
                             })
                           }
                         >
-                          编辑
+                          {t("ops.edit")}
                         </UIButton>
                         <UIButton variant="destructive" size="sm" onClick={() => void deleteRecord(record.id)}>
-                          删除
+                          {t("ops.delete")}
                         </UIButton>
                       </div>
                     </TableCell>
@@ -262,6 +262,7 @@ export function DnsPage({ clients }: { clients: Clients }) {
 }
 
 export function AccessLogPage({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [path, setPath] = useState("/var/log/nginx/access.log");
   const [result, setResult] = useState<
     Awaited<ReturnType<Clients["accessLog"]["analyzeAccessLog"]>> | undefined
@@ -289,7 +290,7 @@ export function AccessLogPage({ clients }: { clients: Clients }) {
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (
-          <div className="empty-state text-sm">无数据</div>
+          <div className="empty-state text-sm">{t("ops.noData")}</div>
         ) : (
           <Table>
             <TableBody>
@@ -309,19 +310,17 @@ export function AccessLogPage({ clients }: { clients: Clients }) {
   return (
     <section className="flex flex-col gap-5">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight m-0">网站访问统计</h1>
-        <p className="text-sm text-muted-foreground m-0">
-          流式解析 combined 格式访问日志(如 nginx access.log),零外部依赖、有界内存。大日志结果可能为近似。
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight m-0">{t("ops.accessLogTitle")}</h1>
+        <p className="text-sm text-muted-foreground m-0">{t("ops.accessLogSubtitle")}</p>
       </header>
 
       <Card>
         <CardContent className="pt-6">
           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-            <Input label="日志文件路径" value={path} onChange={setPath} />
+            <Input label={t("ops.accessLogPath")} value={path} onChange={setPath} />
             <UIButton size="sm" disabled={loading} onClick={() => void analyze()}>
               <BarChart3 className="size-4" />
-              {loading ? "分析中…" : "分析"}
+              {loading ? t("ops.analyzing") : t("ops.analyze")}
             </UIButton>
           </div>
         </CardContent>
@@ -337,15 +336,15 @@ export function AccessLogPage({ clients }: { clients: Clients }) {
         <>
           {result.truncated && (
             <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
-              数据量较大,已达去重/扫描上限,UV 与 Top 榜单为近似值。
+              {t("ops.accessLogApproxWarning")}
             </div>
           )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              { label: "请求数 (PV)", value: String(result.totalRequests) },
-              { label: "独立访客 (UV)", value: String(result.uniqueVisitors) },
-              { label: "总流量", value: formatBytes(result.totalBytes) },
-              { label: "爬虫请求", value: String(result.botRequests) }
+              { label: t("ops.pv"), value: String(result.totalRequests) },
+              { label: t("ops.uv"), value: String(result.uniqueVisitors) },
+              { label: t("ops.totalTraffic"), value: formatBytes(result.totalBytes) },
+              { label: t("ops.botRequests"), value: String(result.botRequests) }
             ].map((tile) => (
               <Card key={tile.label}>
                 <CardContent className="pt-6">
@@ -357,36 +356,36 @@ export function AccessLogPage({ clients }: { clients: Clients }) {
           </div>
           <Card>
             <CardHeader>
-              <CardTitle>状态码分布</CardTitle>
+              <CardTitle>{t("ops.statusDistribution")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div>
-                  <div className="text-muted-foreground">2xx 成功</div>
+                  <div className="text-muted-foreground">{t("ops.status2xx")}</div>
                   <div className="font-medium tabular-nums">{String(result.status2xx)}</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground">3xx 跳转</div>
+                  <div className="text-muted-foreground">{t("ops.status3xx")}</div>
                   <div className="font-medium tabular-nums">{String(result.status3xx)}</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground">4xx 客户端错误</div>
+                  <div className="text-muted-foreground">{t("ops.status4xx")}</div>
                   <div className="font-medium tabular-nums">{String(result.status4xx)}</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground">5xx 服务端错误</div>
+                  <div className="text-muted-foreground">{t("ops.status5xx")}</div>
                   <div className="font-medium tabular-nums">{String(result.status5xx)}</div>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-3 m-0">
-                已解析 {String(result.parsedLines)} 行,跳过 {String(result.skippedLines)} 行。
+                {t("ops.parsedSkipped", { parsed: String(result.parsedLines), skipped: String(result.skippedLines) })}
               </p>
             </CardContent>
           </Card>
           <div className="grid gap-4 lg:grid-cols-3">
-            {renderTop("热门 URL", result.topPaths)}
-            {renderTop("Top 来源 IP", result.topIps)}
-            {renderTop("Top User-Agent", result.topUserAgents)}
+            {renderTop(t("ops.topUrls"), result.topPaths)}
+            {renderTop(t("ops.topSourceIps"), result.topIps)}
+            {renderTop(t("ops.topUserAgents"), result.topUserAgents)}
           </div>
         </>
       )}
@@ -395,6 +394,7 @@ export function AccessLogPage({ clients }: { clients: Clients }) {
 }
 
 export function ToolboxPage({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [info, setInfo] = useState<
     { swapTotal: number; swapUsed: number; timezone: string; rootAvail: number } | undefined
   >(undefined);
@@ -426,7 +426,7 @@ export function ToolboxPage({ clients }: { clients: Clients }) {
   const createSwap = async () => {
     try {
       const response = await clients.toolbox.createSwap({ sizeMb: Number(swapSize) || 0 });
-      setMessage(response.status?.message || "swap 已创建");
+      setMessage(response.status?.message || t("ops.swapCreated"));
       setError("");
       void load();
     } catch (err) {
@@ -437,7 +437,7 @@ export function ToolboxPage({ clients }: { clients: Clients }) {
   const applyTimezone = async () => {
     try {
       const response = await clients.toolbox.setTimezone({ timezone: timezone.trim() });
-      setMessage(response.status?.message || "时区已设置");
+      setMessage(response.status?.message || t("ops.timezoneSet"));
       setError("");
       void load();
     } catch (err) {
@@ -449,14 +449,12 @@ export function ToolboxPage({ clients }: { clients: Clients }) {
     <section className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight m-0">系统工具箱</h1>
-          <p className="text-sm text-muted-foreground m-0">
-            低配 VPS 常用:加 swap、调时区。系统改动需后端设 RUSTPANEL_TOOLBOX_APPLY=1 才生效。
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight m-0">{t("ops.toolboxTitle")}</h1>
+          <p className="text-sm text-muted-foreground m-0">{t("ops.toolboxSubtitle")}</p>
         </div>
         <UIButton variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="size-4" />
-          刷新
+          {t("ops.refresh")}
         </UIButton>
       </header>
 
@@ -473,7 +471,7 @@ export function ToolboxPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>状态</CardTitle>
+          <CardTitle>{t("ops.status")}</CardTitle>
         </CardHeader>
         <CardContent>
           {info ? (
@@ -485,30 +483,30 @@ export function ToolboxPage({ clients }: { clients: Clients }) {
                 </div>
               </div>
               <div>
-                <div className="text-muted-foreground">时区</div>
+                <div className="text-muted-foreground">{t("ops.timezone")}</div>
                 <div className="font-medium">{info.timezone || "-"}</div>
               </div>
               <div>
-                <div className="text-muted-foreground">根分区可用</div>
+                <div className="text-muted-foreground">{t("ops.rootAvailable")}</div>
                 <div className="font-medium">{formatBytes(info.rootAvail)}</div>
               </div>
             </div>
           ) : (
-            <div className="empty-state text-sm">读取中…</div>
+            <div className="empty-state text-sm">{t("ops.loading")}</div>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>创建 Swap</CardTitle>
-          <CardDescription>在根分区建 swapfile 并启用 + 写入 /etc/fstab(64–4096 MB)。</CardDescription>
+          <CardTitle>{t("ops.createSwap")}</CardTitle>
+          <CardDescription>{t("ops.createSwapDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-            <Input label="大小 (MB)" type="number" value={swapSize} onChange={setSwapSize} />
+            <Input label={t("ops.sizeMb")} type="number" value={swapSize} onChange={setSwapSize} />
             <UIButton size="sm" onClick={() => void createSwap()}>
-              创建
+              {t("ops.create")}
             </UIButton>
           </div>
         </CardContent>
@@ -516,14 +514,14 @@ export function ToolboxPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>设置时区</CardTitle>
-          <CardDescription>如 Asia/Shanghai / UTC(需 /usr/share/zoneinfo 存在该时区)。</CardDescription>
+          <CardTitle>{t("ops.setTimezone")}</CardTitle>
+          <CardDescription>{t("ops.setTimezoneDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-            <Input label="时区" value={timezone} onChange={setTimezone} />
+            <Input label={t("ops.timezone")} value={timezone} onChange={setTimezone} />
             <UIButton size="sm" onClick={() => void applyTimezone()}>
-              设置
+              {t("ops.set")}
             </UIButton>
           </div>
         </CardContent>
@@ -532,14 +530,15 @@ export function ToolboxPage({ clients }: { clients: Clients }) {
   );
 }
 
-const USER_ROLES: Array<{ value: UserRole; label: string }> = [
-  { value: UserRole.ADMIN, label: "管理员 (全权)" },
-  { value: UserRole.OPERATOR, label: "操作员 (读写,除用户管理)" },
-  { value: UserRole.READONLY, label: "只读" }
+const USER_ROLES: Array<{ value: UserRole; labelKey: MessageKey }> = [
+  { value: UserRole.ADMIN, labelKey: "ops.roleAdmin" },
+  { value: UserRole.OPERATOR, labelKey: "ops.roleOperator" },
+  { value: UserRole.READONLY, labelKey: "ops.roleReadonly" }
 ];
 
-function userRoleLabel(role: UserRole): string {
-  return USER_ROLES.find((item) => item.value === role)?.label ?? "未知";
+function userRoleLabel(role: UserRole, t: TFn = tGlobal): string {
+  const found = USER_ROLES.find((item) => item.value === role);
+  return found ? t(found.labelKey) : t("ops.unknown");
 }
 
 type UserForm = { username: string; password: string; role: UserRole; editing: boolean };
@@ -552,6 +551,7 @@ const emptyUserForm: UserForm = {
 };
 
 export function UserPage({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [users, setUsers] = useState<User[]>([]);
   const [form, setForm] = useState<UserForm>(emptyUserForm);
   const [error, setError] = useState("");
@@ -573,11 +573,11 @@ export function UserPage({ clients }: { clients: Clients }) {
 
   const save = async () => {
     if (!form.username.trim()) {
-      setError("用户名不能为空");
+      setError(t("ops.usernameRequired"));
       return;
     }
     if (!form.editing && !form.password.trim()) {
-      setError("新建用户必须设置密码");
+      setError(t("ops.passwordRequiredForNewUser"));
       return;
     }
     try {
@@ -586,7 +586,7 @@ export function UserPage({ clients }: { clients: Clients }) {
         password: form.password,
         role: form.role
       });
-      setMessage(`用户 ${form.username} 已保存`);
+      setMessage(t("ops.userSaved", { username: form.username }));
       setForm(emptyUserForm);
       void load();
     } catch (err) {
@@ -603,7 +603,7 @@ export function UserPage({ clients }: { clients: Clients }) {
   const remove = async (user: User) => {
     try {
       await clients.user.deleteUser({ username: user.username });
-      setMessage(`用户 ${user.username} 已删除`);
+      setMessage(t("ops.userDeleted", { username: user.username }));
       void load();
     } catch (err) {
       setError(safeError(err));
@@ -614,15 +614,12 @@ export function UserPage({ clients }: { clients: Clients }) {
     <section className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight m-0">用户管理</h1>
-          <p className="text-sm text-muted-foreground m-0">
-            env 管理员(RUSTPANEL_ADMIN_*)始终可登录且为管理员;这里管理附加用户与角色。
-            管理员=全权,操作员=读写(不含用户管理),只读=仅查询。
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight m-0">{t("ops.userTitle")}</h1>
+          <p className="text-sm text-muted-foreground m-0">{t("ops.userSubtitle")}</p>
         </div>
         <UIButton variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="size-4" />
-          刷新
+          {t("ops.refresh")}
         </UIButton>
       </header>
 
@@ -639,24 +636,24 @@ export function UserPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>{form.editing ? "编辑用户" : "添加用户"}</CardTitle>
-          <CardDescription>密码用 PBKDF2-HMAC-SHA256 加盐存储;编辑时留空表示不改密码。</CardDescription>
+          <CardTitle>{form.editing ? t("ops.editUser") : t("ops.addUser")}</CardTitle>
+          <CardDescription>{t("ops.passwordHashDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
             <Input
-              label="用户名"
+              label={t("ops.username")}
               value={form.username}
               onChange={(username) => setForm((prev) => ({ ...prev, username }))}
             />
             <Input
-              label={form.editing ? "密码 (留空不改)" : "密码"}
+              label={form.editing ? t("ops.passwordKeepBlank") : t("ops.password")}
               type="password"
               value={form.password}
               onChange={(password) => setForm((prev) => ({ ...prev, password }))}
             />
             <div className="grid gap-1">
-              <UILabel htmlFor="user-role">角色</UILabel>
+              <UILabel htmlFor="user-role">{t("ops.role")}</UILabel>
               <Select
                 value={String(form.role)}
                 onValueChange={(value) =>
@@ -669,7 +666,7 @@ export function UserPage({ clients }: { clients: Clients }) {
                 <SelectContent>
                   {USER_ROLES.map((item) => (
                     <SelectItem key={item.value} value={String(item.value)}>
-                      {item.label}
+                      {t(item.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -678,12 +675,12 @@ export function UserPage({ clients }: { clients: Clients }) {
             <div className="flex gap-2">
               {form.editing && (
                 <UIButton size="sm" variant="outline" onClick={() => setForm(emptyUserForm)}>
-                  取消
+                  {t("ops.cancel")}
                 </UIButton>
               )}
               <UIButton size="sm" onClick={() => void save()}>
                 <Plus className="size-3.5" />
-                {form.editing ? "更新" : "保存"}
+                {form.editing ? t("ops.update") : t("ops.save")}
               </UIButton>
             </div>
           </div>
@@ -692,19 +689,19 @@ export function UserPage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>用户列表</CardTitle>
-          <CardDescription>共 {users.length} 个附加用户</CardDescription>
+          <CardTitle>{t("ops.userList")}</CardTitle>
+          <CardDescription>{t("ops.additionalUserCount", { count: users.length })}</CardDescription>
         </CardHeader>
         <CardContent>
           {users.length === 0 ? (
-            <div className="empty-state text-sm">尚无附加用户(仅 env 管理员)</div>
+            <div className="empty-state text-sm">{t("ops.noAdditionalUsers")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>用户名</TableHead>
-                  <TableHead>角色</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("ops.username")}</TableHead>
+                  <TableHead>{t("ops.role")}</TableHead>
+                  <TableHead className="text-right">{t("ops.actions")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
@@ -713,13 +710,13 @@ export function UserPage({ clients }: { clients: Clients }) {
                     <TableCell className="font-medium">{user.username}</TableCell>
                     <TableCell>
                       <Badge variant={user.role === UserRole.ADMIN ? "info" : "secondary"}>
-                        {userRoleLabel(user.role)}
+                        {userRoleLabel(user.role, t)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <UIButton size="sm" variant="outline" onClick={() => edit(user)}>
-                          编辑
+                          {t("ops.edit")}
                         </UIButton>
                         <UIButton size="sm" variant="outline" onClick={() => void remove(user)}>
                           <Trash2 className="size-3.5" />
