@@ -699,6 +699,35 @@ fn security_state_path() -> PathBuf {
         .join("state.json")
 }
 
+/// 健康度判定结果。之前直接拿展示文案("健康"/"需关注")当控制流用
+/// (`health_advice` 里 `if health != "健康"`),字符串一改文案就跟着断;
+/// i18n 引入双语文案后这个隐患会被放大,所以先用枚举把"判定"和"怎么显示"分开。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HealthLevel {
+    Healthy,
+    NeedsAttention,
+}
+
+impl HealthLevel {
+    fn from_summary(summary: &HealthSummary) -> Self {
+        if summary.peak_cpu_percent >= 90.0
+            || summary.peak_memory_percent >= 90.0
+            || summary.peak_load_one >= f64::from(summary.cpu_cores.max(1)) * 2.0
+        {
+            Self::NeedsAttention
+        } else {
+            Self::Healthy
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Healthy => "健康",
+            Self::NeedsAttention => "需关注",
+        }
+    }
+}
+
 fn render_health_report(
     period: ReportPeriod,
     start_seconds: u64,
@@ -711,26 +740,20 @@ fn render_health_report(
         ReportPeriod::Daily => "日报",
         ReportPeriod::Weekly => "周报",
     };
-    let health = if summary.peak_cpu_percent >= 90.0
-        || summary.peak_memory_percent >= 90.0
-        || summary.peak_load_one >= f64::from(summary.cpu_cores.max(1)) * 2.0
-    {
-        "需关注"
-    } else {
-        "健康"
-    };
+    let health = HealthLevel::from_summary(&summary);
 
     format!(
         "RustPanel 运行{period_label}\n\
          时间范围: {start_seconds} - {end_seconds}\n\
          采样点: {sample_count}\n\
-         健康度: {health}\n\
+         健康度: {health_label}\n\
          资源峰值: CPU {peak_cpu:.1}%, 内存 {peak_memory:.1}%, 1分钟负载 {peak_load:.2}, 磁盘占用 {peak_disk:.1}%\n\
          资源均值: CPU {avg_cpu:.1}%, 内存 {avg_memory:.1}%\n\
          流量增量: 入站 {network_in}, 出站 {network_out}\n\
          安全拦截: WAF {waf_blocks} 次, SSH 自动封禁 {ssh_auto_bans} 次\n\
          建议: {advice}",
         sample_count = summary.sample_count,
+        health_label = health.label(),
         peak_cpu = summary.peak_cpu_percent,
         peak_memory = summary.peak_memory_percent,
         peak_load = summary.peak_load_one,
@@ -745,8 +768,8 @@ fn render_health_report(
     )
 }
 
-fn health_advice(health: &str, security: SecurityReportCounters) -> &'static str {
-    if health != "健康" {
+fn health_advice(health: HealthLevel, security: SecurityReportCounters) -> &'static str {
+    if health == HealthLevel::NeedsAttention {
         "检查高峰时段进程快照，必要时扩容或限制异常进程。"
     } else if security.waf_blocks > 0 || security.ssh_auto_bans > 0 {
         "关注安全中心攻击来源排行，并保持 WAF 与 SSH 防护开启。"
@@ -1017,6 +1040,52 @@ mod tests {
         assert_eq!(summary.average_cpu_percent, 50.0);
         assert_eq!(summary.peak_memory_percent, 80.0);
         assert_eq!(summary.network_received_delta, 3_000);
+    }
+
+    #[test]
+    fn health_level_reflects_peak_thresholds_not_a_display_string() {
+        let calm = summarize_samples(&[test_sample(100, 20.0, 20, 0)]);
+        assert_eq!(HealthLevel::from_summary(&calm), HealthLevel::Healthy);
+
+        let cpu_spike = summarize_samples(&[test_sample(100, 95.0, 20, 0)]);
+        assert_eq!(
+            HealthLevel::from_summary(&cpu_spike),
+            HealthLevel::NeedsAttention
+        );
+
+        // memory_used_bytes / total(100) >= 90% 也算需关注
+        let memory_spike = summarize_samples(&[test_sample(100, 20.0, 95, 0)]);
+        assert_eq!(
+            HealthLevel::from_summary(&memory_spike),
+            HealthLevel::NeedsAttention
+        );
+    }
+
+    #[test]
+    fn health_advice_branches_on_level_not_label_text() {
+        let none = SecurityReportCounters {
+            waf_blocks: 0,
+            ssh_auto_bans: 0,
+        };
+        let attacked = SecurityReportCounters {
+            waf_blocks: 3,
+            ssh_auto_bans: 0,
+        };
+
+        assert_eq!(
+            health_advice(HealthLevel::NeedsAttention, attacked),
+            "检查高峰时段进程快照，必要时扩容或限制异常进程。"
+        );
+        assert_eq!(
+            health_advice(HealthLevel::Healthy, attacked),
+            "关注安全中心攻击来源排行，并保持 WAF 与 SSH 防护开启。"
+        );
+        assert_eq!(
+            health_advice(HealthLevel::Healthy, none),
+            "当前周期资源与安全事件稳定。"
+        );
+        assert_eq!(HealthLevel::Healthy.label(), "健康");
+        assert_eq!(HealthLevel::NeedsAttention.label(), "需关注");
     }
 
     fn test_sample(
