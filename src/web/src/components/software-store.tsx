@@ -3,6 +3,7 @@ import { Button as UIButton } from "../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { AppCategory, AppTemplate, CompatibilityStatus, InstallMethod } from "../gen/rustpanel/v1/appstore_pb";
 import { useLocale } from "../lib/i18n/locale-provider";
+import { tGlobal, type TFn } from "../lib/i18n/translate";
 import { cn } from "../lib/utils";
 import { ChevronDown, ExternalLink, Play, Store } from "lucide-react";
 import { useState } from "react";
@@ -18,6 +19,7 @@ export function SoftwareStore({
   onVersionChange: (slug: string, version: string) => void;
   onDeploy: (template: AppTemplate) => void;
 }) {
+  const { t } = useLocale();
   const groups: Array<{
     key: CompatibilityStatus;
     title: string;
@@ -27,29 +29,29 @@ export function SoftwareStore({
   }> = [
     {
       key: CompatibilityStatus.COMPATIBLE,
-      title: "可用",
-      description: "硬件和内核都满足,可以直接安装",
+      title: t("apps.groupAvailable"),
+      description: t("apps.groupAvailableDesc"),
       tone: "ok",
       defaultOpen: true
     },
     {
       key: CompatibilityStatus.RESOURCE_SHORT,
-      title: "资源不足",
-      description: "RAM 或磁盘不够,装上也很可能跑不起来",
+      title: t("apps.groupResourceShort"),
+      description: t("apps.groupResourceShortDesc"),
       tone: "warn",
       defaultOpen: false
     },
     {
       key: CompatibilityStatus.KERNEL_UNSUPPORTED,
-      title: "内核不支持",
-      description: "OpenVZ 等受限内核缺必要能力,无法工作",
+      title: t("apps.groupKernelUnsupported"),
+      description: t("apps.groupKernelUnsupportedDesc"),
       tone: "muted",
       defaultOpen: false
     },
     {
       key: CompatibilityStatus.NEEDS_DOCKER,
-      title: "需要 Docker",
-      description: "走容器路线,本机 Docker 不可用时折叠",
+      title: t("apps.groupNeedsDocker"),
+      description: t("apps.groupNeedsDockerDesc"),
       tone: "muted",
       defaultOpen: false
     }
@@ -59,9 +61,9 @@ export function SoftwareStore({
     <div className="panel full-span flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <Store className="size-4 text-primary" />
-        <span className="font-semibold">软件商店</span>
+        <span className="font-semibold">{t("apps.storeTitle")}</span>
         <span className="text-xs text-muted-foreground">
-          按当前主机能力分组 · 共 {templates.length} 个模板
+          {t("apps.groupedByHostCount", { count: templates.length })}
         </span>
       </div>
 
@@ -159,6 +161,7 @@ export function SoftwareCard({
   onVersionChange: (version: string) => void;
   onDeploy: () => void;
 }) {
+  const { t } = useLocale();
   const isCompatible = template.compatibility === CompatibilityStatus.COMPATIBLE;
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border bg-card p-3">
@@ -166,10 +169,10 @@ export function SoftwareCard({
         <div className="flex flex-col min-w-0 gap-0.5">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-medium truncate">{template.name}</span>
-            {template.recommended && <Badge variant="info">推荐</Badge>}
+            {template.recommended && <Badge variant="info">{t("apps.recommended")}</Badge>}
           </div>
           <span className="text-xs text-muted-foreground truncate">
-            {appCategoryLabel(template.category)} · {installMethodLabel(template.installMethod)}
+            {appCategoryLabel(template.category, t)} · {installMethodLabel(template.installMethod, t)}
           </span>
         </div>
         {template.homepage && (
@@ -178,7 +181,7 @@ export function SoftwareCard({
             target="_blank"
             rel="noopener noreferrer"
             className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-            title={`官网: ${template.homepage}`}
+            title={t("apps.homepageTitle", { url: template.homepage })}
           >
             <ExternalLink className="size-3.5" />
           </a>
@@ -186,10 +189,14 @@ export function SoftwareCard({
       </div>
       <p className="text-xs text-muted-foreground line-clamp-2">{template.description}</p>
       <div className="flex flex-wrap gap-1 text-[11px] text-muted-foreground">
-        {template.minRamMb > 0 && <Badge variant="muted">RAM ≥ {template.minRamMb} MB</Badge>}
-        {template.minDiskMb > 0 && <Badge variant="muted">Disk ≥ {template.minDiskMb} MB</Badge>}
+        {template.minRamMb > 0 && (
+          <Badge variant="muted">{t("apps.ramAtLeast", { value: template.minRamMb })}</Badge>
+        )}
+        {template.minDiskMb > 0 && (
+          <Badge variant="muted">{t("apps.diskAtLeast", { value: template.minDiskMb })}</Badge>
+        )}
         {template.expectedRuntimeRamMb > 0 && (
-          <Badge variant="outline">运行 ~{template.expectedRuntimeRamMb} MB</Badge>
+          <Badge variant="outline">{t("apps.runtimeApprox", { value: template.expectedRuntimeRamMb })}</Badge>
         )}
       </div>
       {!isCompatible && template.compatibilityReason && (
@@ -206,7 +213,7 @@ export function SoftwareCard({
             {template.versions.map((v) => (
               <SelectItem key={v.version} value={v.version}>
                 {v.version}
-                {v.recommended && " (推荐)"}
+                {v.recommended && ` (${t("apps.recommended")})`}
               </SelectItem>
             ))}
           </SelectContent>
@@ -221,47 +228,47 @@ export function SoftwareCard({
         {isCompatible ? (
           <>
             <Play className="size-3.5" />
-            安装
+            {t("apps.install")}
           </>
         ) : (
-          "暂不可用"
+          t("apps.notAvailableYet")
         )}
       </UIButton>
     </div>
   );
 }
 
-export function appCategoryLabel(category: AppCategory): string {
+export function appCategoryLabel(category: AppCategory, t: TFn = tGlobal): string {
   switch (category) {
     case AppCategory.WEB_SERVER:
-      return "Web 服务";
+      return t("apps.categoryWebServer");
     case AppCategory.DATABASE:
-      return "数据库";
+      return t("apps.categoryDatabase");
     case AppCategory.RUNTIME:
-      return "运行时";
+      return t("apps.categoryRuntime");
     case AppCategory.TOOL:
-      return "工具";
+      return t("apps.categoryTool");
     case AppCategory.VPN:
-      return "VPN";
+      return t("apps.categoryVpn");
     case AppCategory.MONITOR:
-      return "监控";
+      return t("apps.categoryMonitor");
     default:
-      return "其他";
+      return t("apps.categoryOther");
   }
 }
 
-export function installMethodLabel(method: InstallMethod): string {
+export function installMethodLabel(method: InstallMethod, t: TFn = tGlobal): string {
   switch (method) {
     case InstallMethod.NATIVE_PACKAGE:
-      return "apt 包";
+      return t("apps.methodNativePackage");
     case InstallMethod.BINARY_DOWNLOAD:
-      return "二进制";
+      return t("apps.methodBinaryDownload");
     case InstallMethod.CARGO_INSTALL:
-      return "cargo install";
+      return t("apps.methodCargoInstall");
     case InstallMethod.DOCKER_COMPOSE:
-      return "Docker";
+      return t("apps.methodDockerCompose");
     default:
-      return "未指定";
+      return t("apps.methodUnspecified");
   }
 }
 

@@ -16,8 +16,10 @@ import { useCallback, useEffect, useState } from "react";
 import { SoftwareStore } from "../components/software-store";
 import { appStateVariant } from "../lib/labels";
 import { useMountEffect } from "../lib/hooks";
+import { useLocale } from "../lib/i18n/locale-provider";
 
 export function SoftwareStorePage({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [templates, setTemplates] = useState<AppTemplate[]>([]);
   const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
   const [selectedVersions, setSelectedVersions] = useState<Record<string, string>>({});
@@ -59,7 +61,7 @@ export function SoftwareStorePage({ clients }: { clients: Clients }) {
         appName: `${template.slug}-${version || "default"}`.replaceAll(".", "-"),
         version
       });
-      setMessage(`${template.name} 已开始部署`);
+      setMessage(t("apps.deployStarted", { name: template.name }));
       // BinaryDownload 路径下 composeYaml 是"上游/版本/asset/装到哪/下一步"
       // 的人话摘要;Docker 路径下它是真的 compose yaml,也可以让用户看一眼。
       setInstallSummary(response.composeYaml || "");
@@ -73,7 +75,7 @@ export function SoftwareStorePage({ clients }: { clients: Clients }) {
   const uninstallApp = async (app: InstalledApp) => {
     try {
       await clients.appStore.uninstallApp({ appName: app.appName });
-      setMessage(`${app.appName} 已卸载`);
+      setMessage(t("apps.uninstalled", { name: app.appName }));
       void load();
     } catch (err) {
       setError(safeError(err));
@@ -84,15 +86,12 @@ export function SoftwareStorePage({ clients }: { clients: Clients }) {
     <section className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight m-0">软件商店</h1>
-          <p className="text-sm text-muted-foreground m-0">
-            按当前主机能力分组(可用 / 资源不足 / 内核不支持 / 需要 Docker)。
-            轻量包优先,docker 路线在 OpenVZ 上自动折叠。
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight m-0">{t("apps.storeTitle")}</h1>
+          <p className="text-sm text-muted-foreground m-0">{t("apps.storePageSubtitle")}</p>
         </div>
         <UIButton variant="outline" size="sm" onClick={() => void load()}>
           <RefreshCw className="size-4" />
-          刷新
+          {t("apps.refresh")}
         </UIButton>
       </header>
 
@@ -123,20 +122,20 @@ export function SoftwareStorePage({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>已安装运行环境</CardTitle>
-          <CardDescription>面板托管的应用与状态</CardDescription>
+          <CardTitle>{t("apps.installedEnvironments")}</CardTitle>
+          <CardDescription>{t("apps.installedEnvironmentsDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           {installedApps.length === 0 ? (
-            <div className="empty-state text-sm">尚未安装任何应用</div>
+            <div className="empty-state text-sm">{t("apps.noInstalledApps")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>镜像 / 版本</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("apps.colName")}</TableHead>
+                  <TableHead>{t("apps.colImageVersion")}</TableHead>
+                  <TableHead>{t("apps.colStatus")}</TableHead>
+                  <TableHead className="text-right">{t("apps.colActions")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
@@ -147,12 +146,12 @@ export function SoftwareStorePage({ clients }: { clients: Clients }) {
                       {app.image} · {app.version || "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={appStateVariant(app.state)}>{app.state || "unknown"}</Badge>
+                      <Badge variant={appStateVariant(app.state)}>{app.state || t("apps.unknown")}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <UIButton variant="ghost" size="sm" onClick={() => void uninstallApp(app)}>
                         <Trash2 className="size-3.5" />
-                        卸载
+                        {t("apps.uninstall")}
                       </UIButton>
                     </TableCell>
                   </UITableRow>
@@ -167,6 +166,7 @@ export function SoftwareStorePage({ clients }: { clients: Clients }) {
 }
 
 export function DockerApps({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [containers, setContainers] = useState<ContainerItem[]>([]);
   const [images, setImages] = useState<ImageItem[]>([]);
   const [composeProjects, setComposeProjects] = useState<ComposeProject[]>([]);
@@ -259,7 +259,11 @@ export function DockerApps({ clients }: { clients: Clients }) {
       });
       setPullLines((lines) => [
         ...lines,
-        `清理 ${response.deletedCount} 项，释放 ${formatBytes(response.spaceReclaimedBytes)} · ${response.summary}\n`
+        `${t("apps.pruneResult", {
+          count: response.deletedCount,
+          space: formatBytes(response.spaceReclaimedBytes),
+          summary: response.summary
+        })}\n`
       ]);
       await load();
     } catch (err) {
@@ -355,30 +359,37 @@ export function DockerApps({ clients }: { clients: Clients }) {
     <section className="page-grid">
       <header className="section-header full-span">
         <div>
-          <h1>容器与应用商店</h1>
-          <p>{error || `${containers.length} 个容器 · ${images.length} 个镜像 · ${templates.length} 个模板`}</p>
+          <h1>{t("apps.dockerTitle")}</h1>
+          <p>
+            {error ||
+              t("apps.dockerSummary", {
+                containers: containers.length,
+                images: images.length,
+                templates: templates.length
+              })}
+          </p>
         </div>
-        <IconButton label="刷新" icon={RefreshCw} onClick={() => void load()} />
+        <IconButton label={t("apps.refresh")} icon={RefreshCw} onClick={() => void load()} />
       </header>
 
       <div className="panel wide-panel">
-        <div className="panel-title"><Boxes size={18} /><span>容器列表</span></div>
+        <div className="panel-title"><Boxes size={18} /><span>{t("apps.containerList")}</span></div>
         <div className="table-list">
           {containers.map((container) => (
             <div className="table-row" key={container.id}>
               <div>
                 <strong>{container.name || container.id.slice(0, 12)}</strong>
                 <small>
-                  {container.image} · {container.statusText} · CPU {container.cpuLimitCores ? container.cpuLimitCores.toFixed(2) : "不限"} · 内存 {container.memoryLimitBytes ? formatBytes(container.memoryLimitBytes) : "不限"}
+                  {container.image} · {container.statusText} · CPU {container.cpuLimitCores ? container.cpuLimitCores.toFixed(2) : t("apps.unlimited")} · {t("apps.memoryMb")} {container.memoryLimitBytes ? formatBytes(container.memoryLimitBytes) : t("apps.unlimited")}
                 </small>
               </div>
-              <StatusPill label={container.state || "unknown"} tone={container.state === "running" ? "good" : "muted"} />
+              <StatusPill label={container.state || t("apps.unknown")} tone={container.state === "running" ? "good" : "muted"} />
               <div className="row-actions">
-                <IconButton label="启动" icon={Play} onClick={() => void action(container.id, "start")} />
-                <IconButton label="停止" icon={Square} onClick={() => void action(container.id, "stop")} />
-                <IconButton label="重启" icon={RotateCw} onClick={() => void action(container.id, "restart")} />
-                <IconButton label="暂停" icon={Pause} onClick={() => void action(container.id, "pause")} />
-                <IconButton label="日志" icon={TerminalSquare} onClick={() => void watchLogs(container)} />
+                <IconButton label={t("apps.start")} icon={Play} onClick={() => void action(container.id, "start")} />
+                <IconButton label={t("apps.stop")} icon={Square} onClick={() => void action(container.id, "stop")} />
+                <IconButton label={t("apps.restart")} icon={RotateCw} onClick={() => void action(container.id, "restart")} />
+                <IconButton label={t("apps.pause")} icon={Pause} onClick={() => void action(container.id, "pause")} />
+                <IconButton label={t("apps.logs")} icon={TerminalSquare} onClick={() => void watchLogs(container)} />
               </div>
             </div>
           ))}
@@ -386,34 +397,34 @@ export function DockerApps({ clients }: { clients: Clients }) {
       </div>
 
       <div className="panel">
-        <div className="panel-title"><Boxes size={18} /><span>资源配额</span></div>
-        <Input label="容器 ID" value={quotaForm.containerId} onChange={(containerId) => setQuotaForm({ ...quotaForm, containerId })} />
-        <Input label="CPU 核数" value={quotaForm.cpuLimitCores} onChange={(cpuLimitCores) => setQuotaForm({ ...quotaForm, cpuLimitCores })} />
-        <Input label="内存 MB" value={quotaForm.memoryLimitMb} onChange={(memoryLimitMb) => setQuotaForm({ ...quotaForm, memoryLimitMb })} />
-        <button onClick={() => void saveQuota()} type="button"><Save size={15} />应用配额</button>
+        <div className="panel-title"><Boxes size={18} /><span>{t("apps.resourceQuota")}</span></div>
+        <Input label={t("apps.containerId")} value={quotaForm.containerId} onChange={(containerId) => setQuotaForm({ ...quotaForm, containerId })} />
+        <Input label={t("apps.cpuCores")} value={quotaForm.cpuLimitCores} onChange={(cpuLimitCores) => setQuotaForm({ ...quotaForm, cpuLimitCores })} />
+        <Input label={t("apps.memoryMb")} value={quotaForm.memoryLimitMb} onChange={(memoryLimitMb) => setQuotaForm({ ...quotaForm, memoryLimitMb })} />
+        <button onClick={() => void saveQuota()} type="button"><Save size={15} />{t("apps.applyQuota")}</button>
       </div>
 
       <div className="panel wide-panel">
-        <div className="panel-title"><Download size={18} /><span>镜像管理</span></div>
+        <div className="panel-title"><Download size={18} /><span>{t("apps.imageManagement")}</span></div>
         <div className="inline-grid">
-          <Input label="镜像" value={pullForm.image} onChange={(image) => setPullForm({ ...pullForm, image })} />
-          <Input label="标签" value={pullForm.tag} onChange={(tag) => setPullForm({ ...pullForm, tag })} />
+          <Input label={t("apps.image")} value={pullForm.image} onChange={(image) => setPullForm({ ...pullForm, image })} />
+          <Input label={t("apps.tag")} value={pullForm.tag} onChange={(tag) => setPullForm({ ...pullForm, tag })} />
         </div>
         <div className="row-actions backup-actions">
-          <button onClick={() => void pullImage()} type="button"><Download size={15} />拉取</button>
-          <button onClick={() => void pruneResources()} type="button"><Trash2 size={15} />清理残留</button>
+          <button onClick={() => void pullImage()} type="button"><Download size={15} />{t("apps.pull")}</button>
+          <button onClick={() => void pruneResources()} type="button"><Trash2 size={15} />{t("apps.pruneResiduals")}</button>
         </div>
         <div className="inline-grid">
-          <Input label="回滚来源" value={rollbackForm.sourceImage} onChange={(sourceImage) => setRollbackForm({ ...rollbackForm, sourceImage })} />
-          <Input label="目标仓库" value={rollbackForm.targetRepository} onChange={(targetRepository) => setRollbackForm({ ...rollbackForm, targetRepository })} />
-          <Input label="目标标签" value={rollbackForm.targetTag} onChange={(targetTag) => setRollbackForm({ ...rollbackForm, targetTag })} />
+          <Input label={t("apps.rollbackSource")} value={rollbackForm.sourceImage} onChange={(sourceImage) => setRollbackForm({ ...rollbackForm, sourceImage })} />
+          <Input label={t("apps.targetRepository")} value={rollbackForm.targetRepository} onChange={(targetRepository) => setRollbackForm({ ...rollbackForm, targetRepository })} />
+          <Input label={t("apps.targetTag")} value={rollbackForm.targetTag} onChange={(targetTag) => setRollbackForm({ ...rollbackForm, targetTag })} />
         </div>
-        <button onClick={() => void rollbackImage()} type="button"><RotateCw size={15} />回滚标签</button>
-        <pre className="report-output compact-output">{pullLines.join("") || "暂无镜像任务"}</pre>
+        <button onClick={() => void rollbackImage()} type="button"><RotateCw size={15} />{t("apps.rollbackTag")}</button>
+        <pre className="report-output compact-output">{pullLines.join("") || t("apps.noImageTasks")}</pre>
       </div>
 
       <div className="panel">
-        <div className="panel-title"><Archive size={18} /><span>本地镜像</span></div>
+        <div className="panel-title"><Archive size={18} /><span>{t("apps.localImages")}</span></div>
         <div className="table-list compact-list">
           {images.slice(0, 8).map((image) => (
             <div className="key-row" key={image.id}>
@@ -421,21 +432,21 @@ export function DockerApps({ clients }: { clients: Clients }) {
               <small>{formatBytes(image.sizeBytes)} · containers {image.containers}</small>
             </div>
           ))}
-          {!images.length && <div className="empty-state">暂无镜像</div>}
+          {!images.length && <div className="empty-state">{t("apps.noImages")}</div>}
         </div>
       </div>
 
       <div className="panel wide-panel">
-        <div className="panel-title"><FileText size={18} /><span>Compose 编排</span></div>
-        <Input label="项目名" value={composeForm.name} onChange={(name) => setComposeForm({ ...composeForm, name })} />
+        <div className="panel-title"><FileText size={18} /><span>{t("apps.composeOrchestration")}</span></div>
+        <Input label={t("apps.projectName")} value={composeForm.name} onChange={(name) => setComposeForm({ ...composeForm, name })} />
         <textarea
           className="pem-input code-input"
           value={composeForm.composeYaml}
           onChange={(event) => setComposeForm({ ...composeForm, composeYaml: event.target.value })}
         />
         <div className="row-actions backup-actions">
-          <button onClick={() => void saveCompose()} type="button"><Save size={15} />保存</button>
-          <button onClick={() => void deployCompose()} type="button"><Play size={15} />部署</button>
+          <button onClick={() => void saveCompose()} type="button"><Save size={15} />{t("apps.save")}</button>
+          <button onClick={() => void deployCompose()} type="button"><Play size={15} />{t("apps.deploy")}</button>
         </div>
         <div className="table-list compact-list">
           {composeProjects.map((project) => (
@@ -446,13 +457,13 @@ export function DockerApps({ clients }: { clients: Clients }) {
               </div>
               <StatusPill label={project.statusText || "saved"} tone="muted" />
               <div className="row-actions">
-                <IconButton label="编辑" icon={FileText} onClick={() => setComposeForm({ name: project.name, composeYaml: project.composeYaml })} />
-                <IconButton label="部署" icon={Play} onClick={() => void deployCompose(project.name)} />
-                <IconButton label="删除" icon={Trash2} onClick={() => void removeCompose(project.name)} />
+                <IconButton label={t("apps.edit")} icon={FileText} onClick={() => setComposeForm({ name: project.name, composeYaml: project.composeYaml })} />
+                <IconButton label={t("apps.deploy")} icon={Play} onClick={() => void deployCompose(project.name)} />
+                <IconButton label={t("apps.delete")} icon={Trash2} onClick={() => void removeCompose(project.name)} />
               </div>
             </div>
           ))}
-          {!composeProjects.length && <div className="empty-state">暂无 Compose 项目</div>}
+          {!composeProjects.length && <div className="empty-state">{t("apps.noComposeProjects")}</div>}
         </div>
       </div>
 
@@ -466,7 +477,7 @@ export function DockerApps({ clients }: { clients: Clients }) {
       />
 
       <div className="panel full-span">
-        <div className="panel-title"><Store size={18} /><span>已安装运行环境</span></div>
+        <div className="panel-title"><Store size={18} /><span>{t("apps.installedEnvironments")}</span></div>
         <div className="table-list">
           {installedApps.map((app) => (
             <div className="table-row" key={app.appName}>
@@ -476,17 +487,17 @@ export function DockerApps({ clients }: { clients: Clients }) {
               </div>
               <StatusPill label={app.state || "installed"} tone="good" />
               <div className="row-actions">
-                <IconButton label="更新" icon={RefreshCw} onClick={() => void updateInstalledApp(app)} />
-                <IconButton label="卸载" icon={Trash2} onClick={() => void uninstallApp(app)} />
+                <IconButton label={t("apps.update")} icon={RefreshCw} onClick={() => void updateInstalledApp(app)} />
+                <IconButton label={t("apps.uninstall")} icon={Trash2} onClick={() => void uninstallApp(app)} />
               </div>
             </div>
           ))}
-          {!installedApps.length && <div className="empty-state">暂无已安装应用</div>}
+          {!installedApps.length && <div className="empty-state">{t("apps.noInstalledEnvironments")}</div>}
         </div>
       </div>
 
       <div className="panel log-panel">
-        <div className="panel-title"><TerminalSquare size={18} /><span>容器日志</span></div>
+        <div className="panel-title"><TerminalSquare size={18} /><span>{t("apps.containerLogs")}</span></div>
         <pre>{logLines.join("")}</pre>
       </div>
     </section>
@@ -494,6 +505,7 @@ export function DockerApps({ clients }: { clients: Clients }) {
 }
 
 export function MicroPanel({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   const [sites, setSites] = useState<SiteItem[]>([]);
   const [workloads, setWorkloads] = useState<WorkloadItem[]>([]);
   const [proxies, setProxies] = useState<ProxyInstance[]>([]);
@@ -630,21 +642,24 @@ export function MicroPanel({ clients }: { clients: Clients }) {
     <section className="page-grid">
       <header className="section-header full-span">
         <div>
-          <h1>Micro 极限模式</h1>
-          <p>{status || `${sites.length} 个静态站点 · ${workloads.length} 个任务 · ${proxies.length} 个代理`}</p>
+          <h1>{t("apps.microTitle")}</h1>
+          <p>
+            {status ||
+              t("apps.microSummary", { sites: sites.length, workloads: workloads.length, proxies: proxies.length })}
+          </p>
         </div>
-        <IconButton label="刷新" icon={RefreshCw} onClick={() => void load()} />
+        <IconButton label={t("apps.refresh")} icon={RefreshCw} onClick={() => void load()} />
       </header>
 
       <div className="panel">
-        <div className="panel-title"><Globe size={18} /><span>内置静态托管</span></div>
-        <Input label="名称" value={siteForm.name} onChange={(name) => setSiteForm({ ...siteForm, name })} />
-        <Input label="目录" value={siteForm.root} onChange={(root) => setSiteForm({ ...siteForm, root })} />
-        <button onClick={() => void createSite()} type="button"><Save size={15} />创建</button>
+        <div className="panel-title"><Globe size={18} /><span>{t("apps.builtinStaticHosting")}</span></div>
+        <Input label={t("apps.name")} value={siteForm.name} onChange={(name) => setSiteForm({ ...siteForm, name })} />
+        <Input label={t("apps.directory")} value={siteForm.root} onChange={(root) => setSiteForm({ ...siteForm, root })} />
+        <button onClick={() => void createSite()} type="button"><Save size={15} />{t("apps.create")}</button>
       </div>
 
       <div className="panel wide-panel">
-        <div className="panel-title"><FileText size={18} /><span>静态站点</span></div>
+        <div className="panel-title"><FileText size={18} /><span>{t("apps.staticSites")}</span></div>
         <div className="table-list compact-list">
           {sites.map((site) => (
             <div className="table-row" key={site.name}>
@@ -655,21 +670,21 @@ export function MicroPanel({ clients }: { clients: Clients }) {
               <StatusPill label="builtin" tone="good" />
             </div>
           ))}
-          {!sites.length && <div className="empty-state">暂无内置静态站点</div>}
+          {!sites.length && <div className="empty-state">{t("apps.noBuiltinSites")}</div>}
         </div>
       </div>
 
       <div className="panel">
-        <div className="panel-title"><TerminalSquare size={18} /><span>Rust 爬虫/进程</span></div>
-        <Input label="名称" value={workloadForm.name} onChange={(name) => setWorkloadForm({ ...workloadForm, name })} />
-        <Input label="命令" value={workloadForm.command} onChange={(command) => setWorkloadForm({ ...workloadForm, command })} />
-        <Input label="目录" value={workloadForm.cwd} onChange={(cwd) => setWorkloadForm({ ...workloadForm, cwd })} />
-        <Input label="内存 MB" value={workloadForm.memoryLimitMb} onChange={(memoryLimitMb) => setWorkloadForm({ ...workloadForm, memoryLimitMb })} />
-        <button onClick={() => void saveWorkload()} type="button"><Save size={15} />保存</button>
+        <div className="panel-title"><TerminalSquare size={18} /><span>{t("apps.rustWorkloads")}</span></div>
+        <Input label={t("apps.name")} value={workloadForm.name} onChange={(name) => setWorkloadForm({ ...workloadForm, name })} />
+        <Input label={t("apps.command")} value={workloadForm.command} onChange={(command) => setWorkloadForm({ ...workloadForm, command })} />
+        <Input label={t("apps.directory")} value={workloadForm.cwd} onChange={(cwd) => setWorkloadForm({ ...workloadForm, cwd })} />
+        <Input label={t("apps.memoryMb")} value={workloadForm.memoryLimitMb} onChange={(memoryLimitMb) => setWorkloadForm({ ...workloadForm, memoryLimitMb })} />
+        <button onClick={() => void saveWorkload()} type="button"><Save size={15} />{t("apps.save")}</button>
       </div>
 
       <div className="panel wide-panel">
-        <div className="panel-title"><Power size={18} /><span>托管任务</span></div>
+        <div className="panel-title"><Power size={18} /><span>{t("apps.managedTasks")}</span></div>
         <div className="table-list">
           {workloads.map((workload) => (
             <div className="table-row" key={workload.id}>
@@ -679,26 +694,26 @@ export function MicroPanel({ clients }: { clients: Clients }) {
               </div>
               <StatusPill label={WorkloadState[workload.state]} tone={workload.state === WorkloadState.RUNNING ? "good" : "muted"} />
               <div className="row-actions">
-                <IconButton label="启动" icon={Play} onClick={() => void startWorkload(workload)} />
-                <IconButton label="停止" icon={Square} onClick={() => void stopWorkload(workload)} />
-                <IconButton label="日志" icon={TerminalSquare} onClick={() => void readWorkloadLog(workload)} />
+                <IconButton label={t("apps.start")} icon={Play} onClick={() => void startWorkload(workload)} />
+                <IconButton label={t("apps.stop")} icon={Square} onClick={() => void stopWorkload(workload)} />
+                <IconButton label={t("apps.logs")} icon={TerminalSquare} onClick={() => void readWorkloadLog(workload)} />
               </div>
             </div>
           ))}
-          {!workloads.length && <div className="empty-state">暂无托管任务</div>}
+          {!workloads.length && <div className="empty-state">{t("apps.noManagedTasks")}</div>}
         </div>
       </div>
 
       <div className="panel">
         <div className="panel-title"><ShieldCheck size={18} /><span>shadowsocks-rust</span></div>
-        <Input label="名称" value={proxyForm.name} onChange={(name) => setProxyForm({ ...proxyForm, name })} />
-        <Input label="端口" value={proxyForm.listenPort} onChange={(listenPort) => setProxyForm({ ...proxyForm, listenPort })} />
-        <Input label="密码" value={proxyForm.password} onChange={(password) => setProxyForm({ ...proxyForm, password })} />
-        <button onClick={() => void saveProxy()} type="button"><Save size={15} />保存</button>
+        <Input label={t("apps.name")} value={proxyForm.name} onChange={(name) => setProxyForm({ ...proxyForm, name })} />
+        <Input label={t("apps.port")} value={proxyForm.listenPort} onChange={(listenPort) => setProxyForm({ ...proxyForm, listenPort })} />
+        <Input label={t("apps.password")} value={proxyForm.password} onChange={(password) => setProxyForm({ ...proxyForm, password })} />
+        <button onClick={() => void saveProxy()} type="button"><Save size={15} />{t("apps.save")}</button>
       </div>
 
       <div className="panel wide-panel">
-        <div className="panel-title"><ShieldCheck size={18} /><span>代理实例</span></div>
+        <div className="panel-title"><ShieldCheck size={18} /><span>{t("apps.proxyInstances")}</span></div>
         <div className="table-list">
           {proxies.map((proxy) => (
             <div className="table-row" key={proxy.id}>
@@ -708,32 +723,35 @@ export function MicroPanel({ clients }: { clients: Clients }) {
               </div>
               <StatusPill label={ProxyState[proxy.state]} tone={proxy.state === ProxyState.RUNNING ? "good" : "muted"} />
               <div className="row-actions">
-                <IconButton label="启动" icon={Play} onClick={() => void startProxy(proxy)} />
-                <IconButton label="停止" icon={Square} onClick={() => void stopProxy(proxy)} />
-                <IconButton label="日志" icon={TerminalSquare} onClick={() => void readProxyLog(proxy)} />
+                <IconButton label={t("apps.start")} icon={Play} onClick={() => void startProxy(proxy)} />
+                <IconButton label={t("apps.stop")} icon={Square} onClick={() => void stopProxy(proxy)} />
+                <IconButton label={t("apps.logs")} icon={TerminalSquare} onClick={() => void readProxyLog(proxy)} />
               </div>
             </div>
           ))}
-          {!proxies.length && <div className="empty-state">暂无代理实例</div>}
+          {!proxies.length && <div className="empty-state">{t("apps.noProxyInstances")}</div>}
         </div>
       </div>
 
       <div className="panel">
-        <div className="panel-title"><ShieldAlert size={18} /><span>VPN 能力探测</span></div>
+        <div className="panel-title"><ShieldAlert size={18} /><span>{t("apps.vpnCapabilityDetection")}</span></div>
         <div className="table-list compact-list">
           {vpnCapabilities.map((capability) => (
             <div className="key-row" key={capability.id}>
               <strong>{capability.name}</strong>
               <small>{capability.reason}</small>
-              <StatusPill label={capability.available ? "可用" : "不可用"} tone={capability.available ? "good" : "danger"} />
+              <StatusPill
+                label={capability.available ? t("components.available") : t("components.unavailable")}
+                tone={capability.available ? "good" : "danger"}
+              />
             </div>
           ))}
         </div>
       </div>
 
       <div className="panel log-panel">
-        <div className="panel-title"><TerminalSquare size={18} /><span>Micro 日志</span></div>
-        <pre>{log || "暂无日志"}</pre>
+        <div className="panel-title"><TerminalSquare size={18} /><span>{t("apps.microLog")}</span></div>
+        <pre>{log || t("apps.noLogs")}</pre>
       </div>
     </section>
   );
