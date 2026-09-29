@@ -18,6 +18,7 @@ use crate::{
         ListInstalledAppsResponse, ResourceBudget, UninstallAppRequest, UninstallAppResponse,
         UpdateAppRequest, UpdateAppResponse,
     },
+    trf,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -60,8 +61,9 @@ impl AppStoreService for AppStoreServiceImpl {
             InstallMethod::BinaryDownload => deploy_via_binary(template, request).await?,
             InstallMethod::NativePackage => deploy_via_apt(template, request).await?,
             other => {
-                return Err(Status::unimplemented(format!(
-                    "install method {other:?} 暂未实现执行路径"
+                return Err(Status::unimplemented(trf!(
+                    "install method {other:?} 暂未实现执行路径",
+                    "install method {other:?} has no execution path implemented yet"
                 )))
             }
         };
@@ -95,8 +97,9 @@ impl AppStoreService for AppStoreServiceImpl {
             InstallMethod::BinaryDownload => uninstall_via_binary(template, &app).await?,
             InstallMethod::NativePackage => uninstall_via_apt(template, &app).await?,
             other => {
-                return Err(Status::unimplemented(format!(
-                    "install method {other:?} 暂未实现卸载路径"
+                return Err(Status::unimplemented(trf!(
+                    "install method {other:?} 暂未实现卸载路径",
+                    "install method {other:?} has no uninstall path implemented yet"
                 )))
             }
         };
@@ -124,8 +127,9 @@ impl AppStoreService for AppStoreServiceImpl {
             }
             InstallMethod::NativePackage => update_via_apt(template, app).await?,
             other => {
-                return Err(Status::unimplemented(format!(
-                    "install method {other:?} 暂未实现更新路径"
+                return Err(Status::unimplemented(trf!(
+                    "install method {other:?} 暂未实现更新路径",
+                    "install method {other:?} has no update path implemented yet"
                 )))
             }
         };
@@ -231,8 +235,9 @@ async fn deploy_via_binary(
     request: DeployAppRequest,
 ) -> Result<DeployAppResponse, Status> {
     let plan = phase_g_install_plan(&template.slug).ok_or_else(|| {
-        Status::failed_precondition(format!(
+        Status::failed_precondition(trf!(
             "BinaryDownload 模板 {} 暂无安装计划(只在 Phase G 5 个包里实现)",
+            "BinaryDownload template {} has no install plan yet (only implemented for the 5 Phase G packages)",
             template.slug
         ))
     })?;
@@ -284,8 +289,9 @@ async fn uninstall_via_binary(
     app: &InstalledApp,
 ) -> Result<UninstallAppResponse, Status> {
     let plan = phase_g_install_plan(&template.slug).ok_or_else(|| {
-        Status::failed_precondition(format!(
+        Status::failed_precondition(trf!(
             "BinaryDownload 模板 {} 暂无安装计划",
+            "BinaryDownload template {} has no install plan",
             template.slug
         ))
     })?;
@@ -311,8 +317,9 @@ async fn update_via_binary(
     requested_version: &str,
 ) -> Result<UpdateAppResponse, Status> {
     let plan = phase_g_install_plan(&template.slug).ok_or_else(|| {
-        Status::failed_precondition(format!(
+        Status::failed_precondition(trf!(
             "BinaryDownload 模板 {} 暂无安装计划",
+            "BinaryDownload template {} has no install plan",
             template.slug
         ))
     })?;
@@ -518,12 +525,16 @@ async fn deploy_via_apt(
     let pkg = slug_to_apt_package(&template.slug).to_owned();
     let pre_install = slug_to_apt_pre_install(&template.slug);
     let pre_note = if pre_install.is_some() {
-        "\n前置: 已添加 nginx.org 官方 apt 源 + GPG key + pinning(预编译 deb,无本地编译)"
+        trf!(
+            "\n前置: 已添加 nginx.org 官方 apt 源 + GPG key + pinning(预编译 deb,无本地编译)",
+            "\nPre-step: added the official nginx.org apt repo + GPG key + pinning (pre-built deb, no local compilation)"
+        )
     } else {
-        ""
+        String::new()
     };
-    let summary = format!(
-        "apt 包: {pkg}\n安装命令: apt-get install -y {pkg}{pre_note}\n备注: 由 apt 控制启动 / 服务状态,RustPanel 不接管 systemd 单元。\n下一步: 若包提供服务(redis-server / postgresql / nginx),`systemctl status {pkg}` 查看运行状况。"
+    let summary = trf!(
+        "apt 包: {pkg}\n安装命令: apt-get install -y {pkg}{pre_note}\n备注: 由 apt 控制启动 / 服务状态,RustPanel 不接管 systemd 单元。\n下一步: 若包提供服务(redis-server / postgresql / nginx),`systemctl status {pkg}` 查看运行状况。",
+        "apt package: {pkg}\nInstall command: apt-get install -y {pkg}{pre_note}\nNote: apt controls startup / service status; RustPanel does not manage the systemd unit.\nNext: if the package provides a service (redis-server / postgresql / nginx), run `systemctl status {pkg}` to check its status."
     );
 
     let state = if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
@@ -586,8 +597,9 @@ async fn update_via_apt(
     mut app: InstalledApp,
 ) -> Result<UpdateAppResponse, Status> {
     let pkg = slug_to_apt_package(&template.slug).to_owned();
-    let summary = format!(
-        "apt 升级: apt-get install --only-upgrade -y {pkg}\n备注: 系统包升级由 apt 源决定可获取版本,RustPanel 不强制锁定版本号。"
+    let summary = trf!(
+        "apt 升级: apt-get install --only-upgrade -y {pkg}\n备注: 系统包升级由 apt 源决定可获取版本,RustPanel 不强制锁定版本号。",
+        "apt upgrade: apt-get install --only-upgrade -y {pkg}\nNote: the available version for system packages is decided by the apt repo; RustPanel doesn't pin a specific version."
     );
     if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
         execute_apt_upgrade(&pkg).await?;
@@ -609,9 +621,10 @@ async fn ensure_apt_available() -> Result<(), Status> {
         .await
         .map_err(io_status)?;
     if !output.status.success() {
-        return Err(Status::failed_precondition(
+        return Err(Status::failed_precondition(trf!(
             "当前主机没有 apt-get,NativePackage 路径仅支持 Debian / Ubuntu 系",
-        ));
+            "this host has no apt-get; the NativePackage path only supports Debian / Ubuntu-based systems"
+        )));
     }
     Ok(())
 }
@@ -631,21 +644,34 @@ async fn run_apt(args: &[&str]) -> Result<(), Status> {
         // 主推走"单文件静态二进制"路线绕开 apt 整条链。
         // sanitize_status_text 防止 stderr 里的 `%` 让 gRPC-Web 解码炸 URI malformed。
         let hint = if stderr.contains("Failed to fork") || stderr.contains("fork: ") {
-            concat!(
-                "\n看起来是宿主机 numproc(fork 上限)/ 内存太紧,apt 跑不动 dpkg 子进程。",
-                "\n这台 VPS 上 nginx 通过 apt 装基本无解 —— OpenVZ 加不了 swap,host 不调 numproc 也没辙。",
-                "\n建议**改装单文件静态二进制**的反代,完全绕开 apt:",
-                "\n  · Caddy(Go,自带 HTTP/3 + 自动 ACME,~30MB RAM)— 软件商店搜 caddy",
-                "\n  · rpxy(Rust,HTTP/3,~15MB RAM)— 软件商店搜 rpxy",
-                "\n  · static-web-server / SWS(Rust,纯静态服务 ~5MB)— 软件商店搜 sws",
-                "\nRustPanel 已经在创建站点时同步写了 rpxy 站点片段,装上 rpxy 就直接接管。",
-                "\n如果坚持要 nginx,可以暂停其它常驻进程腾出 fork 槽位再手动 `apt-get install -y nginx`。"
-            )
+            match crate::i18n::current() {
+                crate::i18n::Locale::ZhCn => concat!(
+                    "\n看起来是宿主机 numproc(fork 上限)/ 内存太紧,apt 跑不动 dpkg 子进程。",
+                    "\n这台 VPS 上 nginx 通过 apt 装基本无解 —— OpenVZ 加不了 swap,host 不调 numproc 也没辙。",
+                    "\n建议**改装单文件静态二进制**的反代,完全绕开 apt:",
+                    "\n  · Caddy(Go,自带 HTTP/3 + 自动 ACME,~30MB RAM)— 软件商店搜 caddy",
+                    "\n  · rpxy(Rust,HTTP/3,~15MB RAM)— 软件商店搜 rpxy",
+                    "\n  · static-web-server / SWS(Rust,纯静态服务 ~5MB)— 软件商店搜 sws",
+                    "\nRustPanel 已经在创建站点时同步写了 rpxy 站点片段,装上 rpxy 就直接接管。",
+                    "\n如果坚持要 nginx,可以暂停其它常驻进程腾出 fork 槽位再手动 `apt-get install -y nginx`。"
+                ),
+                crate::i18n::Locale::En => concat!(
+                    "\nThis looks like the host's numproc (fork limit) / memory is too tight for apt to run dpkg's child processes.",
+                    "\nInstalling nginx via apt on this VPS is basically a dead end — OpenVZ guests can't add swap, and the host won't raise numproc for you.",
+                    "\nWe recommend switching to a **single-binary static** reverse proxy that bypasses apt entirely:",
+                    "\n  · Caddy (Go, built-in HTTP/3 + auto ACME, ~30MB RAM) — search \"caddy\" in the Software Store",
+                    "\n  · rpxy (Rust, HTTP/3, ~15MB RAM) — search \"rpxy\" in the Software Store",
+                    "\n  · static-web-server / SWS (Rust, static-only, ~5MB) — search \"sws\" in the Software Store",
+                    "\nRustPanel already writes an rpxy site fragment when creating a site, so installing rpxy takes over immediately.",
+                    "\nIf you still want nginx, try stopping other resident processes to free up fork slots, then run `apt-get install -y nginx` manually."
+                ),
+            }
         } else {
             ""
         };
-        return Err(Status::unavailable(sanitize_status_text(format!(
+        return Err(Status::unavailable(sanitize_status_text(trf!(
             "apt-get {} 失败: {}{}",
+            "apt-get {} failed: {}{}",
             args.join(" "),
             stderr.trim(),
             hint
@@ -1826,24 +1852,23 @@ fn expand_asset_pattern(pattern: &str, version: &str) -> String {
 /// 给前端 / 用户的"装这个包会做什么"摘要 —— 用纯文本而不是 JSON,
 /// 复用 DeployAppResponse.compose_yaml 字段返回,前端直接显示。
 fn render_install_plan_summary(plan: &BinaryInstallPlan, version: &str, asset: &str) -> String {
-    format!(
-        "上游: {repo}\n版本: {version}\nasset: {asset}\n二进制安装到: {install_to}\nsystemd unit: {unit}\n配置: {config}\n下一步: {hint}",
-        repo = plan.upstream_repo,
-        version = version,
-        asset = asset,
-        install_to = plan.install_to,
-        unit = systemd_unit_dir()
-            .join(format!(
-                "{slug}.service",
-                slug = plan
-                    .install_to
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or("app")
-            ))
-            .to_string_lossy(),
-        config = plan.config_path,
-        hint = plan.post_install_hint,
+    let unit = systemd_unit_dir()
+        .join(format!(
+            "{slug}.service",
+            slug = plan.install_to.rsplit('/').next().unwrap_or("app")
+        ))
+        .to_string_lossy()
+        .into_owned();
+    trf!(
+        "上游: {}\n版本: {}\nasset: {}\n二进制安装到: {}\nsystemd unit: {}\n配置: {}\n下一步: {}",
+        "Upstream: {}\nVersion: {}\nAsset: {}\nBinary installed to: {}\nsystemd unit: {}\nConfig: {}\nNext: {}",
+        plan.upstream_repo,
+        version,
+        asset,
+        plan.install_to,
+        unit,
+        plan.config_path,
+        plan.post_install_hint,
     )
 }
 
@@ -1920,12 +1945,12 @@ async fn resolve_release_asset(
     let tag = parsed
         .get("tag_name")
         .and_then(|tag| tag.as_str())
-        .ok_or_else(|| Status::internal("GitHub Releases API 响应缺 tag_name"))?;
+        .ok_or_else(|| Status::internal("GitHub Releases API response missing tag_name"))?;
     let version = tag.trim_start_matches('v').to_owned();
     let assets = parsed
         .get("assets")
         .and_then(|a| a.as_array())
-        .ok_or_else(|| Status::internal("GitHub Releases API 响应缺 assets"))?;
+        .ok_or_else(|| Status::internal("GitHub Releases API response missing assets"))?;
 
     let needle = plan.asset_pattern;
     let candidate = assets.iter().find(|asset| {
@@ -1940,8 +1965,9 @@ async fn resolve_release_asset(
             .iter()
             .filter_map(|a| a.get("name").and_then(|n| n.as_str()))
             .collect();
-        Status::not_found(sanitize_status_text(format!(
+        Status::not_found(sanitize_status_text(trf!(
             "{} release {} 里没有名字包含 \"{}\" 的 asset。实际 assets: [{}]",
+            "{} release {} has no asset whose name contains \"{}\". actual assets: [{}]",
             plan.upstream_repo,
             tag,
             needle,
@@ -1951,12 +1977,12 @@ async fn resolve_release_asset(
     let asset_name = asset
         .get("name")
         .and_then(|n| n.as_str())
-        .ok_or_else(|| Status::internal("asset 缺 name"))?
+        .ok_or_else(|| Status::internal("asset missing name"))?
         .to_owned();
     let asset_url = asset
         .get("browser_download_url")
         .and_then(|u| u.as_str())
-        .ok_or_else(|| Status::internal("asset 缺 browser_download_url"))?
+        .ok_or_else(|| Status::internal("asset missing browser_download_url"))?
         .to_owned();
     Ok(ResolvedAsset {
         version,
@@ -2094,7 +2120,7 @@ async fn extract_archive(archive: &Path, work_dir: &Path) -> Result<PathBuf, Sta
             Ok(())
         })
         .await
-        .map_err(|join| Status::internal(format!("解压 task panicked: {join}")))?
+        .map_err(|join| Status::internal(format!("extraction task panicked: {join}")))?
         .map_err(io_status)?;
         Ok(dest)
     } else if name.ends_with(".gz") {
@@ -2111,7 +2137,7 @@ async fn extract_archive(archive: &Path, work_dir: &Path) -> Result<PathBuf, Sta
             Ok(())
         })
         .await
-        .map_err(|join| Status::internal(format!("解压 task panicked: {join}")))?
+        .map_err(|join| Status::internal(format!("extraction task panicked: {join}")))?
         .map_err(io_status)?;
         Ok(out_path)
     } else {
@@ -3031,6 +3057,25 @@ mod tests {
         assert!(summary.contains("rpxy-0.10.0-x86_64-linux.tar.gz"));
         assert!(summary.contains("/usr/local/bin/rpxy"));
         assert!(summary.contains("/etc/rpxy/config.toml"));
+    }
+
+    #[tokio::test]
+    async fn install_plan_summary_labels_switch_to_english_under_the_en_locale() {
+        crate::i18n::scope(crate::i18n::Locale::En, async {
+            let plan = phase_g_install_plan("rpxy").expect("rpxy plan");
+            let summary =
+                render_install_plan_summary(&plan, "0.10.0", "rpxy-0.10.0-x86_64-linux.tar.gz");
+            assert!(
+                summary.contains("Upstream: junkurihara/rust-rpxy"),
+                "{summary}"
+            );
+            assert!(summary.contains("Version: 0.10.0"), "{summary}");
+            assert!(
+                summary.contains("Binary installed to: /usr/local/bin/rpxy"),
+                "{summary}"
+            );
+        })
+        .await;
     }
 
     #[test]

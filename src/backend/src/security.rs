@@ -33,6 +33,7 @@ use crate::{
         UpsertFirewallRuleResponse, UpsertWafRuleRequest, UpsertWafRuleResponse, WafAttackEvent,
         WafRule, WafRuleKind, WafSettings,
     },
+    trf,
 };
 
 const APPLY_ENV: &str = "RUSTPANEL_SECURITY_APPLY";
@@ -131,7 +132,10 @@ impl SecurityService for SecurityServiceImpl {
             .await
             .map_err(two_factor_status_error)?;
         Ok(GrpcResponse::new(BeginTwoFactorSetupResponse {
-            status: Some(ok_response("请用验证器扫码,然后输入 6 位验证码确认")),
+            status: Some(ok_response(trf!(
+                "请用验证器扫码,然后输入 6 位验证码确认",
+                "scan the QR code with your authenticator, then enter the 6-digit code to confirm"
+            ))),
             secret: challenge.secret,
             otpauth_uri: challenge.otpauth_uri,
             qr_svg: challenge.qr_svg,
@@ -153,7 +157,10 @@ impl SecurityService for SecurityServiceImpl {
         )
         .await;
         Ok(GrpcResponse::new(ConfirmTwoFactorSetupResponse {
-            status: Some(ok_response("两步验证已启用,下次登录需要输入验证码")),
+            status: Some(ok_response(trf!(
+                "两步验证已启用,下次登录需要输入验证码",
+                "two-factor authentication enabled; a verification code is required on next login"
+            ))),
             two_factor: Some(two_factor_status().await),
         }))
     }
@@ -182,7 +189,10 @@ impl SecurityService for SecurityServiceImpl {
         )
         .await;
         Ok(GrpcResponse::new(DisableTwoFactorResponse {
-            status: Some(ok_response("两步验证已关闭")),
+            status: Some(ok_response(trf!(
+                "两步验证已关闭",
+                "two-factor authentication disabled"
+            ))),
             two_factor: Some(two_factor_status().await),
         }))
     }
@@ -308,9 +318,10 @@ impl SecurityService for SecurityServiceImpl {
         validate_options(&options)?;
         // 没有生效的 TOTP 密钥时打开「强制两步验证」没有意义(此前还会把所有人锁在外面)
         if options.two_factor_required && crate::two_factor::source().await.is_none() {
-            return Err(Status::failed_precondition(
+            return Err(Status::failed_precondition(trf!(
                 "请先在「两步验证」里绑定验证器,再开启强制两步验证",
-            ));
+                "bind an authenticator under \"Two-Factor Authentication\" first before requiring it"
+            )));
         }
 
         let _guard = self.store.write_guard().await;
@@ -1276,8 +1287,9 @@ async fn arm_rollback_watchdog(
             return;
         }
     };
-    let title = format!(
+    let title = trf!(
         "面板入口安全选项变更:listen={} → {} / path={} → {} / 2FA={} → {}",
+        "panel entry security options changed: listen={} → {} / path={} → {} / 2FA={} → {}",
         old_options.panel_listen_addr,
         new_options.panel_listen_addr,
         old_options.panel_access_path,
@@ -1287,7 +1299,10 @@ async fn arm_rollback_watchdog(
     );
     let request = crate::proto::rustpanel::v1::ScheduleRollbackRequest {
         title,
-        description: "30 秒内未点'保留(我能登录)'将自动回滚到旧设置,避免被锁外面。".to_owned(),
+        description: trf!(
+            "30 秒内未点'保留(我能登录)'将自动回滚到旧设置,避免被锁外面。",
+            "auto-rolls back to the previous settings if you don't click \"Keep (I can still log in)\" within 30 seconds, to avoid locking you out."
+        ),
         revert_command: String::new(),
         snapshot_json: snapshot.clone(),
         rollback_after_seconds: 30,
@@ -1450,10 +1465,12 @@ async fn apply_ssh_config(settings: &mut StoredSshSettings) -> Result<(), Status
         && should_apply_system_firewall()
         && !system_has_authorized_key().await
     {
-        return Err(Status::failed_precondition(
+        return Err(Status::failed_precondition(trf!(
             "禁用密码登录前,请先为某个账户安装 SSH 公钥(authorized_keys);\
              否则关闭密码登录后将无法再登录。已阻止本次变更以防被锁在门外。",
-        ));
+            "install an SSH public key (authorized_keys) for some account before disabling password login; \
+             otherwise you won't be able to log in once it's off. This change has been blocked to avoid locking you out."
+        )));
     }
     let config_path = PathBuf::from(&settings.config_path);
     if let Some(parent) = config_path.parent() {
@@ -2528,6 +2545,30 @@ mod tests {
             list.options.expect("options").last_apply_message,
             "saved; system firewall apply disabled"
         );
+    }
+
+    #[tokio::test]
+    async fn two_factor_lockout_guard_message_switches_to_english_under_the_en_locale() {
+        crate::i18n::scope(crate::i18n::Locale::En, async {
+            let root = std::env::temp_dir().join(format!("rustpanel-security-{}", Uuid::new_v4()));
+            let service = SecurityServiceImpl::with_store(SecurityStore::new(root));
+            let message = service
+                .update_security_options(Request::new(UpdateSecurityOptionsRequest {
+                    options: Some(SecurityOptions {
+                        two_factor_required: true,
+                        ..Default::default()
+                    }),
+                }))
+                .await
+                .expect_err("no authenticator bound yet")
+                .message()
+                .to_owned();
+            assert_eq!(
+                message,
+                "bind an authenticator under \"Two-Factor Authentication\" first before requiring it"
+            );
+        })
+        .await;
     }
 
     #[test]

@@ -15,6 +15,7 @@ use std::{
 use tonic::Status;
 
 use crate::proto::rustpanel::v1::{SiteItem, SiteServiceAction, SiteServiceStatus};
+use crate::trf;
 
 pub(super) const MAX_LINKED: usize = 16;
 const DEFAULT_LOG_LINES: u32 = 200;
@@ -30,8 +31,10 @@ pub(super) fn validate_unit(unit: &str) -> Result<(), Status> {
     let valid_suffix = unit.ends_with(".service") || unit.ends_with(".timer");
     if unit.is_empty() || unit.len() > 128 || !valid_chars || !valid_suffix || unit.starts_with('-')
     {
-        return Err(Status::invalid_argument(format!(
-            "无效的单元名 `{unit}`:只支持 *.service / *.timer"
+        return Err(Status::invalid_argument(trf!(
+            "无效的单元名 `{}`:只支持 *.service / *.timer",
+            "invalid unit name `{}`: only *.service / *.timer are supported",
+            unit
         )));
     }
     Ok(())
@@ -46,8 +49,10 @@ pub(super) fn validate_log_path(path: &str) -> Result<(), Status> {
             .any(|component| matches!(component, Component::ParentDir))
         || path.len() > 512
     {
-        return Err(Status::invalid_argument(format!(
-            "无效的日志路径 `{path}`:需要不含 .. 的绝对路径"
+        return Err(Status::invalid_argument(trf!(
+            "无效的日志路径 `{}`:需要不含 .. 的绝对路径",
+            "invalid log path `{}`: must be an absolute path without ..",
+            path
         )));
     }
     Ok(())
@@ -77,8 +82,9 @@ pub(super) fn normalize_links(
         clean_paths.push(path);
     }
     if clean_units.len() > MAX_LINKED || clean_paths.len() > MAX_LINKED {
-        return Err(Status::invalid_argument(format!(
-            "每个站点最多关联 {MAX_LINKED} 个单元和 {MAX_LINKED} 个日志文件"
+        return Err(Status::invalid_argument(trf!(
+            "每个站点最多关联 {MAX_LINKED} 个单元和 {MAX_LINKED} 个日志文件",
+            "each site can link at most {MAX_LINKED} units and {MAX_LINKED} log files"
         )));
     }
     Ok((clean_units, clean_paths))
@@ -88,8 +94,10 @@ pub(super) fn ensure_linked_unit(site: &SiteItem, unit: &str) -> Result<(), Stat
     if site.service_units.iter().any(|linked| linked == unit) {
         Ok(())
     } else {
-        Err(Status::permission_denied(format!(
-            "单元 `{unit}` 未关联到站点 {}",
+        Err(Status::permission_denied(trf!(
+            "单元 `{}` 未关联到站点 {}",
+            "unit `{}` is not linked to site {}",
+            unit,
             site.name
         )))
     }
@@ -114,7 +122,10 @@ pub(super) async fn unit_status(unit: &str) -> SiteServiceStatus {
             return status;
         }
         Err(error) => {
-            status.error = format!("systemctl 不可用: {error}");
+            status.error = trf!(
+                "systemctl 不可用: {error}",
+                "systemctl unavailable: {error}"
+            );
             return status;
         }
     };
@@ -142,7 +153,7 @@ fn apply_show_output(status: &mut SiteServiceStatus, text: &str) {
             "NextElapseUSecRealtime" => status.next_trigger = value,
             "LastTriggerUSec" => status.last_trigger = value,
             "LoadState" if value == "not-found" => {
-                status.error = "单元不存在".to_owned();
+                status.error = trf!("单元不存在", "unit not found");
             }
             _ => {}
         }
@@ -176,12 +187,18 @@ pub(super) async fn control_unit(unit: &str, action: SiteServiceAction) -> Resul
         .args([verb, "--no-block", unit])
         .output()
         .await
-        .map_err(|error| Status::unavailable(format!("systemctl 不可用: {error}")))?;
+        .map_err(|error| {
+            Status::unavailable(trf!(
+                "systemctl 不可用: {error}",
+                "systemctl unavailable: {error}"
+            ))
+        })?;
     if output.status.success() {
         Ok(())
     } else {
-        Err(Status::failed_precondition(format!(
+        Err(Status::failed_precondition(trf!(
             "systemctl {verb} {unit} 失败: {}",
+            "systemctl {verb} {unit} failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
         )))
     }
@@ -202,7 +219,12 @@ pub(super) async fn journal_tail(unit: &str, lines: u32) -> Result<(String, bool
         .arg(lines.to_string())
         .output()
         .await
-        .map_err(|error| Status::unavailable(format!("journalctl 不可用: {error}")))?;
+        .map_err(|error| {
+            Status::unavailable(trf!(
+                "journalctl 不可用: {error}",
+                "journalctl unavailable: {error}"
+            ))
+        })?;
     let text = String::from_utf8_lossy(&output.stdout);
     Ok(cap_tail(&text))
 }
@@ -310,6 +332,35 @@ mod tests {
                 .code(),
             tonic::Code::PermissionDenied
         );
+    }
+
+    #[tokio::test]
+    async fn error_messages_switch_to_english_under_the_en_locale() {
+        crate::i18n::scope(crate::i18n::Locale::En, async {
+            let message = validate_unit("bad name.service")
+                .expect_err("invalid unit")
+                .message()
+                .to_owned();
+            assert!(message.contains("invalid unit name"), "{message}");
+
+            let message = validate_log_path("relative/log.txt")
+                .expect_err("invalid path")
+                .message()
+                .to_owned();
+            assert!(message.contains("invalid log path"), "{message}");
+
+            let site = SiteItem {
+                name: "jobs".to_owned(),
+                service_units: vec!["jobwatch-serve.service".to_owned()],
+                ..Default::default()
+            };
+            let message = ensure_linked_unit(&site, "sshd.service")
+                .expect_err("unlinked")
+                .message()
+                .to_owned();
+            assert!(message.contains("is not linked to site"), "{message}");
+        })
+        .await;
     }
 
     #[test]

@@ -12,6 +12,7 @@ use crate::{
         ListDnsRecordsResponse, SetDnsConfigRequest, SetDnsConfigResponse, UpsertDnsRecordRequest,
         UpsertDnsRecordResponse,
     },
+    trf,
 };
 
 const SECRET_REDACTED: &str = "__rustpanel_secret_kept__";
@@ -38,9 +39,10 @@ impl DnsServiceImpl {
     async fn require_config(&self) -> Result<StoredConfig, Status> {
         let config = self.store.load().await?;
         if config.api_token.trim().is_empty() || config.zone_id.trim().is_empty() {
-            return Err(Status::failed_precondition(
+            return Err(Status::failed_precondition(trf!(
                 "DNS 服务商未配置(请先填写 API token 与 zone id)",
-            ));
+                "DNS provider not configured (please fill in the API token and zone id first)"
+            )));
         }
         Ok(config)
     }
@@ -73,10 +75,16 @@ impl DnsService for DnsServiceImpl {
     ) -> Result<GrpcResponse<SetDnsConfigResponse>, Status> {
         let request = request.into_inner();
         if DnsProvider::try_from(request.provider).ok() != Some(DnsProvider::Cloudflare) {
-            return Err(Status::invalid_argument("当前仅支持 Cloudflare"));
+            return Err(Status::invalid_argument(trf!(
+                "当前仅支持 Cloudflare",
+                "only Cloudflare is currently supported"
+            )));
         }
         if request.zone_id.trim().is_empty() {
-            return Err(Status::invalid_argument("zone id 不能为空"));
+            return Err(Status::invalid_argument(trf!(
+                "zone id 不能为空",
+                "zone id is required"
+            )));
         }
 
         let _guard = self.store.write_lock.lock().await;
@@ -89,11 +97,17 @@ impl DnsService for DnsServiceImpl {
             config.api_token = token.to_owned();
         }
         if config.api_token.trim().is_empty() {
-            return Err(Status::invalid_argument("首次配置需提供 API token"));
+            return Err(Status::invalid_argument(trf!(
+                "首次配置需提供 API token",
+                "an API token is required for first-time setup"
+            )));
         }
         self.store.save(&config).await?;
         Ok(GrpcResponse::new(SetDnsConfigResponse {
-            status: Some(ok_response("DNS 配置已保存")),
+            status: Some(ok_response(trf!(
+                "DNS 配置已保存",
+                "DNS configuration saved"
+            ))),
         }))
     }
 
@@ -150,7 +164,7 @@ impl DnsService for DnsServiceImpl {
 
         let saved = parse_single(&json).map_err(Status::internal)?;
         Ok(GrpcResponse::new(UpsertDnsRecordResponse {
-            status: Some(ok_response("解析记录已保存")),
+            status: Some(ok_response(trf!("解析记录已保存", "DNS record saved"))),
             record: Some(saved),
         }))
     }
@@ -169,7 +183,7 @@ impl DnsService for DnsServiceImpl {
             .await
             .map_err(Status::internal)?;
         Ok(GrpcResponse::new(DeleteDnsRecordResponse {
-            status: Some(ok_response("解析记录已删除")),
+            status: Some(ok_response(trf!("解析记录已删除", "DNS record deleted"))),
         }))
     }
 }
@@ -190,7 +204,10 @@ pub(crate) async fn cloudflare_create_txt(name: &str, value: &str) -> Result<Str
         .await
         .map_err(|error| error.message().to_owned())?;
     if config.api_token.trim().is_empty() || config.zone_id.trim().is_empty() {
-        return Err("未配置 Cloudflare API Token / Zone ID".to_owned());
+        return Err(trf!(
+            "未配置 Cloudflare API Token / Zone ID",
+            "Cloudflare API Token / Zone ID not configured"
+        ));
     }
     let body = serde_json::json!({
         "type": "TXT",
@@ -208,7 +225,10 @@ pub(crate) async fn cloudflare_create_txt(name: &str, value: &str) -> Result<Str
     .await?;
     let record = parse_single(&json)?;
     if record.id.is_empty() {
-        return Err("cloudflare 未返回记录 id".to_owned());
+        return Err(trf!(
+            "cloudflare 未返回记录 id",
+            "Cloudflare did not return a record id"
+        ));
     }
     Ok(record.id)
 }
@@ -267,13 +287,22 @@ fn doh_answer_contains(json: &Value, value: &str) -> bool {
 
 fn validate_record(record: &DnsRecord) -> Result<(), Status> {
     if record.r#type.trim().is_empty() {
-        return Err(Status::invalid_argument("记录类型不能为空"));
+        return Err(Status::invalid_argument(trf!(
+            "记录类型不能为空",
+            "record type is required"
+        )));
     }
     if record.name.trim().is_empty() {
-        return Err(Status::invalid_argument("记录名不能为空"));
+        return Err(Status::invalid_argument(trf!(
+            "记录名不能为空",
+            "record name is required"
+        )));
     }
     if record.content.trim().is_empty() {
-        return Err(Status::invalid_argument("记录值不能为空"));
+        return Err(Status::invalid_argument(trf!(
+            "记录值不能为空",
+            "record content is required"
+        )));
     }
     Ok(())
 }
@@ -509,6 +538,26 @@ mod tests {
             cf_records_url("https://x/", "z"),
             "https://x/zones/z/dns_records"
         );
+    }
+
+    #[tokio::test]
+    async fn validation_errors_switch_to_english_under_the_en_locale() {
+        crate::i18n::scope(crate::i18n::Locale::En, async {
+            let record = DnsRecord {
+                id: String::new(),
+                r#type: String::new(),
+                name: "www".to_owned(),
+                content: "1.2.3.4".to_owned(),
+                ttl: 1,
+                proxied: false,
+            };
+            let message = validate_record(&record)
+                .expect_err("empty type")
+                .message()
+                .to_owned();
+            assert_eq!(message, "record type is required");
+        })
+        .await;
     }
 
     #[test]

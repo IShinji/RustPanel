@@ -29,6 +29,7 @@ use crate::{
         UpdateSiteServicesRequest, UpdateSiteServicesResponse, UpsertReverseProxyRuleRequest,
         UpsertReverseProxyRuleResponse, UpstreamTarget,
     },
+    trf,
 };
 
 const DEFAULT_NGINX_SITES_DIR: &str = "/etc/nginx/sites-enabled";
@@ -90,8 +91,10 @@ impl SiteServiceImpl {
             .load_nginx_site_metadata(&safe)
             .await
             .ok_or_else(|| {
-                Status::not_found(format!(
-                    "站点 `{name}` 不存在,或是内置静态站(不支持关联服务)"
+                Status::not_found(trf!(
+                    "站点 `{}` 不存在,或是内置静态站(不支持关联服务)",
+                    "site `{}` does not exist, or is a built-in static site (linked services unsupported)",
+                    name
                 ))
             })
     }
@@ -149,8 +152,10 @@ impl SiteService for SiteServiceImpl {
                         target = "site.bootstrap",
                         "nginx 不存在,已自动装 nginx-mainline"
                     );
-                    bootstrap_notes
-                        .push("已自动安装 nginx-mainline(nginx.org 官方源,带 HTTP/3)".to_owned());
+                    bootstrap_notes.push(trf!(
+                        "已自动安装 nginx-mainline(nginx.org 官方源,带 HTTP/3)",
+                        "nginx-mainline auto-installed (official nginx.org repo, with HTTP/3)"
+                    ));
                 }
                 Ok(false) => {}
                 Err(error) => {
@@ -159,8 +164,9 @@ impl SiteService for SiteServiceImpl {
                         error = %error,
                         "auto-install nginx-mainline failed (non-fatal; user can install manually)"
                     );
-                    bootstrap_notes.push(format!(
+                    bootstrap_notes.push(trf!(
                         "⚠️ nginx 自动安装失败:{}(站点配置已写到 nginx 配置目录,等你手动装好 nginx 后 reload 即生效;128MB OpenVZ 上推荐换 rpxy 引擎)",
+                        "⚠️ nginx auto-install failed: {} (the site config has been written to the nginx config directory; it takes effect after you manually install nginx and reload; on 128MB OpenVZ, switching to the rpxy engine is recommended)",
                         error.message()
                     ));
                 }
@@ -170,7 +176,10 @@ impl SiteService for SiteServiceImpl {
                 target = "site.bootstrap",
                 "engine=rpxy,跳过 nginx 自动安装;rpxy 由用户在软件商店装"
             );
-            bootstrap_notes.push("引擎: rpxy(已跳过 nginx 自动安装)".to_owned());
+            bootstrap_notes.push(trf!(
+                "引擎: rpxy(已跳过 nginx 自动安装)",
+                "Engine: rpxy (skipped nginx auto-install)"
+            ));
         }
 
         // Phase C:如果传了 kind/binding,渲染 v6/NAT 端口感知的 vhost,
@@ -330,9 +339,13 @@ impl SiteService for SiteServiceImpl {
         // 安装结果之类),把它合进 status.message —— 前端 message banner
         // 就能直接展示,无需走 logs。
         let status_message = if bootstrap_notes.is_empty() {
-            "站点已创建".to_owned()
+            trf!("站点已创建", "site created")
         } else {
-            format!("站点已创建 · {}", bootstrap_notes.join(" · "))
+            trf!(
+                "站点已创建 · {}",
+                "site created · {}",
+                bootstrap_notes.join(" · ")
+            )
         };
 
         Ok(GrpcResponse::new(CreateSiteResponse {
@@ -698,7 +711,7 @@ impl SiteService for SiteServiceImpl {
             self.store.save_nginx_site_metadata(&site).await?;
         }
         Ok(GrpcResponse::new(UpdateSiteResponse {
-            status: Some(ok_response("站点已更新")),
+            status: Some(ok_response(trf!("站点已更新", "site updated"))),
             site: Some(site),
             rendered_config: created.rendered_config,
         }))
@@ -719,7 +732,10 @@ impl SiteService for SiteServiceImpl {
         site.log_paths = log_paths;
         self.store.save_nginx_site_metadata(&site).await?;
         Ok(GrpcResponse::new(UpdateSiteServicesResponse {
-            status: Some(ok_response("站点关联的服务已更新")),
+            status: Some(ok_response(trf!(
+                "站点关联的服务已更新",
+                "the site's linked services have been updated"
+            ))),
             site: Some(site),
         }))
     }
@@ -751,7 +767,7 @@ impl SiteService for SiteServiceImpl {
         let action = SiteServiceAction::try_from(request.action).unwrap_or_default();
         service::control_unit(&request.unit, action).await?;
         Ok(GrpcResponse::new(ControlSiteServiceResponse {
-            status: Some(ok_response("操作已提交")),
+            status: Some(ok_response(trf!("操作已提交", "action submitted"))),
             service: Some(service::unit_status(&request.unit).await),
         }))
     }
@@ -1644,9 +1660,10 @@ fn render_phase_c_site(
         ),
         SiteKind::ReverseProxy => {
             let upstream = if request.proxy_target.trim().is_empty() {
-                return Err(Status::invalid_argument(
+                return Err(Status::invalid_argument(trf!(
                     "ReverseProxy 类型必须填写 proxy_target",
-                ));
+                    "the ReverseProxy kind requires proxy_target"
+                )));
             } else {
                 request.proxy_target.clone()
             };
@@ -1999,6 +2016,29 @@ mod tests {
         assert!(validate_proxy_target("http://x\";return 444;\"").is_err());
         assert!(validate_proxy_target("ftp://x").is_err());
         assert!(validate_proxy_target("http://x y").is_err());
+    }
+
+    #[tokio::test]
+    async fn reverse_proxy_missing_target_error_switches_to_english_under_the_en_locale() {
+        crate::i18n::scope(crate::i18n::Locale::En, async {
+            let request = CreateSiteRequest {
+                name: "demo".to_owned(),
+                domains: vec!["demo.example.com".to_owned()],
+                proxy_target: String::new(),
+                ..Default::default()
+            };
+            let message = render_phase_c_site(
+                &request,
+                SiteKind::ReverseProxy,
+                None,
+                SiteTlsStrategy::None,
+            )
+            .expect_err("missing proxy_target")
+            .message()
+            .to_owned();
+            assert_eq!(message, "the ReverseProxy kind requires proxy_target");
+        })
+        .await;
     }
 
     #[test]

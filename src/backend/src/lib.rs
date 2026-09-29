@@ -47,6 +47,7 @@ pub mod dns;
 pub mod docker;
 pub mod files;
 pub mod frugal;
+pub mod i18n;
 pub mod monitor;
 pub mod notification;
 pub mod paths;
@@ -520,8 +521,12 @@ fn multiplex_service_with_auth(
         // 节俭模式:请求在途(含流式响应体)期间不空闲退出;响应体被丢弃时释放。
         let busy = frugal::BusyGuard::new();
 
+        // 唯一的语言注入点:所有 gRPC / HTTP 请求都过这一个 service_fn,
+        // 读一次请求头就能覆盖后面全部 handler,不用逐个改函数签名。
+        let locale = i18n::from_headers(request.headers());
+
         async move {
-            let routed: Result<HttpResponse<Body>, Infallible> = async move {
+            let routed: Result<HttpResponse<Body>, Infallible> = i18n::scope(locale, async move {
                 if is_grpc_request(&request) {
                     // RBAC:能解出受限角色且该方法不被允许 → 403;解不出(无/坏 token)则放过,
                     // 交给各服务自身的 AuthInterceptor 去拒绝(避免双重拒绝逻辑)。
@@ -558,7 +563,7 @@ fn multiplex_service_with_auth(
 
                     Ok(response)
                 }
-            }
+            })
             .await;
             routed.map(|response| {
                 response.map(move |body| {

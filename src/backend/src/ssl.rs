@@ -22,6 +22,7 @@ use crate::{
         RevokeCertificateResponse, UpdateAcmeSettingsRequest, UpdateAcmeSettingsResponse,
         WatchCertificateProgressRequest, WatchCertificateProgressResponse,
     },
+    trf,
 };
 
 const DEFAULT_CERT_ROOT: &str = "/etc/letsencrypt/live";
@@ -51,9 +52,10 @@ impl SslService for SslServiceImpl {
                 .await
                 .map_err(|e| Status::internal(format!("read acme settings: {e}")))?;
             if settings.contact_email.trim().is_empty() {
-                return Err(Status::failed_precondition(
+                return Err(Status::failed_precondition(trf!(
                     "未设置 ACME 联系邮箱;请在面板里填一次真实邮箱(Settings → ACME)",
-                ));
+                    "no ACME contact email set; please enter a real email in the panel (Settings → ACME)"
+                )));
             }
             request.email = settings.contact_email;
         }
@@ -63,9 +65,10 @@ impl SslService for SslServiceImpl {
         if crate::acme::is_forbidden_email_domain(&request.email) {
             // LE 服务端必拒,提前拦下,避免一次冤枉的网络往返 + 把
             // 真实错误吞在 instant-acme 的不太友好的 wrap 里。
-            return Err(Status::invalid_argument(
+            return Err(Status::invalid_argument(trf!(
                 "联系邮箱不能是 example.com / example.org / example.net 域(Let's Encrypt 已禁用)",
-            ));
+                "contact email cannot use the example.com / example.org / example.net domains (Let's Encrypt blocks them)"
+            )));
         }
         let sender = self.progress_sender(&request.domain)?;
 
@@ -103,7 +106,10 @@ impl SslService for SslServiceImpl {
                     &sender,
                     &request.domain,
                     CertificateState::Pending,
-                    "dns-01: 通过 Cloudflare API 自动写入 TXT 并等待生效",
+                    &trf!(
+                        "dns-01: 通过 Cloudflare API 自动写入 TXT 并等待生效",
+                        "dns-01: writing the TXT record via the Cloudflare API and waiting for it to propagate"
+                    ),
                 );
                 let cert = crate::acme::issue_dns01_cloudflare(&request.domain, &request.email)
                     .await
@@ -129,7 +135,10 @@ impl SslService for SslServiceImpl {
                     &sender,
                     &request.domain,
                     CertificateState::Pending,
-                    "dns-01: 调用 ACME 服务器创建 order",
+                    &trf!(
+                        "dns-01: 调用 ACME 服务器创建 order",
+                        "dns-01: calling the ACME server to create an order"
+                    ),
                 );
                 let outcome = crate::acme::request_or_resume_dns01(&request.domain, &request.email)
                     .await
@@ -140,12 +149,16 @@ impl SslService for SslServiceImpl {
                             &sender,
                             &request.domain,
                             CertificateState::Pending,
-                            "等待用户添加 TXT 记录后再调用一次申请继续",
+                            &trf!(
+                                "等待用户添加 TXT 记录后再调用一次申请继续",
+                                "waiting for the TXT record to be added before requesting again"
+                            ),
                         );
                         return Ok(GrpcResponse::new(RequestCertificateResponse {
-                            status: Some(ok_response(
+                            status: Some(ok_response(trf!(
                                 "请把下方 TXT 记录加到 DNS,生效后再点一次申请",
-                            )),
+                                "add the TXT record below to your DNS, then click request again once it propagates"
+                            ))),
                             certificate: None,
                             dns_record_name: c.record_name,
                             dns_record_value: c.record_value,
@@ -179,8 +192,10 @@ impl SslService for SslServiceImpl {
                     }
                 }
             }
-            return Err(Status::unimplemented(format!(
-                "DNS provider {provider} 暂未实现,请使用 cloudflare 或 manual"
+            return Err(Status::unimplemented(trf!(
+                "DNS provider {} 暂未实现,请使用 cloudflare 或 manual",
+                "DNS provider {} is not implemented yet; use cloudflare or manual",
+                provider
             )));
         }
 
@@ -207,8 +222,9 @@ impl SslService for SslServiceImpl {
             &sender,
             &request.domain,
             CertificateState::Pending,
-            &format!(
+            &trf!(
                 "http-01: 把 challenge 文件写到 {} 等 ACME 服务器拉取",
+                "http-01: writing the challenge file to {} for the ACME server to fetch",
                 webroot.display()
             ),
         );
@@ -310,12 +326,18 @@ impl SslService for SslServiceImpl {
         // 否则页面显示"已导入",用户以为生效了,实际访问 Cloudflare 521 / 证书不对
         let sites = crate::site::sites_using_domain(&request.domain).await;
         let message = if sites.is_empty() {
-            format!(
+            let domain = request.domain.trim();
+            trf!(
                 "证书已导入,但还没有站点绑定 {0}:到「站点」里编辑要用它的站点,把 {0} 加进域名并保存后才会生效",
-                request.domain.trim()
+                "certificate imported, but no site is bound to {0} yet: edit the site that should use it under \"Sites\", add {0} to its domains, and save for it to take effect",
+                domain
             )
         } else {
-            format!("证书已导入,已生效于站点:{}", sites.join("、"))
+            trf!(
+                "证书已导入,已生效于站点:{}",
+                "certificate imported, now in effect on sites: {}",
+                sites.join("、")
+            )
         };
 
         Ok(GrpcResponse::new(ImportCertificateResponse {
@@ -341,9 +363,10 @@ impl SslService for SslServiceImpl {
             .map_err(|e| Status::internal(format!("read acme settings: {e}")))?;
         let email = settings.contact_email.trim().to_owned();
         if email.is_empty() {
-            return Err(Status::failed_precondition(
+            return Err(Status::failed_precondition(trf!(
                 "未设置 ACME 联系邮箱;请去面板设置里填一次真实邮箱再续签",
-            ));
+                "no ACME contact email set; please enter a real email in panel settings before renewing"
+            )));
         }
         if crate::dns::cloudflare_configured().await {
             let cert = crate::acme::issue_dns01_cloudflare(&domain, &email)
@@ -366,7 +389,10 @@ impl SslService for SslServiceImpl {
         match outcome {
             crate::acme::RequestOutcome::Challenge(c) => {
                 Ok(GrpcResponse::new(RenewCertificateResponse {
-                    status: Some(ok_response("请把下方 TXT 加到 DNS 后再点一次续签完成签发")),
+                    status: Some(ok_response(trf!(
+                        "请把下方 TXT 加到 DNS 后再点一次续签完成签发",
+                        "add the TXT record below to your DNS, then click renew again to complete issuance"
+                    ))),
                     certificate: None,
                     output: String::new(),
                     dns_record_name: c.record_name,
@@ -434,12 +460,16 @@ impl SslService for SslServiceImpl {
         // 空字符串等同清除;非空则做合法性校验。
         if !trimmed.is_empty() {
             if !trimmed.contains('@') {
-                return Err(Status::invalid_argument("contact_email 不是有效邮箱(缺 @)"));
+                return Err(Status::invalid_argument(trf!(
+                    "contact_email 不是有效邮箱(缺 @)",
+                    "contact_email is not a valid email (missing @)"
+                )));
             }
             if crate::acme::is_forbidden_email_domain(&trimmed) {
-                return Err(Status::invalid_argument(
+                return Err(Status::invalid_argument(trf!(
                     "contact_email 不能是 example.com / example.org / example.net 域",
-                ));
+                    "contact_email cannot use the example.com / example.org / example.net domains"
+                )));
             }
         }
         let to_save = crate::acme::AcmeSettings {
@@ -1016,6 +1046,42 @@ mod tests {
         assert!(validate_domain(".example.com").is_err());
         assert!(validate_domain("example.com.").is_err());
         assert!(validate_domain("a..b").is_err());
+    }
+
+    #[tokio::test]
+    async fn acme_settings_validation_errors_switch_to_english_under_the_en_locale() {
+        crate::i18n::scope(crate::i18n::Locale::En, async {
+            let service = SslServiceImpl::default();
+            let message = service
+                .update_acme_settings(Request::new(UpdateAcmeSettingsRequest {
+                    settings: Some(ProtoAcmeSettings {
+                        contact_email: "not-an-email".to_owned(),
+                        production: false,
+                    }),
+                }))
+                .await
+                .expect_err("missing @")
+                .message()
+                .to_owned();
+            assert_eq!(message, "contact_email is not a valid email (missing @)");
+
+            let message = service
+                .update_acme_settings(Request::new(UpdateAcmeSettingsRequest {
+                    settings: Some(ProtoAcmeSettings {
+                        contact_email: "admin@example.com".to_owned(),
+                        production: false,
+                    }),
+                }))
+                .await
+                .expect_err("forbidden domain")
+                .message()
+                .to_owned();
+            assert_eq!(
+                message,
+                "contact_email cannot use the example.com / example.org / example.net domains"
+            );
+        })
+        .await;
     }
 
     #[test]
