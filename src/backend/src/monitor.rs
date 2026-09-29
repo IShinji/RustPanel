@@ -722,8 +722,8 @@ impl HealthLevel {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Healthy => "健康",
-            Self::NeedsAttention => "需关注",
+            Self::Healthy => crate::i18n::tr("健康", "Healthy"),
+            Self::NeedsAttention => crate::i18n::tr("需关注", "Needs Attention"),
         }
     }
 }
@@ -737,12 +737,12 @@ fn render_health_report(
 ) -> String {
     let summary = summarize_samples(samples);
     let period_label = match period {
-        ReportPeriod::Daily => "日报",
-        ReportPeriod::Weekly => "周报",
+        ReportPeriod::Daily => crate::i18n::tr("日报", "daily report"),
+        ReportPeriod::Weekly => crate::i18n::tr("周报", "weekly report"),
     };
     let health = HealthLevel::from_summary(&summary);
 
-    format!(
+    crate::trf!(
         "RustPanel 运行{period_label}\n\
          时间范围: {start_seconds} - {end_seconds}\n\
          采样点: {sample_count}\n\
@@ -752,6 +752,18 @@ fn render_health_report(
          流量增量: 入站 {network_in}, 出站 {network_out}\n\
          安全拦截: WAF {waf_blocks} 次, SSH 自动封禁 {ssh_auto_bans} 次\n\
          建议: {advice}",
+        "RustPanel {period_label}\n\
+         Time range: {start_seconds} - {end_seconds}\n\
+         Samples: {sample_count}\n\
+         Health: {health_label}\n\
+         Peak usage: CPU {peak_cpu:.1}%, Memory {peak_memory:.1}%, 1-min load {peak_load:.2}, Disk {peak_disk:.1}%\n\
+         Average usage: CPU {avg_cpu:.1}%, Memory {avg_memory:.1}%\n\
+         Traffic delta: In {network_in}, Out {network_out}\n\
+         Security blocks: WAF {waf_blocks}, SSH auto-bans {ssh_auto_bans}\n\
+         Advice: {advice}",
+        period_label = period_label,
+        start_seconds = start_seconds,
+        end_seconds = end_seconds,
         sample_count = summary.sample_count,
         health_label = health.label(),
         peak_cpu = summary.peak_cpu_percent,
@@ -770,11 +782,20 @@ fn render_health_report(
 
 fn health_advice(health: HealthLevel, security: SecurityReportCounters) -> &'static str {
     if health == HealthLevel::NeedsAttention {
-        "检查高峰时段进程快照，必要时扩容或限制异常进程。"
+        crate::i18n::tr(
+            "检查高峰时段进程快照，必要时扩容或限制异常进程。",
+            "Check the process snapshot during peak periods, and scale up or throttle abnormal processes if needed.",
+        )
     } else if security.waf_blocks > 0 || security.ssh_auto_bans > 0 {
-        "关注安全中心攻击来源排行，并保持 WAF 与 SSH 防护开启。"
+        crate::i18n::tr(
+            "关注安全中心攻击来源排行，并保持 WAF 与 SSH 防护开启。",
+            "Keep an eye on the attack source ranking in the Security Center, and keep WAF and SSH protection enabled.",
+        )
     } else {
-        "当前周期资源与安全事件稳定。"
+        crate::i18n::tr(
+            "当前周期资源与安全事件稳定。",
+            "Resource usage and security events were stable during this period.",
+        )
     }
 }
 
@@ -1086,6 +1107,33 @@ mod tests {
         );
         assert_eq!(HealthLevel::Healthy.label(), "健康");
         assert_eq!(HealthLevel::NeedsAttention.label(), "需关注");
+    }
+
+    #[tokio::test]
+    async fn health_report_switches_to_english_under_the_en_locale() {
+        crate::i18n::scope(crate::i18n::Locale::En, async {
+            let none = SecurityReportCounters {
+                waf_blocks: 0,
+                ssh_auto_bans: 0,
+            };
+            assert_eq!(HealthLevel::Healthy.label(), "Healthy");
+            assert_eq!(HealthLevel::NeedsAttention.label(), "Needs Attention");
+            assert_eq!(
+                health_advice(HealthLevel::Healthy, none),
+                "Resource usage and security events were stable during this period."
+            );
+
+            let samples = [test_sample(100, 20.0, 20, 0)];
+            let report = render_health_report(ReportPeriod::Daily, 0, 100, &samples, none);
+            assert!(report.contains("RustPanel daily report"), "{report}");
+            assert!(report.contains("Health: Healthy"), "{report}");
+            assert!(
+                report
+                    .contains("Resource usage and security events were stable during this period."),
+                "{report}"
+            );
+        })
+        .await;
     }
 
     fn test_sample(

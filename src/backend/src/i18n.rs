@@ -74,16 +74,19 @@ pub async fn scope<F: Future>(locale: Locale, future: F) -> F::Output {
 
 /// 双语 + `format!` 插值。按当前语言选中英文模板之一,再各自插值——
 /// 因为两种语言的参数顺序 / 措辞可能不同,不能只翻译模板字符串本身。
+/// 参数按原始 token 转发给 `format!`,所以位置参数(`name`)和具名参数
+/// (`name = value`)都支持,和直接写 `format!` 的写法一致。
 ///
 /// ```ignore
 /// let msg = trf!("站点 {} 已创建", "site {} created", name);
+/// let msg = trf!("站点 {name} 已创建", "site {name} created", name = name);
 /// ```
 #[macro_export]
 macro_rules! trf {
-    ($zh:literal, $en:literal $(, $arg:expr)* $(,)?) => {
+    ($zh:literal, $en:literal $(, $($arg:tt)+)?) => {
         match $crate::i18n::current() {
-            $crate::i18n::Locale::ZhCn => format!($zh $(, $arg)*),
-            $crate::i18n::Locale::En => format!($en $(, $arg)*),
+            $crate::i18n::Locale::ZhCn => format!($zh $(, $($arg)+)?),
+            $crate::i18n::Locale::En => format!($en $(, $($arg)+)?),
         }
     };
 }
