@@ -70,12 +70,14 @@ RUN --mount=type=cache,id=rust-sccache-v1,target=/sccache,sharing=locked \
 RUN --mount=type=cache,id=rust-sccache-v1,target=/sccache,sharing=locked \
     sccache --show-stats || true
 
-FROM debian:bookworm-slim
+# 只导出二进制(--target binary-export);必须排在运行时镜像之前 ——
+# 不指定 target 时 docker 用最后一个阶段,排在最后会让推送的镜像变成没有 CMD 的空壳。
+FROM scratch AS binary-export
+COPY --from=builder /app/target/release/rustpanel-backend /rustpanel-backend
+
+FROM debian:bookworm-slim AS runtime
 WORKDIR /app
 COPY --from=builder /app/target/release/rustpanel-backend /app/rustpanel-backend
 ENV RUSTPANEL_BACKEND_ADDR=0.0.0.0:8080
 EXPOSE 8080
 CMD ["/app/rustpanel-backend"]
-
-FROM scratch AS binary-export
-COPY --from=builder /app/target/release/rustpanel-backend /rustpanel-backend

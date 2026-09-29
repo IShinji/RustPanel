@@ -116,6 +116,7 @@ jobs:
           builder: rustpanel-backend-image-builder
           context: .
           file: src/backend/Dockerfile
+          target: runtime
           platforms: ${{ env.BACKEND_IMAGE_PLATFORM }}
           push: true
           tags: |
