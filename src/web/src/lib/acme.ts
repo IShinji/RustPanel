@@ -1,3 +1,4 @@
+import { tGlobal } from "./i18n/translate";
 import { clients } from "./rpc";
 
 /// Let's Encrypt 自 2024 起拒绝这三个 RFC 2606 保留域的 contact email。
@@ -27,7 +28,7 @@ export async function ensureAcmeEmail(): Promise<string | null> {
     // RPC 失败不致命,继续 prompt 流程,后续 update 失败时再提示
   }
   const input = window.prompt(
-    "首次申请 SSL 证书需要一个真实邮箱(Let's Encrypt 用它做账户联系人,过期前发邮件提醒)。\n邮箱会存在面板里,所有浏览器共用,以后不再询问。",
+    tGlobal("sites.acmeEmailPrompt"),
     ""
   );
   if (!input) {
@@ -35,7 +36,7 @@ export async function ensureAcmeEmail(): Promise<string | null> {
   }
   const trimmed = input.trim();
   if (!trimmed.includes("@") || isForbiddenAcmeEmailDomain(trimmed)) {
-    window.alert("请填一个真实邮箱;example.com / .org / .net 域会被 Let's Encrypt 拒掉。");
+    window.alert(tGlobal("sites.acmeEmailInvalid"));
     return null;
   }
   try {
@@ -53,7 +54,7 @@ export async function ensureAcmeEmail(): Promise<string | null> {
     });
   } catch (err) {
     console.warn("persist acme email failed:", err);
-    window.alert("邮箱写入面板失败,这次申请会临时用这个邮箱,但下次还会再问一次。");
+    window.alert(tGlobal("sites.acmeEmailPersistFailed"));
   }
   return trimmed;
 }

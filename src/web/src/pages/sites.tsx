@@ -13,25 +13,27 @@ import { InstalledApp } from "../gen/rustpanel/v1/appstore_pb";
 import { Capabilities, Ipv6Address, ReservedPort, ResourceBudget } from "../gen/rustpanel/v1/capability_pb";
 import { ReverseProxyRule, RewriteTemplate, SiteArchive, SiteBindKind, SiteItem, SiteKind, SiteServiceAction, SiteServiceStatus, SiteTlsStrategy } from "../gen/rustpanel/v1/site_pb";
 import { AcmeChallengeType, CertificateItem, RequestCertificateResponse } from "../gen/rustpanel/v1/ssl_pb";
-import { formatBytes, safeError } from "../lib/format";
+import { formatBytes, formatDateTime, safeError } from "../lib/format";
 import { appendAuthQuery, type Clients } from "../lib/rpc";
 import { cn } from "../lib/utils";
 import { ArrowLeftRight, FileUp, Folder, Loader2, Plus, RefreshCw, RotateCw, Save, Server, ShieldCheck, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ensureAcmeEmail } from "../lib/acme";
+import { useLocale } from "../lib/i18n/locale-provider";
+import { tGlobal, type MessageKey, type TFn } from "../lib/i18n/translate";
 
 type SiteSheetMode = "new" | "edit" | null;
 
-function siteKindLabel(kind: number): string {
+function siteKindLabel(kind: number, t: TFn = tGlobal): string {
   switch (kind) {
     case SiteKind.STATIC:
-      return "静态";
+      return t("sites.kindStatic");
     case SiteKind.RUST_BINARY:
-      return "Rust 二进制";
+      return t("sites.kindRustBinary");
     case SiteKind.REVERSE_PROXY:
-      return "反向代理";
+      return t("sites.kindReverseProxy");
     default:
-      return "默认";
+      return t("sites.kindDefault");
   }
 }
 
@@ -59,31 +61,38 @@ function defaultBinaryPathFor(name: string): string {
 // 站点类型在 SmartSiteForm 里以"卡片"形式让用户选,每张卡都有
 // 图标 / 一句话用途 / 举例。比之前裸 Select 的"nginx serve root"这
 // 种术语对小白友好得多。
-const SITE_KIND_OPTIONS = [
+const SITE_KIND_OPTIONS: Array<{
+  value: "static" | "rust-binary" | "reverse-proxy";
+  icon: typeof Folder;
+  labelKey: MessageKey;
+  descriptionKey: MessageKey;
+  useCaseKey: MessageKey;
+}> = [
   {
-    value: "static" as const,
+    value: "static",
     icon: Folder,
-    label: "静态站",
-    description: "只有 HTML / CSS / JS / 图片这类文件,无后端进程",
-    useCase: "博客 / 文档站 / Hugo / Zola / React 编译产物"
+    labelKey: "sites.siteTypeStaticLabel",
+    descriptionKey: "sites.siteTypeStaticDesc",
+    useCaseKey: "sites.siteTypeStaticUseCase"
   },
   {
-    value: "rust-binary" as const,
+    value: "rust-binary",
     icon: Server,
-    label: "Rust 二进制",
-    description: "你写的程序,面板帮你启动并反代",
-    useCase: "自写的 API / Telegram bot / Web 服务后端"
+    labelKey: "sites.siteTypeRustBinaryLabel",
+    descriptionKey: "sites.siteTypeRustBinaryDesc",
+    useCaseKey: "sites.siteTypeRustBinaryUseCase"
   },
   {
-    value: "reverse-proxy" as const,
+    value: "reverse-proxy",
     icon: ArrowLeftRight,
-    label: "反向代理",
-    description: "已经在跑的服务,只给它套上域名 / HTTPS",
-    useCase: "把 localhost:3000 暴露到公网域名"
+    labelKey: "sites.siteTypeReverseProxyLabel",
+    descriptionKey: "sites.siteTypeReverseProxyDesc",
+    useCaseKey: "sites.siteTypeReverseProxyUseCase"
   }
 ];
 
 export function SitesSsl({ clients }: { clients: Clients }) {
+  const { t } = useLocale();
   // === 数据 ===
   const [sites, setSites] = useState<SiteItem[]>([]);
   const [certificates, setCertificates] = useState<CertificateItem[]>([]);
@@ -213,7 +222,7 @@ export function SitesSsl({ clients }: { clients: Clients }) {
   const renewCertificate = async (certificate: CertificateItem) => {
     try {
       const response = await clients.ssl.renewCertificate({ domain: certificate.domain });
-      const head = response.status?.message ?? `${certificate.domain} 已续签`;
+      const head = response.status?.message ?? t("sites.certRenewed", { domain: certificate.domain });
       // 续签是两步:第一次后端返 Challenge,dns_record_name 非空 → 提示用户加
       // TXT,信息单独显示;第二次后端返 Issued,output 是 reload 的辅助信息
       // (典型 "rpxy reloaded"),作为副 message 显示但不阻断成功状态。
@@ -221,15 +230,15 @@ export function SitesSsl({ clients }: { clients: Clients }) {
         const tipLines = [
           head,
           "",
-          `TXT 名称: ${response.dnsRecordName}`,
-          `TXT 值:   ${response.dnsRecordValue}`,
+          t("sites.txtRecordNameLine", { name: response.dnsRecordName }),
+          t("sites.txtRecordValueLine", { value: response.dnsRecordValue }),
           "",
-          "把这条 TXT 加到 DNS 解析(CF 控制台要灰云 DNS only),等 1-2 分钟传播后再点一次续签完成签发。"
+          t("sites.txtAddHint")
         ];
         setMessage(tipLines.join("\n"));
       } else {
         const detail = response.output;
-        setMessage(detail ? `${head} · ${detail}` : head);
+        setMessage(detail ? t("sites.renewDetailSuffix", { head, detail }) : head);
       }
       await load();
     } catch (err) {
@@ -240,7 +249,7 @@ export function SitesSsl({ clients }: { clients: Clients }) {
   const deleteReverseProxy = async (rule: ReverseProxyRule) => {
     try {
       await clients.site.deleteReverseProxyRule({ id: rule.id });
-      setMessage(`${rule.name} 已删除`);
+      setMessage(t("sites.rpDeleted", { name: rule.name }));
       await load();
     } catch (err) {
       setError(safeError(err));
@@ -253,7 +262,7 @@ export function SitesSsl({ clients }: { clients: Clients }) {
     setCertToRevoke(null);
     try {
       await clients.ssl.revokeCertificate({ domain: target.domain });
-      setMessage(`${target.domain} 证书已撤销 · 清除本地 fullchain.pem / privkey.pem`);
+      setMessage(t("sites.certRevoked", { domain: target.domain }));
       await load();
     } catch (err) {
       setError(safeError(err));
@@ -269,8 +278,8 @@ export function SitesSsl({ clients }: { clients: Clients }) {
       const cleaned = response.cleanedPaths?.length ?? 0;
       setMessage(
         cleaned > 0
-          ? `${target.name} 已删除 · 清理 ${cleaned} 项`
-          : `${target.name} 已删除`
+          ? t("sites.siteDeletedWithCleanup", { name: target.name, count: cleaned })
+          : t("sites.siteDeleted", { name: target.name })
       );
       // 释放预留的 NAT 端口预算(本来就是 owner=site:<name> reserve 的)
       const port = target.binding?.natPort;
@@ -291,19 +300,19 @@ export function SitesSsl({ clients }: { clients: Clients }) {
     <section className="flex flex-col gap-5">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight m-0">网站</h1>
+          <h1 className="text-2xl font-semibold tracking-tight m-0">{t("sites.title")}</h1>
           <p className="text-sm text-muted-foreground m-0">
-            站点 {sites.length} 个 · 证书 {certificates.length} 张 · 反代规则 {proxyRules.length} 条
+            {t("sites.subtitle", { sites: sites.length, certs: certificates.length, rules: proxyRules.length })}
           </p>
         </div>
         <div className="flex gap-2">
           <UIButton variant="outline" size="sm" onClick={() => void load()}>
             <RefreshCw className="size-4" />
-            刷新
+            {t("sites.refresh")}
           </UIButton>
           <UIButton size="sm" onClick={openCreate}>
             <Plus className="size-4" />
-            新建站点
+            {t("sites.newSite")}
           </UIButton>
         </div>
       </header>
@@ -322,52 +331,50 @@ export function SitesSsl({ clients }: { clients: Clients }) {
         <div className="rounded-md border border-info/40 bg-info/5 px-4 py-3 text-sm space-y-2">
           <div className="flex items-center justify-between">
             <div className="font-medium">
-              🔐 {pendingAcme.domain} · 已自动发起 Let's Encrypt 申请
+              {t("sites.pendingAcmeTitle", { domain: pendingAcme.domain })}
             </div>
             <UIButton
               size="sm"
               variant="ghost"
               onClick={() => setPendingAcme(null)}
-              title="关闭这条提示"
+              title={t("sites.closeHint")}
             >
               ×
             </UIButton>
           </div>
-          <div className="text-xs text-muted-foreground">
-            到你的 DNS 服务商添加这条 TXT 记录,**生效后**到该站点的 SSL Tab 再点一次"已添加 TXT,继续签发"完成签发。
-          </div>
+          <div className="text-xs text-muted-foreground">{t("sites.pendingAcmeDesc")}</div>
           <div className="grid gap-1 sm:grid-cols-[80px_1fr] text-xs">
-            <span className="text-muted-foreground">记录类型</span>
+            <span className="text-muted-foreground">{t("sites.recordType")}</span>
             <span className="font-mono">TXT</span>
-            <span className="text-muted-foreground">主机记录</span>
-            <span className="font-mono break-all">{pendingAcme.recordName || "(待返回)"}</span>
-            <span className="text-muted-foreground">记录值</span>
-            <span className="font-mono break-all">{pendingAcme.recordValue || "(待返回)"}</span>
+            <span className="text-muted-foreground">{t("sites.hostRecord")}</span>
+            <span className="font-mono break-all">{pendingAcme.recordName || t("sites.pendingPlaceholder")}</span>
+            <span className="text-muted-foreground">{t("sites.recordValue")}</span>
+            <span className="font-mono break-all">{pendingAcme.recordValue || t("sites.pendingPlaceholder")}</span>
           </div>
           <div className="text-xs text-muted-foreground">
-            可用 <span className="font-mono">dig TXT _acme-challenge.{pendingAcme.domain}</span> 验证 DNS 全球生效。
+            {t("sites.digHintBefore")}<span className="font-mono">dig TXT _acme-challenge.{pendingAcme.domain}</span>{t("sites.digHintAfter")}
           </div>
         </div>
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle>站点</CardTitle>
-          <CardDescription>点行打开详情(基础 / SSL / 反代 / 伪静态)</CardDescription>
+          <CardTitle>{t("sites.sitesCardTitle")}</CardTitle>
+          <CardDescription>{t("sites.sitesCardDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           {sites.length === 0 ? (
-            <div className="empty-state text-sm">尚无站点 — 点右上"+ 新建站点"开始</div>
+            <div className="empty-state text-sm">{t("sites.noSitesYet")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>域名</TableHead>
-                  <TableHead>类型</TableHead>
-                  <TableHead>SSL</TableHead>
-                  <TableHead>占用</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("sites.colName")}</TableHead>
+                  <TableHead>{t("sites.colDomain")}</TableHead>
+                  <TableHead>{t("sites.colType")}</TableHead>
+                  <TableHead>{t("sites.colSsl")}</TableHead>
+                  <TableHead>{t("sites.colUsage")}</TableHead>
+                  <TableHead className="text-right">{t("sites.colActions")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
@@ -381,7 +388,7 @@ export function SitesSsl({ clients }: { clients: Clients }) {
                     <TableCell className="font-mono text-xs">
                       {site.domains.join(", ") || "—"}
                     </TableCell>
-                    <TableCell>{siteKindLabel(site.kind)}</TableCell>
+                    <TableCell>{siteKindLabel(site.kind, t)}</TableCell>
                     <TableCell>
                       <Badge variant={site.sslEnabled ? "success" : "muted"}>
                         {site.sslEnabled ? "SSL" : "HTTP"}
@@ -400,12 +407,12 @@ export function SitesSsl({ clients }: { clients: Clients }) {
                             openEdit(site);
                           }}
                         >
-                          编辑
+                          {t("sites.edit")}
                         </UIButton>
                         <UIButton
                           size="sm"
                           variant="ghost"
-                          title="删除站点"
+                          title={t("sites.deleteSite")}
                           onClick={(event) => {
                             event.stopPropagation();
                             setSiteToDelete(site);
@@ -425,20 +432,20 @@ export function SitesSsl({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>证书统一视图</CardTitle>
-          <CardDescription>跨站点的所有证书;续签也可在抽屉 SSL Tab 触发。</CardDescription>
+          <CardTitle>{t("sites.certsCardTitle")}</CardTitle>
+          <CardDescription>{t("sites.certsCardDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           {certificates.length === 0 ? (
-            <div className="empty-state text-sm">暂无证书</div>
+            <div className="empty-state text-sm">{t("sites.noCerts")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>域名</TableHead>
-                  <TableHead>分组</TableHead>
-                  <TableHead>剩余</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("sites.colDomain")}</TableHead>
+                  <TableHead>{t("sites.colGroup")}</TableHead>
+                  <TableHead>{t("sites.colRemaining")}</TableHead>
+                  <TableHead className="text-right">{t("sites.colActions")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
@@ -450,12 +457,12 @@ export function SitesSsl({ clients }: { clients: Clients }) {
                     </TableCell>
                     <TableCell>
                       {cert.warningLevel === "self-signed-bootstrap" ? (
-                        <Badge variant="warning" title="占位自签证书,等待真 ACME 签发">
-                          占位 · 待签发
+                        <Badge variant="warning" title={t("sites.placeholderPendingTitle")}>
+                          {t("sites.placeholderPendingIssuance")}
                         </Badge>
                       ) : (
                         <Badge variant={cert.warningLevel === "ok" ? "success" : "destructive"}>
-                          {cert.daysUntilExpiry} 天
+                          {t("sites.daysSuffix", { days: cert.daysUntilExpiry })}
                         </Badge>
                       )}
                     </TableCell>
@@ -467,12 +474,12 @@ export function SitesSsl({ clients }: { clients: Clients }) {
                           onClick={() => void renewCertificate(cert)}
                         >
                           <RotateCw className="size-3.5" />
-                          续签
+                          {t("sites.renew")}
                         </UIButton>
                         <UIButton
                           size="sm"
                           variant="ghost"
-                          title="撤销证书"
+                          title={t("sites.revokeCertTitle")}
                           onClick={() => setCertToRevoke(cert)}
                         >
                           <Trash2 className="size-3.5 text-destructive" />
@@ -489,21 +496,21 @@ export function SitesSsl({ clients }: { clients: Clients }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>反向代理规则</CardTitle>
-          <CardDescription>跨站点的全局规则;单站点反代请在抽屉的"反向代理" Tab 管。</CardDescription>
+          <CardTitle>{t("sites.rpCardTitle")}</CardTitle>
+          <CardDescription>{t("sites.rpCardDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           {proxyRules.length === 0 ? (
-            <div className="empty-state text-sm">暂无反代规则</div>
+            <div className="empty-state text-sm">{t("sites.noRpRules")}</div>
           ) : (
             <Table>
               <TableHeader>
                 <UITableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>路径</TableHead>
-                  <TableHead>目标</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("sites.colName")}</TableHead>
+                  <TableHead>{t("sites.colPath")}</TableHead>
+                  <TableHead>{t("sites.colTarget")}</TableHead>
+                  <TableHead>{t("sites.colStatus")}</TableHead>
+                  <TableHead className="text-right">{t("sites.colActions")}</TableHead>
                 </UITableRow>
               </TableHeader>
               <TableBody>
@@ -519,7 +526,7 @@ export function SitesSsl({ clients }: { clients: Clients }) {
                     </TableCell>
                     <TableCell>
                       <Badge variant={rule.enabled ? "success" : "muted"}>
-                        {rule.enabled ? "启用" : "停用"}
+                        {rule.enabled ? t("sites.enabled") : t("sites.disabled")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
@@ -529,7 +536,7 @@ export function SitesSsl({ clients }: { clients: Clients }) {
                         onClick={() => void deleteReverseProxy(rule)}
                       >
                         <Trash2 className="size-3.5" />
-                        删除
+                        {t("sites.delete")}
                       </UIButton>
                     </TableCell>
                   </UITableRow>
@@ -570,20 +577,16 @@ export function SitesSsl({ clients }: { clients: Clients }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除站点 "{siteToDelete?.name}"?</DialogTitle>
-            <DialogDescription>
-              会清理:nginx vhost / 元数据 sidecar / rpxy 站点片段 /
-              sws@实例(如果有)。config 模板与用户上传的网站文件 **不动**;
-              NAT 端口预算会自动释放,可重复使用。
-            </DialogDescription>
+            <DialogTitle>{t("sites.deleteSiteDialogTitle", { name: siteToDelete?.name ?? "" })}</DialogTitle>
+            <DialogDescription>{t("sites.deleteSiteDialogDesc")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <UIButton variant="outline" onClick={() => setSiteToDelete(null)}>
-              取消
+              {t("sites.cancel")}
             </UIButton>
             <UIButton variant="destructive" onClick={() => void performDeleteSite()}>
               <Trash2 className="size-4" />
-              确认删除
+              {t("sites.confirmDelete")}
             </UIButton>
           </DialogFooter>
         </DialogContent>
@@ -595,22 +598,16 @@ export function SitesSsl({ clients }: { clients: Clients }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>撤销证书 "{certToRevoke?.domain}"?</DialogTitle>
-            <DialogDescription>
-              清除本地 fullchain.pem / privkey.pem 文件。绑定该域名的 nginx
-              vhost 会立刻找不到证书,**网站 HTTPS 立即不可用**,直到你
-              重新申请或导入新证书。这一步不会通知 Let's Encrypt 真正
-              revoke(那需要 ACME revokeCert 请求,本面板暂未实现);
-              只是本地清空文件。
-            </DialogDescription>
+            <DialogTitle>{t("sites.revokeCertDialogTitle", { domain: certToRevoke?.domain ?? "" })}</DialogTitle>
+            <DialogDescription>{t("sites.revokeCertDialogDesc")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <UIButton variant="outline" onClick={() => setCertToRevoke(null)}>
-              取消
+              {t("sites.cancel")}
             </UIButton>
             <UIButton variant="destructive" onClick={() => void performRevokeCert()}>
               <Trash2 className="size-4" />
-              确认撤销
+              {t("sites.confirmRevoke")}
             </UIButton>
           </DialogFooter>
         </DialogContent>
@@ -658,66 +655,68 @@ type EngineRecommendation = {
 function recommendEngine(
   capabilities: Capabilities | null,
   budget: ResourceBudget | null,
-  installedApps: InstalledApp[]
+  installedApps: InstalledApp[],
+  t: TFn = tGlobal
 ): EngineRecommendation {
   const installedSlugs = new Set(installedApps.map((app) => app.slug));
   if (installedSlugs.has("nginx-mainline") || installedSlugs.has("nginx-light")) {
-    return { choice: "nginx", reason: "已检测到 nginx 安装,直接复用" };
+    return { choice: "nginx", reason: t("sites.engineReasonNginxDetected") };
   }
   if (installedSlugs.has("rpxy")) {
-    return { choice: "rpxy", reason: "已检测到 rpxy 安装,直接复用" };
+    return { choice: "rpxy", reason: t("sites.engineReasonRpxyDetected") };
   }
   if (capabilities?.isOpenvz) {
     return {
       choice: "rpxy",
-      reason: "本机是 OpenVZ 容器,apt 装 nginx 经常撞 fork 上限;rpxy 是单文件二进制,直接下载即用"
+      reason: t("sites.engineReasonOpenvz")
     };
   }
   const totalRamMb = budget?.memory ? Number(budget.memory.totalBytes / 1024n / 1024n) : 0;
   if (totalRamMb > 0 && totalRamMb < 256) {
     return {
       choice: "rpxy",
-      reason: `本机仅 ${totalRamMb} MB RAM,apt-get install 内存峰值可能撞天花板;rpxy 单文件 ~15MB`
+      reason: t("sites.engineReasonLowRam", { ram: totalRamMb })
     };
   }
   return {
     choice: "nginx",
-    reason: "环境充裕,nginx mainline 是稳妥默认(C / 单进程多站,生态成熟)"
+    reason: t("sites.engineReasonDefault")
   };
 }
 
 function SiteDetailSheet(props: SiteSheetProps) {
   const { mode, site, onClose } = props;
+  const { t } = useLocale();
   return (
     <Sheet open={mode !== null} onOpenChange={(open) => !open && onClose()}>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>
-            {mode === "new" ? "新建站点" : site?.name || "站点详情"}
+            {mode === "new" ? t("sites.newSiteTitle") : site?.name || t("sites.siteDetailsTitle")}
           </SheetTitle>
           <SheetDescription>
             {mode === "new"
-              ? "保存后回到此抽屉继续配置 SSL / 反代 / 伪静态"
+              ? t("sites.newSiteDesc")
               : site?.domains.join(", ") || ""}
           </SheetDescription>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto px-5 pb-3">
           <Tabs defaultValue="basic">
             <TabsList>
-              <TabsTrigger value="basic">基础</TabsTrigger>
+              <TabsTrigger value="basic">{t("sites.tabBasic")}</TabsTrigger>
               <TabsTrigger value="deploy" disabled={mode === "new"}>
-                部署
+                {t("sites.tabDeploy")}
               </TabsTrigger>
               <TabsTrigger value="ssl" disabled={mode === "new"}>
                 SSL
               </TabsTrigger>
               <TabsTrigger value="rp" disabled={mode === "new"}>
-                反向代理
+                {t("sites.tabRp")}
               </TabsTrigger>
               <TabsTrigger value="services" disabled={mode === "new"}>
-                服务
+                {t("sites.tabServices")}
               </TabsTrigger>
-              <TabsTrigger value="rewrite">伪静态</TabsTrigger>
+              <TabsTrigger value="rewrite">{t("sites.tabRewrite")}</TabsTrigger>
             </TabsList>
             <TabsContent value="basic" className="pt-3">
               <SmartSiteForm {...props} />
@@ -726,28 +725,28 @@ function SiteDetailSheet(props: SiteSheetProps) {
               {mode === "edit" && site ? (
                 <DeployPanel {...props} site={site} />
               ) : (
-                <p className="text-sm text-muted-foreground">保存站点后可上传内容</p>
+                <p className="text-sm text-muted-foreground">{t("sites.saveSiteFirstDeploy")}</p>
               )}
             </TabsContent>
             <TabsContent value="ssl" className="pt-3">
               {mode === "edit" && site ? (
                 <SslPanel {...props} site={site} />
               ) : (
-                <p className="text-sm text-muted-foreground">保存站点后可配置 SSL</p>
+                <p className="text-sm text-muted-foreground">{t("sites.saveSiteFirstSsl")}</p>
               )}
             </TabsContent>
             <TabsContent value="rp" className="pt-3">
               {mode === "edit" && site ? (
                 <PerSiteReverseProxyPanel {...props} site={site} />
               ) : (
-                <p className="text-sm text-muted-foreground">保存站点后可配置反向代理</p>
+                <p className="text-sm text-muted-foreground">{t("sites.saveSiteFirstRp")}</p>
               )}
             </TabsContent>
             <TabsContent value="services" className="pt-3">
               {mode === "edit" && site ? (
                 <SiteServicesPanel {...props} site={site} />
               ) : (
-                <p className="text-sm text-muted-foreground">保存站点后可关联服务</p>
+                <p className="text-sm text-muted-foreground">{t("sites.saveSiteFirstServices")}</p>
               )}
             </TabsContent>
             <TabsContent value="rewrite" className="pt-3">
@@ -763,11 +762,11 @@ function SiteDetailSheet(props: SiteSheetProps) {
               onClick={() => props.onRequestDelete!(site)}
             >
               <Trash2 className="size-3.5" />
-              删除站点
+              {t("sites.deleteSite")}
             </UIButton>
           )}
           <UIButton variant="outline" onClick={onClose}>
-            关闭
+            {t("sites.close")}
           </UIButton>
         </SheetFooter>
       </SheetContent>
@@ -791,6 +790,7 @@ function SmartSiteForm({
   onClose,
   onAcmeChallenge
 }: SiteSheetProps) {
+  const { t } = useLocale();
   // 智能表单合并了 Phase C 高级版 + 经典向导 —— 字段始终是同一套,
   // "绑定方式 / NAT 端口 / IPv6 地址"按 capabilities 揭示。
   const isEdit = mode === "edit";
@@ -902,8 +902,8 @@ function SmartSiteForm({
 
   // 引擎推荐 + 用户选择。useMemo 避免每渲染重算;但选择改了的话保持用户选择。
   const recommendation = useMemo(
-    () => recommendEngine(capabilities, budget, installedApps),
-    [capabilities, budget, installedApps]
+    () => recommendEngine(capabilities, budget, installedApps, t),
+    [capabilities, budget, installedApps, t]
   );
   const [engineChoice, setEngineChoice] = useState<SiteEngineChoice>(
     recommendation.choice
@@ -926,11 +926,11 @@ function SmartSiteForm({
       .map((item) => item.trim())
       .filter(Boolean);
     if (domains.length === 0) {
-      onError("至少保留一个域名");
+      onError(t("sites.atLeastOneDomain"));
       return;
     }
     if (domainConflict) {
-      onError("域名已被其他站点使用");
+      onError(t("sites.domainInUseError"));
       return;
     }
     setSubmitting(true);
@@ -946,7 +946,7 @@ function SmartSiteForm({
               ? SiteTlsStrategy.IMPORTED
               : SiteTlsStrategy.LETSENCRYPT_DNS01
       });
-      onMessage(`${site.name} 已更新`);
+      onMessage(t("sites.siteUpdated", { name: site.name }));
       onChanged();
     } catch (err) {
       onError(safeError(err));
@@ -962,29 +962,23 @@ function SmartSiteForm({
     }
     // 硬校验:撞名 / 撞 root / 撞域名一律拒
     if (!safeName(name)) {
-      onError("站点名不能为空,且需含字母 / 数字 / 连字符");
+      onError(t("sites.siteNameEmpty"));
       return;
     }
     if (nameConflict) {
-      onError(`站点名 "${name}" 已存在,请换一个`);
+      onError(t("sites.siteNameTaken", { name }));
       return;
     }
     if (rootConflict) {
-      onError(
-        `根目录 "${root}" 已被站点 "${rootConflict.name}" 使用 — 改个站点名让它自动派生新路径`
-      );
+      onError(t("sites.rootTaken", { root, owner: rootConflict.name }));
       return;
     }
     if (domainConflict) {
-      onError(
-        `域名 "${domainConflict.domain}" 已被站点 "${domainConflict.site.name}" 占用`
-      );
+      onError(t("sites.domainTaken", { domain: domainConflict.domain, owner: domainConflict.site.name }));
       return;
     }
     if (natPortConflict) {
-      onError(
-        `NAT 端口 ${natPortConflict.port} 已被站点 "${natPortConflict.owner}" 占用 — 一个端口只能挂一个监听`
-      );
+      onError(t("sites.natPortTaken", { port: natPortConflict.port, owner: natPortConflict.owner }));
       return;
     }
     const protoKind =
@@ -1017,7 +1011,7 @@ function SmartSiteForm({
       // 误导用户。
       if (engineChoice === "rpxy") {
         if (!installedSlugs.has("rpxy")) {
-          setSubmitStep("从 GitHub 下载 rpxy 二进制,起 systemd 服务...");
+          setSubmitStep(t("sites.rpxyInstallStep"));
           try {
             await clients.appStore.deployApp({
               slug: "rpxy",
@@ -1026,13 +1020,13 @@ function SmartSiteForm({
             });
           } catch (installErr) {
             throw new Error(
-              `rpxy 二进制安装失败:${safeError(installErr)}\n站点未创建。请在软件商店 → rpxy 看具体报错,排掉后再来一次。`,
+              t("sites.rpxyInstallFailed", { error: safeError(installErr) }),
               { cause: installErr }
             );
           }
         }
         if (kind === "static" && !installedSlugs.has("static-web-server")) {
-          setSubmitStep("从 GitHub 下载 static-web-server,静态站的反代上游...");
+          setSubmitStep(t("sites.swsInstallStep"));
           try {
             await clients.appStore.deployApp({
               slug: "static-web-server",
@@ -1041,7 +1035,7 @@ function SmartSiteForm({
             });
           } catch (installErr) {
             throw new Error(
-              `static-web-server 安装失败:${safeError(installErr)}\n静态站需要 SWS 作为 rpxy 的上游,**未装则反代到空端口**。站点未创建,请处理后重试或换 nginx 引擎。`,
+              t("sites.swsInstallFailed", { error: safeError(installErr) }),
               { cause: installErr }
             );
           }
@@ -1049,8 +1043,8 @@ function SmartSiteForm({
       }
       setSubmitStep(
         engineChoice === "rpxy"
-          ? "写 rpxy 站点片段 + vhost + bootstrap 自签证书..."
-          : "装 nginx(若缺) + 写 vhost + bootstrap 自签证书..."
+          ? t("sites.writingRpxyStep")
+          : t("sites.writingNginxStep")
       );
       const response = await clients.site.createSite({
         name,
@@ -1069,7 +1063,7 @@ function SmartSiteForm({
         binaryPath
       });
       if (binding.kind === SiteBindKind.NAT_PORT && binding.natPort > 0) {
-        setSubmitStep("登记 NAT 端口预算...");
+        setSubmitStep(t("sites.reservingPortStep"));
         await clients.capability
           .reservePort({
             port: binding.natPort,
@@ -1086,7 +1080,7 @@ function SmartSiteForm({
         onMessage(
           richMsg && richMsg.length > 0
             ? richMsg
-            : `${response.site.name} 已创建`
+            : t("sites.siteCreatedDefault", { name: response.site.name })
         );
       }
       // 选了 DNS-01 自动签发:立即发起 ACME 拿 TXT,通过 onAcmeChallenge
@@ -1099,7 +1093,7 @@ function SmartSiteForm({
           .filter(Boolean)[0];
         const acmeEmail = primaryDomain ? await ensureAcmeEmail() : null;
         if (primaryDomain && acmeEmail) {
-          setSubmitStep("向 Let's Encrypt 发起 DNS-01 申请,拿 TXT 记录...");
+          setSubmitStep(t("sites.requestingAcmeStep"));
           try {
             const acmeResp = await clients.ssl.requestCertificate({
               domain: primaryDomain,
@@ -1133,7 +1127,7 @@ function SmartSiteForm({
     <div className="flex flex-col gap-3">
       <div className="grid gap-3 md:grid-cols-2">
         <div className="grid gap-1">
-          <UILabel htmlFor="site-name">站点名</UILabel>
+          <UILabel htmlFor="site-name">{t("sites.siteNameLabel")}</UILabel>
           <UIInput
             id="site-name"
             value={name}
@@ -1142,7 +1136,7 @@ function SmartSiteForm({
           />
         </div>
         <div className="grid gap-1">
-          <UILabel htmlFor="site-domain">域名(空格或逗号分隔)</UILabel>
+          <UILabel htmlFor="site-domain">{t("sites.domainFieldLabel")}</UILabel>
           <UIInput
             id="site-domain"
             value={domain}
@@ -1151,9 +1145,9 @@ function SmartSiteForm({
         </div>
         {!isEdit && (
           <div className="grid gap-1.5 md:col-span-2">
-            <UILabel>网站引擎(后端服务)</UILabel>
+            <UILabel>{t("sites.engineLabel")}</UILabel>
             <div className="rounded border border-info/30 bg-info/5 px-3 py-2 text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">推荐:</span>{" "}
+              <span className="font-medium text-foreground">{t("sites.recommendedPrefix")}</span>{" "}
               {recommendation.choice === "nginx" ? "nginx-mainline" : "rpxy + SWS"} —— {recommendation.reason}
             </div>
             <div className="grid gap-2 md:grid-cols-2">
@@ -1163,21 +1157,21 @@ function SmartSiteForm({
                     value: "nginx" as const,
                     icon: Server,
                     label: "nginx mainline",
-                    description: "C 写的成熟反代,单进程多站省 RAM,生态最大",
+                    description: t("sites.nginxDescription"),
                     note: installedSlugs.has("nginx-mainline")
-                      ? "✓ 已装"
+                      ? t("sites.nginxNoteInstalled")
                       : installedSlugs.has("nginx-light")
-                        ? "✓ 已装(发行版 nginx-light)"
-                        : "未装 · 创建时会自动 apt 装 nginx.org 官方源(128MB OpenVZ 可能装不下)"
+                        ? t("sites.nginxNoteInstalledLight")
+                        : t("sites.nginxNoteNotInstalled")
                   },
                   {
                     value: "rpxy" as const,
                     icon: ArrowLeftRight,
                     label: "rpxy + SWS",
-                    description: "Rust 写的单文件反代,HTTP/3 原生,完全绕开 apt → 小机器友好",
+                    description: t("sites.rpxyDescription"),
                     note: installedSlugs.has("rpxy")
-                      ? "✓ rpxy 已装" + (installedSlugs.has("static-web-server") ? " · SWS 已装" : " · 静态站会自动装 SWS")
-                      : "未装 · 创建时会自动下 GitHub 二进制(静态站再加 SWS)"
+                      ? t("sites.rpxyNoteInstalled") + (installedSlugs.has("static-web-server") ? t("sites.rpxyNoteSwsInstalled") : t("sites.rpxyNoteSwsAuto"))
+                      : t("sites.rpxyNoteNotInstalled")
                   }
                 ] as Array<{
                   value: SiteEngineChoice;
@@ -1208,7 +1202,7 @@ function SmartSiteForm({
                     <div className="flex items-center gap-1.5">
                       <Icon className="size-4 text-primary" />
                       <span className="font-medium text-sm">{option.label}</span>
-                      {isRecommended && <Badge variant="info">推荐</Badge>}
+                      {isRecommended && <Badge variant="info">{t("sites.recommended")}</Badge>}
                     </div>
                     <span className="text-xs text-muted-foreground">
                       {option.description}
@@ -1224,7 +1218,7 @@ function SmartSiteForm({
         )}
 
         <div className="grid gap-1.5 md:col-span-2">
-          <UILabel>站点类型</UILabel>
+          <UILabel>{t("sites.siteTypeLabel")}</UILabel>
           <div className="grid gap-2 md:grid-cols-3">
             {SITE_KIND_OPTIONS.map((option) => {
               const Icon = option.icon;
@@ -1245,13 +1239,13 @@ function SmartSiteForm({
                 >
                   <div className="flex items-center gap-1.5">
                     <Icon className="size-4 text-primary" />
-                    <span className="font-medium text-sm">{option.label}</span>
+                    <span className="font-medium text-sm">{t(option.labelKey)}</span>
                   </div>
                   <span className="text-xs text-muted-foreground">
-                    {option.description}
+                    {t(option.descriptionKey)}
                   </span>
                   <span className="text-[11px] text-muted-foreground/80">
-                    适合:{option.useCase}
+                    {t("sites.suitableForPrefix")}{t(option.useCaseKey)}
                   </span>
                 </button>
               );
@@ -1260,10 +1254,10 @@ function SmartSiteForm({
         </div>
         {kind === "static" && (
           <div className="grid gap-1 md:col-span-2">
-            <UILabel htmlFor="site-root">网站根目录</UILabel>
+            <UILabel htmlFor="site-root">{t("sites.siteRootLabel")}</UILabel>
             <UIInput
               id="site-root"
-              placeholder={defaultRootFor(name) || "/var/www/<填好站点名后自动生成>"}
+              placeholder={defaultRootFor(name) || t("sites.siteRootPlaceholder")}
               value={root}
               disabled={isEdit}
               onChange={(event) => {
@@ -1273,17 +1267,17 @@ function SmartSiteForm({
             />
             <span className="text-xs text-muted-foreground">
               {rootTouched
-                ? "已自定义。放 index.html 的目录;nginx 会直接把里头的文件喂给浏览器。"
-                : `跟着站点名自动派生 ${defaultRootFor(name) || "(待站点名输入)"};可手动覆盖。`}
+                ? t("sites.siteRootCustomHint")
+                : t("sites.siteRootAutoHint", { path: defaultRootFor(name) || t("sites.siteRootAutoHintPending") })}
             </span>
           </div>
         )}
         {kind === "rust-binary" && (
           <div className="grid gap-1 md:col-span-2">
-            <UILabel htmlFor="site-bin">Rust 程序的二进制路径</UILabel>
+            <UILabel htmlFor="site-bin">{t("sites.binaryPathLabel")}</UILabel>
             <UIInput
               id="site-bin"
-              placeholder={defaultBinaryPathFor(name) || "/usr/local/bin/<填好站点名后自动生成>"}
+              placeholder={defaultBinaryPathFor(name) || t("sites.binaryPathPlaceholder")}
               value={binaryPath}
               disabled={isEdit}
               onChange={(event) => {
@@ -1291,30 +1285,25 @@ function SmartSiteForm({
                 setBinaryPath(event.target.value);
               }}
             />
-            <span className="text-xs text-muted-foreground">
-              你 `cargo build --release` 出来的可执行文件路径。面板会自动写
-              systemd 服务把它拉起来(internal 127.0.0.1:9100+),再让 nginx 反代给它。
-            </span>
+            <span className="text-xs text-muted-foreground">{t("sites.binaryPathHint")}</span>
           </div>
         )}
         {kind === "reverse-proxy" && (
           <div className="grid gap-1 md:col-span-2">
-            <UILabel htmlFor="site-upstream">目标服务地址</UILabel>
+            <UILabel htmlFor="site-upstream">{t("sites.upstreamLabel")}</UILabel>
             <UIInput
               id="site-upstream"
               placeholder="http://127.0.0.1:3000"
               value={proxyTarget}
               onChange={(event) => setProxyTarget(event.target.value)}
             />
-            <span className="text-xs text-muted-foreground">
-              已经在你机器上跑着的服务地址。把它"包装"成 https://你的域名 暴露出去。
-            </span>
+            <span className="text-xs text-muted-foreground">{t("sites.upstreamHint")}</span>
           </div>
         )}
         {showBinding && (
           <>
             <div className="grid gap-1 md:col-span-2">
-              <UILabel>怎么对外</UILabel>
+              <UILabel>{t("sites.bindingLabel")}</UILabel>
               <Select
                 value={bindKind}
                 onValueChange={(value) => setBindKind(value as typeof bindKind)}
@@ -1325,31 +1314,28 @@ function SmartSiteForm({
                 </SelectTrigger>
                 <SelectContent>
                   {ipv6Pool.length > 0 && (
-                    <SelectItem value="ipv6">用 IPv6 地址(推荐 · 不占端口)</SelectItem>
+                    <SelectItem value="ipv6">{t("sites.bindIpv6Option")}</SelectItem>
                   )}
-                  <SelectItem value="nat-port">用 NAT 端口(占一个公网端口)</SelectItem>
+                  <SelectItem value="nat-port">{t("sites.bindNatPortOption")}</SelectItem>
                 </SelectContent>
               </Select>
-              <span className="text-xs text-muted-foreground">
-                NAT VPS 总共 20 个公网端口预算;有 IPv6 公网地址就用 v6,
-                不占端口、不限数量。
-              </span>
+              <span className="text-xs text-muted-foreground">{t("sites.bindingHint")}</span>
             </div>
             {bindKind === "ipv6" ? (
               <div className="grid gap-1 md:col-span-2">
-                <UILabel htmlFor="site-v6">公网 IPv6 地址</UILabel>
+                <UILabel htmlFor="site-v6">{t("sites.ipv6AddressLabel")}</UILabel>
                 <Select
                   value={ipv6Address}
                   onValueChange={setIpv6Address}
                   disabled={isEdit}
                 >
                   <SelectTrigger id="site-v6">
-                    <SelectValue placeholder="选择一个 v6 地址" />
+                    <SelectValue placeholder={t("sites.ipv6SelectPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     {ipv6Pool.length === 0 && (
                       <SelectItem value="__none__" disabled>
-                        未检测到公网 IPv6
+                        {t("sites.ipv6NoneDetected")}
                       </SelectItem>
                     )}
                     {ipv6Pool.map((addr) => {
@@ -1357,7 +1343,7 @@ function SmartSiteForm({
                       return (
                         <SelectItem key={addr.address} value={addr.address}>
                           {addr.address}/{addr.prefixLength} ({addr.interfaceName})
-                          {users.length > 0 && ` · 已用于 ${users.join(", ")}`}
+                          {users.length > 0 && t("sites.ipv6UsedBySuffix", { names: users.join(", ") })}
                         </SelectItem>
                       );
                     })}
@@ -1365,34 +1351,30 @@ function SmartSiteForm({
                 </Select>
                 <span className="text-xs text-muted-foreground">
                   {ipv6Address && (ipv6UsageMap.get(ipv6Address)?.length ?? 0) > 0
-                    ? `当前 IPv6 已用于 ${ipv6UsageMap.get(ipv6Address)!.join(", ")};可继续共享 — nginx 按域名(SNI)分发,只要本站域名不与已有站点重复就行。`
-                    : "同一 IPv6 可被多个站点共享 —— nginx 根据浏览器请求的域名(SNI)路由到对应项目,不占额外端口预算。"}
+                    ? t("sites.ipv6SharedHintUsed", { names: ipv6UsageMap.get(ipv6Address)!.join(", ") })
+                    : t("sites.ipv6SharedHintUnused")}
                 </span>
               </div>
             ) : (
               <div className="grid gap-1 md:col-span-2">
                 <UILabel htmlFor="site-natport">
-                  NAT 公网端口(预算池已占:
-                  {reservedPorts.map((p) => p.port).join(", ") || "无"})
+                  {t("sites.natPortLabel", { ports: reservedPorts.map((p) => p.port).join(", ") || t("sites.natPortNone") })}
                 </UILabel>
                 <UIInput
                   id="site-natport"
                   type="number"
-                  placeholder="例如 8443"
+                  placeholder={t("sites.natPortPlaceholder")}
                   value={natPort}
                   disabled={isEdit}
                   onChange={(event) => setNatPort(event.target.value)}
                 />
-                <span className="text-xs text-muted-foreground">
-                  一个端口只能挂一个监听,**不能多站共享** — 同一端口的两个
-                  站点必有一个起不来。需要多域名共享请用上方"IPv6 直连"。
-                </span>
+                <span className="text-xs text-muted-foreground">{t("sites.natPortHint")}</span>
               </div>
             )}
           </>
         )}
         <div className="grid gap-1 md:col-span-2">
-          <UILabel>HTTPS 证书</UILabel>
+          <UILabel>{t("sites.tlsLabel")}</UILabel>
           <Select
             value={tls}
             onValueChange={(value) => setTls(value as typeof tls)}
@@ -1401,34 +1383,32 @@ function SmartSiteForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="dns01">自动申请免费证书(推荐 · Let's Encrypt)</SelectItem>
-              <SelectItem value="imported">我已有证书(到时手动粘贴 PEM)</SelectItem>
-              <SelectItem value="none">不启用 HTTPS</SelectItem>
+              <SelectItem value="dns01">{t("sites.tlsAutoOption")}</SelectItem>
+              <SelectItem value="imported">{t("sites.tlsImportedOption")}</SelectItem>
+              <SelectItem value="none">{t("sites.tlsNoneOption")}</SelectItem>
             </SelectContent>
           </Select>
-          <span className="text-xs text-muted-foreground">
-            自动模式走 DNS-01 验证,无需 80/443 公网端口,适合 NAT VPS。
-          </span>
+          <span className="text-xs text-muted-foreground">{t("sites.tlsHint")}</span>
         </div>
       </div>
       {!isEdit && (nameConflict || rootConflict || domainConflict || natPortConflict) && (
         <div className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning space-y-0.5">
           {nameConflict && (
-            <div>· 站点名 "{name}" 已被使用 — 改一个</div>
+            <div>{t("sites.nameConflictWarning", { name })}</div>
           )}
           {rootConflict && (
             <div>
-              · 根目录 "{root}" 已被站点 "{rootConflict.name}" 占用 — 改站点名能自动派生新路径
+              {t("sites.rootConflictWarning", { root, owner: rootConflict.name })}
             </div>
           )}
           {domainConflict && (
             <div>
-              · 域名 "{domainConflict.domain}" 已被站点 "{domainConflict.site.name}" 占用
+              {t("sites.domainConflictWarning", { domain: domainConflict.domain, owner: domainConflict.site.name })}
             </div>
           )}
           {natPortConflict && (
             <div>
-              · NAT 端口 {natPortConflict.port} 已被站点 "{natPortConflict.owner}" 占用 — 一个端口只能挂一个监听
+              {t("sites.natPortConflictWarning", { port: natPortConflict.port, owner: natPortConflict.owner })}
             </div>
           )}
         </div>
@@ -1437,7 +1417,7 @@ function SmartSiteForm({
         <div className="rounded border border-info/40 bg-info/5 px-3 py-2 text-xs flex items-center gap-2">
           <Loader2 className="size-3.5 animate-spin shrink-0 text-info" />
           <span className="text-muted-foreground break-all">
-            {submitStep || "处理中..."}
+            {submitStep || t("sites.processingDefault")}
           </span>
         </div>
       )}
@@ -1446,12 +1426,12 @@ function SmartSiteForm({
           {submitting ? (
             <>
               <Loader2 className="size-4 animate-spin" />
-              {isEdit ? "正在保存..." : "正在创建..."}
+              {isEdit ? t("sites.savingInProgress") : t("sites.creatingInProgress")}
             </>
           ) : (
             <>
               <Save className="size-4" />
-              {isEdit ? "保存修改" : "创建站点"}
+              {isEdit ? t("sites.saveChanges") : t("sites.createSite")}
             </>
           )}
         </UIButton>
@@ -1459,18 +1439,18 @@ function SmartSiteForm({
       {isEdit && site && (
         <div className="rounded border border-border bg-muted/40 p-3 text-xs space-y-1">
           <div>
-            <span className="text-muted-foreground">配置路径:</span>{" "}
+            <span className="text-muted-foreground">{t("sites.configPathLabel")}</span>{" "}
             <span className="font-mono">{site.configPath}</span>
           </div>
           {site.systemdUnit && (
             <div>
-              <span className="text-muted-foreground">systemd unit:</span>{" "}
+              <span className="text-muted-foreground">{t("sites.systemdUnitLabel")}</span>{" "}
               <span className="font-mono">{site.systemdUnit}</span>
             </div>
           )}
           {site.internalPort > 0 && (
             <div>
-              <span className="text-muted-foreground">内部端口:</span>{" "}
+              <span className="text-muted-foreground">{t("sites.internalPortLabel")}</span>{" "}
               127.0.0.1:{site.internalPort}
             </div>
           )}
@@ -1489,6 +1469,7 @@ function SslPanel({
   onError,
   onRequestRevokeCert
 }: SiteSheetProps & { site: SiteItem }) {
+  const { t } = useLocale();
   const primaryDomain = site.domains[0] || "";
   const [importForm, setImportForm] = useState({
     domain: primaryDomain,
@@ -1506,7 +1487,7 @@ function SslPanel({
   const [recommended, setRecommended] = useState<{
     mode: "http01" | "dns01";
     reason: string;
-  }>({ mode: "dns01", reason: "正在探测主机环境..." });
+  }>({ mode: "dns01", reason: t("sites.probingHint") });
   const [challengeMode, setChallengeMode] = useState<"http01" | "dns01">("dns01");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // 把推荐值映射成实际可用值:不支持 webroot 时强制 DNS-01
@@ -1520,7 +1501,7 @@ function SslPanel({
         const mode: "http01" | "dns01" = raw === "http01" ? "http01" : "dns01";
         const reason =
           resp.capabilities?.acmeChallengeReason?.trim() ||
-          (mode === "http01" ? "公网环境,推荐 HTTP-01 一键完成。" : "受限环境,推荐 DNS-01 更稳。");
+          (mode === "http01" ? t("sites.publicRecommendHttp01") : t("sites.restrictedRecommendDns01"));
         // 站点不支持 HTTP-01 时,推荐值再好也只能落到 DNS-01
         const eff = mode === "http01" && !supportsHttp01 ? "dns01" : mode;
         setRecommended({ mode, reason });
@@ -1529,7 +1510,7 @@ function SslPanel({
         // capability 拿不到不致命,保持 dns01 fallback
         setRecommended({
           mode: "dns01",
-          reason: "环境探测失败,默认走 DNS-01(更通用)。"
+          reason: t("sites.probeFailedFallback")
         });
       }
     })();
@@ -1537,7 +1518,7 @@ function SslPanel({
       cancelled = true;
     };
     // supportsHttp01 是 site.root 的纯函数,不会乱重跑
-  }, [clients, supportsHttp01]);
+  }, [clients, supportsHttp01, t]);
   // DNS-01 自动轮询状态:加完 TXT 后前端 10 秒一次问 1.1.1.1 DoH,看到
   // 期望值就**自动**再调一次 requestCertificate 完成签发,用户不用手动
   // 再点。"checking"/"propagated"/"failed" 描述实时状态。
@@ -1593,7 +1574,7 @@ function SslPanel({
             if (finalResp.certificate) {
               setPendingChallenge(null);
               setAutoPollState("idle");
-              onMessage(`${primaryDomain} 已签发(自动完成)`);
+              onMessage(t("sites.certIssuedAutoFor", { domain: primaryDomain }));
               onChanged();
             } else if (finalResp.dnsRecordName) {
               // 后端还说要 TXT?说明上一份 pending 已过期,新生成了一份
@@ -1627,16 +1608,16 @@ function SslPanel({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [pendingChallenge, primaryDomain, clients, onChanged, onMessage, onError]);
+  }, [pendingChallenge, primaryDomain, clients, onChanged, onMessage, onError, t]);
 
   const requestSsl = async () => {
     if (!primaryDomain) {
-      onError("本站点没有绑定域名,无法申请证书 — 在'基础'Tab 填上 domains 后再来");
+      onError(t("sites.domainRequiredError"));
       return;
     }
     const acmeEmail = await ensureAcmeEmail();
     if (!acmeEmail) {
-      onError("申请已取消 —— 需要一个真实邮箱才能向 Let's Encrypt 注册账户");
+      onError(t("sites.acmeCancelledError"));
       return;
     }
     try {
@@ -1652,15 +1633,14 @@ function SslPanel({
         // DNS-01 第一次调用:ACME 返回 TXT 挑战
         setPendingChallenge(response);
         onMessage(
-          response.status?.message ??
-            "请按下方提示添加 TXT 记录,DNS 生效后再点一次申请完成签发"
+          response.status?.message ?? t("sites.addTxtHintMsg")
         );
       } else if (response.certificate) {
         // 拿到证书(HTTP-01 一步到位,或 DNS-01 第二次调用)
         setPendingChallenge(null);
-        onMessage(`${response.certificate.domain} 已签发`);
+        onMessage(t("sites.certIssuedFor", { domain: response.certificate.domain }));
       } else {
-        onMessage(response.status?.message ?? "申请已提交,请按提示继续");
+        onMessage(response.status?.message ?? t("sites.requestSubmittedDefault"));
       }
       onChanged();
     } catch (err) {
@@ -1670,7 +1650,7 @@ function SslPanel({
   const importCertificate = async () => {
     try {
       const response = await clients.ssl.importCertificate(importForm);
-      onMessage(response.status?.message || `${importForm.domain} 已导入`);
+      onMessage(response.status?.message || t("sites.certImported", { domain: importForm.domain }));
       onChanged();
     } catch (err) {
       onError(safeError(err));
@@ -1680,20 +1660,20 @@ function SslPanel({
     if (!cert) return;
     try {
       const response = await clients.ssl.renewCertificate({ domain: cert.domain });
-      const head = response.status?.message ?? `${cert.domain} 已续签`;
+      const head = response.status?.message ?? t("sites.certRenewed", { domain: cert.domain });
       if (response.dnsRecordName) {
         const tipLines = [
           head,
           "",
-          `TXT 名称: ${response.dnsRecordName}`,
-          `TXT 值:   ${response.dnsRecordValue}`,
+          t("sites.txtRecordNameLine", { name: response.dnsRecordName }),
+          t("sites.txtRecordValueLine", { value: response.dnsRecordValue }),
           "",
-          "把这条 TXT 加到 DNS 解析(CF 上要灰云 DNS only),传播后再点续签完成签发。"
+          t("sites.txtAddHint")
         ];
         onMessage(tipLines.join("\n"));
       } else {
         const detail = response.output;
-        onMessage(detail ? `${head} · ${detail}` : head);
+        onMessage(detail ? t("sites.renewDetailSuffix", { head, detail }) : head);
       }
       onChanged();
     } catch (err) {
@@ -1708,19 +1688,19 @@ function SslPanel({
           <div>
             <div className="font-medium">{cert.domain}</div>
             <div className="text-xs text-muted-foreground">
-              剩余 {cert.daysUntilExpiry} 天 · 分组 {cert.group || "default"}
+              {t("sites.certRemainingDetail", { days: cert.daysUntilExpiry, group: cert.group || "default" })}
             </div>
           </div>
           <div className="flex gap-1">
             <UIButton size="sm" variant="outline" onClick={() => void renewCert()}>
               <RotateCw className="size-3.5" />
-              续签
+              {t("sites.renew")}
             </UIButton>
             {onRequestRevokeCert && (
               <UIButton
                 size="sm"
                 variant="ghost"
-                title="撤销证书"
+                title={t("sites.revokeCertTitle")}
                 onClick={() => onRequestRevokeCert(cert)}
               >
                 <Trash2 className="size-3.5 text-destructive" />
@@ -1730,24 +1710,22 @@ function SslPanel({
         </div>
       ) : (
         <div className="rounded border border-warning/30 bg-warning/5 p-3 text-sm text-muted-foreground">
-          {primaryDomain || "(无域名)"} 当前无证书,可走自动签发或手动导入。
+          {t("sites.noCertYet", { domain: primaryDomain || t("sites.noDomainPlaceholder") })}
         </div>
       )}
 
       <div className="space-y-2">
-        <div className="text-sm font-medium">自动签发(Let&apos;s Encrypt)</div>
+        <div className="text-sm font-medium">{t("sites.autoIssueTitle")}</div>
         <div className="rounded border border-info/30 bg-info/5 p-3 text-xs space-y-1">
           <div>
-            <span className="font-medium">面板替你选了:</span>
+            <span className="font-medium">{t("sites.panelChosePrefix")}</span>
             {challengeMode === "http01"
-              ? " HTTP-01(一键完成,无需手动加 DNS)"
-              : " DNS-01(两步签发,你加 TXT 后面板自动完成)"}
+              ? t("sites.http01Chosen")
+              : t("sites.dns01Chosen")}
           </div>
           <div className="text-muted-foreground">{recommended.reason}</div>
           {!supportsHttp01 && recommended.mode === "http01" && (
-            <div className="text-muted-foreground">
-              当前站点无 webroot(纯反代 / 二进制站),HTTP-01 无法落文件,已自动切到 DNS-01。
-            </div>
+            <div className="text-muted-foreground">{t("sites.noWebrootAutoSwitch")}</div>
           )}
         </div>
         <UIButton
@@ -1758,18 +1736,18 @@ function SslPanel({
           <ShieldCheck className="size-3.5" />
           {primaryDomain
             ? pendingChallenge
-              ? `已加 TXT,继续签发 ${primaryDomain}`
+              ? t("sites.continueAfterTxt", { domain: primaryDomain })
               : challengeMode === "http01"
-                ? `一键申请 ${primaryDomain}`
-                : `开始申请 ${primaryDomain}`
-            : "需先在'基础'Tab 绑定域名"}
+                ? t("sites.oneClickRequest", { domain: primaryDomain })
+                : t("sites.startRequest", { domain: primaryDomain })
+            : t("sites.needBindDomainFirst")}
         </UIButton>
         <button
           type="button"
           className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline self-start"
           onClick={() => setAdvancedOpen((v) => !v)}
         >
-          {advancedOpen ? "收起高级选项" : "高级 · 我要自己选 challenge 类型"}
+          {advancedOpen ? t("sites.collapseAdvanced") : t("sites.expandAdvanced")}
         </button>
         {advancedOpen && (
           <div className="flex flex-col gap-1.5 rounded border border-border bg-muted/30 p-3 text-xs">
@@ -1785,11 +1763,11 @@ function SslPanel({
                 <div className="font-medium">
                   HTTP-01
                   {!supportsHttp01 && (
-                    <span className="ml-1 text-muted-foreground">— 当前站点无 webroot</span>
+                    <span className="ml-1 text-muted-foreground">{t("sites.http01NoWebrootSuffix")}</span>
                   )}
                 </div>
                 <div className="text-muted-foreground">
-                  把 token 文件写到 <code>.well-known/acme-challenge/</code>,LE 从 80 拉。要求公网 80 可达。
+                  {t("sites.http01DescBefore")}<code>.well-known/acme-challenge/</code>{t("sites.http01DescAfter")}
                 </div>
               </div>
             </label>
@@ -1802,49 +1780,43 @@ function SslPanel({
               />
               <div>
                 <div className="font-medium">DNS-01</div>
-                <div className="text-muted-foreground">
-                  你加 TXT,面板自动轮询 1.1.1.1 等到生效后完成签发。通配证书也只能走这条。
-                </div>
+                <div className="text-muted-foreground">{t("sites.dns01Desc")}</div>
               </div>
             </label>
           </div>
         )}
         {pendingChallenge && (pendingChallenge.dnsRecordName || pendingChallenge.dnsRecordValue) && (
           <div className="rounded border border-info/30 bg-info/5 p-3 text-xs space-y-2">
-            <div className="font-medium">需要在 DNS 服务商添加这条 TXT 记录:</div>
+            <div className="font-medium">{t("sites.needTxtRecordHint")}</div>
             <div className="grid gap-1 sm:grid-cols-[80px_1fr]">
-              <span className="text-muted-foreground">记录类型</span>
+              <span className="text-muted-foreground">{t("sites.recordType")}</span>
               <span className="font-mono">TXT</span>
-              <span className="text-muted-foreground">主机记录</span>
-              <span className="font-mono break-all">{pendingChallenge.dnsRecordName || "(待返回)"}</span>
-              <span className="text-muted-foreground">记录值</span>
-              <span className="font-mono break-all">{pendingChallenge.dnsRecordValue || "(待返回)"}</span>
+              <span className="text-muted-foreground">{t("sites.hostRecord")}</span>
+              <span className="font-mono break-all">{pendingChallenge.dnsRecordName || t("sites.pendingPlaceholder")}</span>
+              <span className="text-muted-foreground">{t("sites.recordValue")}</span>
+              <span className="font-mono break-all">{pendingChallenge.dnsRecordValue || t("sites.pendingPlaceholder")}</span>
             </div>
             {autoPollState === "checking" && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" />
-                加完 TXT 留这页开着 —— 面板每 10 秒查一次 1.1.1.1,看到就自动签发。
+                {t("sites.pollingCheckingHint")}
               </div>
             )}
             {autoPollState === "propagated" && (
-              <div className="text-success">
-                ✓ TXT 已传播,正在自动完成签发……
-              </div>
+              <div className="text-success">{t("sites.pollingPropagatedHint")}</div>
             )}
             {autoPollState === "failed" && (
-              <div className="text-destructive">
-                ✗ 5 分钟内还没在 1.1.1.1 看到 TXT 生效。检查:DNS 记录加了么?CF 那条 TXT 是不是被开了橙云代理(必须灰云 DNS only)?加完手动点上方按钮重试。
-              </div>
+              <div className="text-destructive">{t("sites.pollingFailedHint")}</div>
             )}
           </div>
         )}
       </div>
 
       <div className="space-y-2">
-        <div className="text-sm font-medium">手动导入证书</div>
+        <div className="text-sm font-medium">{t("sites.manualImportTitle")}</div>
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="grid gap-1">
-            <UILabel htmlFor="ssl-domain">域名</UILabel>
+            <UILabel htmlFor="ssl-domain">{t("sites.domain")}</UILabel>
             <UIInput
               id="ssl-domain"
               value={importForm.domain}
@@ -1854,7 +1826,7 @@ function SslPanel({
             />
           </div>
           <div className="grid gap-1">
-            <UILabel htmlFor="ssl-group">分组</UILabel>
+            <UILabel htmlFor="ssl-group">{t("sites.group")}</UILabel>
             <UIInput
               id="ssl-group"
               value={importForm.group}
@@ -1884,7 +1856,7 @@ function SslPanel({
         />
         <UIButton size="sm" variant="outline" onClick={() => void importCertificate()}>
           <FileUp className="size-3.5" />
-          导入
+          {t("sites.import")}
         </UIButton>
       </div>
     </div>
@@ -1910,6 +1882,7 @@ function DeployPanel({
   onMessage,
   onError
 }: SiteSheetProps & { site: SiteItem }) {
+  const { t, locale } = useLocale();
   const [phase, setPhase] = useState<"idle" | "uploading" | "extracting" | "swapping" | "done">(
     "idle"
   );
@@ -1984,7 +1957,11 @@ function DeployPanel({
             });
             setPhase("done");
             onMessage(
-              `部署完成 · ${data.files_extracted} 个文件 / ${formatBytes(BigInt(data.bytes_received))} → ${data.deployed_path}`
+              t("sites.deploySucceeded", {
+                files: data.files_extracted,
+                bytes: formatBytes(BigInt(data.bytes_received)),
+                path: data.deployed_path
+              })
             );
             onChanged();
             // 刷新归档列表(用户勾了保留就会出现新条目)
@@ -1996,7 +1973,7 @@ function DeployPanel({
             }
             resolve();
           } else if (data.stage === "error") {
-            onError(`部署失败:${data.message}`);
+            onError(t("sites.deployFailed", { message: data.message }));
             setPhase("idle");
             try {
               ws.close();
@@ -2020,11 +1997,11 @@ function DeployPanel({
 
   const doUpload = async (file: File) => {
     if (!supportsDeploy) {
-      onError("此站点没有 webroot,无法上传内容(纯反代 / RustBinary 站走代码部署)");
+      onError(t("sites.noWebrootUploadError"));
       return;
     }
     if (!file.name.toLowerCase().endsWith(".zip")) {
-      onError("请上传 .zip 归档(后端只识别 zip;tar.gz 后续支持)");
+      onError(t("sites.onlyZipError"));
       return;
     }
     const chunkSize = 1024 * 1024; // 1 MB
@@ -2054,7 +2031,9 @@ function DeployPanel({
         });
         if (!resp.ok) {
           const text = await resp.text();
-          throw new Error(`分片 ${i + 1}/${totalChunks} 失败 (HTTP ${resp.status}):${text.slice(0, 200)}`);
+          throw new Error(
+            t("sites.uploadFailedChunk", { index: i + 1, total: totalChunks, status: resp.status, body: text.slice(0, 200) })
+          );
         }
         if (i === totalChunks - 1) {
           const data = (await resp.json()) as { job_id?: string };
@@ -2063,7 +2042,7 @@ function DeployPanel({
         setProgressPct(Math.round(((i + 1) / totalChunks) * 100));
       }
       if (!jobId) {
-        throw new Error("最后一片没拿到 job_id,后端没启动解压任务");
+        throw new Error(t("sites.noJobIdError"));
       }
       // 切到 WS 等解压 + swap 进度
       setPhase("extracting");
@@ -2093,7 +2072,7 @@ function DeployPanel({
     setRolling(true);
     try {
       const resp = await clients.site.rollbackSite({ siteName: site.name });
-      onMessage(`已回滚 · ${resp.deployedPath}`);
+      onMessage(t("sites.rolledBackTo", { path: resp.deployedPath }));
       setLastDeploy(null);
       onChanged();
     } catch (err) {
@@ -2107,16 +2086,13 @@ function DeployPanel({
     <div className="flex flex-col gap-3">
       {!supportsDeploy ? (
         <div className="rounded border border-warning/30 bg-warning/5 p-3 text-sm">
-          此站点没有 webroot(<code>site.root</code> 为空),不能上传静态资源。
-          反向代理 / RustBinary 类站点请用代码部署路径(<code>git push</code> → 重启
-          systemd unit)。
+          {t("sites.noWebrootDeployBefore")}<code>site.root</code>{t("sites.noWebrootDeployMiddle")}<code>git push</code>{t("sites.noWebrootDeployAfter")}
         </div>
       ) : (
         <>
           <div className="text-sm text-muted-foreground">
-            把本地构建产物打成 <code>.zip</code> 拖进下方区域,面板会自动解压到
-            <code className="mx-1">{site.root}</code>。
-            旧内容保留一份作 <code>.previous</code> 备份,失误能一键回滚。
+            {t("sites.dropHintPart1")}<code>.zip</code>{t("sites.dropHintPart2")}
+            <code className="mx-1">{site.root}</code>{t("sites.dropHintPart3")}<code>.previous</code>{t("sites.dropHintPart4")}
           </div>
           <label className="flex items-start gap-2 text-xs cursor-pointer select-none">
             <input
@@ -2127,10 +2103,8 @@ function DeployPanel({
               onChange={(event) => setKeepArchive(event.target.checked)}
             />
             <div>
-              <div className="font-medium">保留压缩包到面板</div>
-              <div className="text-muted-foreground">
-                默认解压完自动删,省 2GB 存储。勾上会复制到面板归档目录,以后能下载备份 / 一键重传(还没实现一键重传,下个迭代加)。
-              </div>
+              <div className="font-medium">{t("sites.keepArchiveLabel")}</div>
+              <div className="text-muted-foreground">{t("sites.keepArchiveDesc")}</div>
             </div>
           </label>
           <div
@@ -2156,12 +2130,16 @@ function DeployPanel({
             />
             <div className="text-sm font-medium">
               {phase === "uploading"
-                ? `分片上传中 ${progressPct}%`
+                ? t("sites.uploadingPct", { pct: progressPct })
                 : phase === "extracting"
-                  ? `服务器在解压${extractInfo.bytes ? `(收 ${formatBytes(BigInt(extractInfo.bytes))})` : ""}...`
+                  ? extractInfo.bytes
+                    ? t("sites.extractingWithBytes", { bytes: formatBytes(BigInt(extractInfo.bytes)) })
+                    : t("sites.extractingPlain")
                   : phase === "swapping"
-                    ? `原子切换中${extractInfo.files ? `(${extractInfo.files} 个文件)` : ""}...`
-                    : "点这里选 .zip,或者拖一个文件进来"}
+                    ? extractInfo.files
+                      ? t("sites.swappingWithFiles", { files: extractInfo.files })
+                      : t("sites.swappingPlain")
+                    : t("sites.dropZonePrompt")}
             </div>
             {phase === "uploading" && (
               <div className="mt-2 h-1.5 w-full rounded bg-muted overflow-hidden">
@@ -2180,17 +2158,17 @@ function DeployPanel({
 
           {lastDeploy && phase === "done" && (
             <div className="rounded border border-success/30 bg-success/5 p-3 text-xs space-y-1">
-              <div className="font-medium">✓ 上次部署</div>
+              <div className="font-medium">{t("sites.lastDeployTitle")}</div>
               <div className="text-muted-foreground">
-                {lastDeploy.filesExtracted} 个文件 ·
-                {" "}
-                {formatBytes(BigInt(lastDeploy.bytesReceived))}
-                {" "}→{" "}
-                <code>{lastDeploy.deployedPath}</code>
+                {t("sites.lastDeploySummary", {
+                  files: lastDeploy.filesExtracted,
+                  bytes: formatBytes(BigInt(lastDeploy.bytesReceived)),
+                  path: lastDeploy.deployedPath
+                })}
               </div>
               {lastDeploy.previousBackupPath && (
                 <div className="text-muted-foreground">
-                  备份:<code>{lastDeploy.previousBackupPath}</code>
+                  {t("sites.backupLabel")}<code>{lastDeploy.previousBackupPath}</code>
                 </div>
               )}
             </div>
@@ -2205,17 +2183,15 @@ function DeployPanel({
                 disabled={rolling || phase !== "idle" && phase !== "done"}
               >
                 <RotateCw className="size-3.5" />
-                {rolling ? "回滚中..." : "回滚到上一版"}
+                {rolling ? t("sites.rollingInProgress") : t("sites.rollbackToPrevious")}
               </UIButton>
-              <span className="text-xs text-muted-foreground">
-                上一版备份存在;回滚后**当前版本会丢**,不能再回滚到再上一版。
-              </span>
+              <span className="text-xs text-muted-foreground">{t("sites.rollbackHint")}</span>
             </div>
           )}
 
           {archives.length > 0 && (
             <div className="space-y-2">
-              <div className="text-sm font-medium">已保留的压缩包</div>
+              <div className="text-sm font-medium">{t("sites.keptArchivesTitle")}</div>
               <div className="rounded border border-border divide-y text-xs">
                 {archives.map((arch) => (
                   <div
@@ -2227,7 +2203,7 @@ function DeployPanel({
                       <div className="text-muted-foreground">
                         {formatBytes(arch.sizeBytes)} ·{" "}
                         {arch.createdAtSeconds > 0n
-                          ? new Date(Number(arch.createdAtSeconds) * 1000).toLocaleString()
+                          ? formatDateTime(new Date(Number(arch.createdAtSeconds) * 1000), locale)
                           : "—"}
                       </div>
                     </div>
@@ -2242,19 +2218,19 @@ function DeployPanel({
                           window.location.href = url;
                         }}
                       >
-                        下载
+                        {t("sites.download")}
                       </UIButton>
                       <UIButton
                         size="sm"
                         variant="ghost"
-                        title="删除归档"
+                        title={t("sites.deleteArchiveTitle")}
                         onClick={async () => {
                           try {
                             await clients.site.deleteSiteArchive({
                               siteName: site.name,
                               archiveName: arch.name
                             });
-                            onMessage(`已删除归档 ${arch.name}`);
+                            onMessage(t("sites.archiveDeleted", { name: arch.name }));
                             void refreshArchives();
                           } catch (err) {
                             onError(safeError(err));
@@ -2268,26 +2244,23 @@ function DeployPanel({
                 ))}
               </div>
               <div className="text-xs text-muted-foreground">
-                这些归档存在面板 state 目录(<code>{`/var/lib/rustpanel/site/archives/${site.name}/`}</code>),不算在站点 webroot 占用里;省空间记得手动删。
+                {t("sites.archivesLocationHint", { path: `/var/lib/rustpanel/site/archives/${site.name}/` })}
               </div>
             </div>
           )}
 
           <div className="rounded border border-info/20 bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
-            <div className="font-medium text-foreground">怎么打 zip</div>
+            <div className="font-medium text-foreground">{t("sites.howToZipTitle")}</div>
             <div>
-              典型构建工具:Hugo 产出 <code>public/</code>,VitePress 产出
-              <code className="mx-1">.vitepress/dist/</code>,Vite/CRA 产出
-              <code className="mx-1">dist/</code>。
+              {t("sites.zipLine1Before")}<code>public/</code>{t("sites.zipLine1Mid1")}
+              <code className="mx-1">.vitepress/dist/</code>{t("sites.zipLine1Mid2")}
+              <code className="mx-1">dist/</code>{t("sites.zipLine1After")}
             </div>
             <div>
-              进到产物目录里再 <code>zip -r ../site.zip .</code>(注意末尾 <code>.</code>,
-              别把外层目录也打进去 —— 解出来根目录得直接是 <code>index.html</code>)。
+              {t("sites.zipLine2Before")}<code>zip -r ../site.zip .</code>{t("sites.zipLine2Mid")}<code>.</code>
+              {t("sites.zipLine2Mid2")}<code>index.html</code>{t("sites.zipLine2After")}
             </div>
-            <div>
-              Mac/Windows 也可以直接 "Compress" 那个产物目录,但解出来会带一层
-              外层 dir,先进去再压更干净。
-            </div>
+            <div>{t("sites.zipLine3")}</div>
           </div>
         </>
       )}
@@ -2325,6 +2298,7 @@ function SiteServicesPanel({
   onMessage,
   onError
 }: SiteSheetProps & { site: SiteItem }) {
+  const { t } = useLocale();
   const [units, setUnits] = useState(site.serviceUnits.join("\n"));
   const [logPaths, setLogPaths] = useState(site.logPaths.join("\n"));
   const [services, setServices] = useState<SiteServiceStatus[]>([]);
@@ -2358,7 +2332,7 @@ function SiteServicesPanel({
         serviceUnits: splitLines(units),
         logPaths: splitLines(logPaths)
       });
-      onMessage(`${site.name} 关联的服务已保存`);
+      onMessage(t("sites.linksSaved", { name: site.name }));
       onChanged();
     } catch (err) {
       onError(safeError(err));
@@ -2369,7 +2343,7 @@ function SiteServicesPanel({
     setBusyUnit(unit);
     try {
       await clients.site.controlSiteService({ name: site.name, unit, action });
-      onMessage(`${unit} 已${label}`);
+      onMessage(t("sites.serviceActionDone", { unit, action: label }));
       // systemctl 用 --no-block 提交,稍等再刷新才能看到新状态
       window.setTimeout(() => void refresh(), 1500);
     } catch (err) {
@@ -2395,14 +2369,14 @@ function SiteServicesPanel({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <div className="text-sm font-medium">关联服务({services.length})</div>
+        <div className="text-sm font-medium">{t("sites.servicesCountTitle", { count: services.length })}</div>
         <UIButton variant="outline" size="sm" onClick={() => void refresh()}>
           <RefreshCw className="size-3.5" />
-          刷新
+          {t("sites.refresh")}
         </UIButton>
       </div>
       {services.length === 0 ? (
-        <div className="empty-state text-xs">还没关联 systemd 单元;在下方填写后保存</div>
+        <div className="empty-state text-xs">{t("sites.noServicesLinked")}</div>
       ) : (
         <div className="flex flex-col gap-2">
           {services.map((service) => (
@@ -2419,30 +2393,30 @@ function SiteServicesPanel({
                     variant="outline"
                     size="sm"
                     disabled={busyUnit === service.unit}
-                    onClick={() => void control(service.unit, SiteServiceAction.START, isTimer(service.unit) ? "启用" : "启动")}
+                    onClick={() => void control(service.unit, SiteServiceAction.START, isTimer(service.unit) ? t("sites.enableTimer") : t("sites.start"))}
                   >
-                    启动
+                    {t("sites.start")}
                   </UIButton>
                   <UIButton
                     variant="outline"
                     size="sm"
                     disabled={busyUnit === service.unit}
-                    onClick={() => void control(service.unit, SiteServiceAction.RESTART, "重启")}
+                    onClick={() => void control(service.unit, SiteServiceAction.RESTART, t("sites.restart"))}
                   >
                     <RotateCw className="size-3.5" />
-                    重启
+                    {t("sites.restart")}
                   </UIButton>
                   <UIButton
                     variant="outline"
                     size="sm"
                     disabled={busyUnit === service.unit}
-                    onClick={() => void control(service.unit, SiteServiceAction.STOP, "停止")}
+                    onClick={() => void control(service.unit, SiteServiceAction.STOP, t("sites.stop"))}
                   >
-                    停止
+                    {t("sites.stop")}
                   </UIButton>
                   {!isTimer(service.unit) && (
                     <UIButton variant="outline" size="sm" onClick={() => void loadLog(service.unit)}>
-                      日志
+                      {t("sites.logs")}
                     </UIButton>
                   )}
                 </div>
@@ -2450,11 +2424,11 @@ function SiteServicesPanel({
               <div className="text-muted-foreground flex flex-wrap gap-x-3">
                 {service.description && <span>{service.description}</span>}
                 {service.mainPid > 0 && <span>PID {service.mainPid}</span>}
-                {service.memoryRssBytes > 0n && <span>内存 {formatBytes(Number(service.memoryRssBytes))}</span>}
-                {service.activeSince && <span>启动于 {service.activeSince}</span>}
-                {service.result && service.result !== "success" && <span>上次结果 {service.result}</span>}
-                {service.nextTrigger && <span>下次触发 {service.nextTrigger}</span>}
-                {service.lastTrigger && <span>上次触发 {service.lastTrigger}</span>}
+                {service.memoryRssBytes > 0n && <span>{t("sites.memoryLabel", { value: formatBytes(Number(service.memoryRssBytes)) })}</span>}
+                {service.activeSince && <span>{t("sites.startedAtLabel", { value: service.activeSince })}</span>}
+                {service.result && service.result !== "success" && <span>{t("sites.lastResultLabel", { value: service.result })}</span>}
+                {service.nextTrigger && <span>{t("sites.nextTriggerLabel", { value: service.nextTrigger })}</span>}
+                {service.lastTrigger && <span>{t("sites.lastTriggerLabel", { value: service.lastTrigger })}</span>}
               </div>
             </div>
           ))}
@@ -2463,7 +2437,7 @@ function SiteServicesPanel({
 
       {site.logPaths.length > 0 && (
         <div className="flex flex-wrap items-center gap-1">
-          <span className="text-xs text-muted-foreground">日志文件:</span>
+          <span className="text-xs text-muted-foreground">{t("sites.logFilesLabel")}</span>
           {site.logPaths.map((path) => (
             <UIButton key={path} variant="outline" size="sm" onClick={() => void loadLog(path)}>
               <span className="font-mono">{path}</span>
@@ -2476,22 +2450,22 @@ function SiteServicesPanel({
           <div className="flex items-center justify-between text-xs">
             <span className="font-mono">
               {logSource}
-              {log.truncated && <span className="text-muted-foreground">(仅显示末尾)</span>}
+              {log.truncated && <span className="text-muted-foreground">{t("sites.truncatedSuffix")}</span>}
             </span>
             <UIButton variant="outline" size="sm" onClick={() => void loadLog(logSource)}>
               <RefreshCw className="size-3.5" />
-              刷新日志
+              {t("sites.refreshLog")}
             </UIButton>
           </div>
           <pre className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs whitespace-pre-wrap font-mono overflow-x-auto m-0 max-h-80 overflow-y-auto">
-            {log.content || "(空)"}
+            {log.content || t("sites.emptyLog")}
           </pre>
         </div>
       )}
 
-      <div className="text-sm font-medium pt-2">关联设置</div>
+      <div className="text-sm font-medium pt-2">{t("sites.linkedSettingsTitle")}</div>
       <UILabel htmlFor="site-service-units" className="text-xs">
-        systemd 单元(每行一个,*.service / *.timer)
+        {t("sites.systemdUnitsLabel")}
       </UILabel>
       <textarea
         id="site-service-units"
@@ -2502,7 +2476,7 @@ function SiteServicesPanel({
         onChange={(event) => setUnits(event.target.value)}
       />
       <UILabel htmlFor="site-service-logs" className="text-xs">
-        日志文件(每行一个绝对路径,可选)
+        {t("sites.logFilesFieldLabel")}
       </UILabel>
       <textarea
         id="site-service-logs"
@@ -2515,7 +2489,7 @@ function SiteServicesPanel({
       <div>
         <UIButton size="sm" onClick={() => void saveLinks()}>
           <Save className="size-3.5" />
-          保存关联
+          {t("sites.saveLinks")}
         </UIButton>
       </div>
     </div>
@@ -2530,6 +2504,7 @@ function PerSiteReverseProxyPanel({
   onMessage,
   onError
 }: SiteSheetProps & { site: SiteItem }) {
+  const { t } = useLocale();
   const primaryDomain = site.domains[0] || "";
   const [form, setForm] = useState({
     name: site.name,
@@ -2564,7 +2539,7 @@ function PerSiteReverseProxyPanel({
           updatedAtSeconds: 0n
         }
       });
-      onMessage(`${form.name} 已保存`);
+      onMessage(t("sites.ruleSaved", { name: form.name }));
       onChanged();
     } catch (err) {
       onError(safeError(err));
@@ -2573,7 +2548,7 @@ function PerSiteReverseProxyPanel({
   const remove = async (rule: ReverseProxyRule) => {
     try {
       await clients.site.deleteReverseProxyRule({ id: rule.id });
-      onMessage(`${rule.name} 已删除`);
+      onMessage(t("sites.ruleDeleted", { name: rule.name }));
       onChanged();
     } catch (err) {
       onError(safeError(err));
@@ -2582,9 +2557,9 @@ function PerSiteReverseProxyPanel({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-sm font-medium">当前规则({ownRules.length})</div>
+      <div className="text-sm font-medium">{t("sites.currentRulesTitle", { count: ownRules.length })}</div>
       {ownRules.length === 0 ? (
-        <div className="empty-state text-xs">{primaryDomain} 暂无反代规则</div>
+        <div className="empty-state text-xs">{t("sites.noRpRulesForDomain", { domain: primaryDomain })}</div>
       ) : (
         <div className="flex flex-col gap-2">
           {ownRules.map((rule) => (
@@ -2604,17 +2579,17 @@ function PerSiteReverseProxyPanel({
               </div>
               <UIButton size="sm" variant="outline" onClick={() => void remove(rule)}>
                 <Trash2 className="size-3.5" />
-                删除
+                {t("sites.delete")}
               </UIButton>
             </div>
           ))}
         </div>
       )}
 
-      <div className="text-sm font-medium pt-2">新增规则</div>
+      <div className="text-sm font-medium pt-2">{t("sites.addRuleTitle")}</div>
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="grid gap-1">
-          <UILabel htmlFor="rp-name">名称</UILabel>
+          <UILabel htmlFor="rp-name">{t("sites.name")}</UILabel>
           <UIInput
             id="rp-name"
             value={form.name}
@@ -2622,7 +2597,7 @@ function PerSiteReverseProxyPanel({
           />
         </div>
         <div className="grid gap-1">
-          <UILabel htmlFor="rp-path">路径前缀</UILabel>
+          <UILabel htmlFor="rp-path">{t("sites.pathPrefixLabel")}</UILabel>
           <UIInput
             id="rp-path"
             value={form.pathPrefix}
@@ -2630,7 +2605,7 @@ function PerSiteReverseProxyPanel({
           />
         </div>
         <div className="grid gap-1 sm:col-span-2">
-          <UILabel htmlFor="rp-targets">目标(逗号分隔)</UILabel>
+          <UILabel htmlFor="rp-targets">{t("sites.targetsLabel")}</UILabel>
           <UIInput
             id="rp-targets"
             value={form.targets}
@@ -2638,7 +2613,7 @@ function PerSiteReverseProxyPanel({
           />
         </div>
         <div className="grid gap-1">
-          <UILabel>负载均衡</UILabel>
+          <UILabel>{t("sites.loadBalanceLabel")}</UILabel>
           <Select
             value={form.method}
             onValueChange={(value) =>
@@ -2649,14 +2624,14 @@ function PerSiteReverseProxyPanel({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="round_robin">轮询</SelectItem>
-              <SelectItem value="least_conn">最少连接</SelectItem>
-              <SelectItem value="ip_hash">IP Hash</SelectItem>
+              <SelectItem value="round_robin">{t("sites.roundRobin")}</SelectItem>
+              <SelectItem value="least_conn">{t("sites.leastConn")}</SelectItem>
+              <SelectItem value="ip_hash">{t("sites.ipHash")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="grid gap-1">
-          <UILabel htmlFor="rp-rate">限速 / 分钟</UILabel>
+          <UILabel htmlFor="rp-rate">{t("sites.rateLimitLabel")}</UILabel>
           <UIInput
             id="rp-rate"
             type="number"
@@ -2671,13 +2646,13 @@ function PerSiteReverseProxyPanel({
             checked={form.cacheEnabled}
             onCheckedChange={(checked) => setForm({ ...form, cacheEnabled: checked })}
           />
-          <UILabel>启用缓存</UILabel>
+          <UILabel>{t("sites.enableCache")}</UILabel>
         </div>
       </div>
       <div className="flex justify-end">
         <UIButton size="sm" onClick={() => void submit()}>
           <Plus className="size-3.5" />
-          新增规则
+          {t("sites.addRuleTitle")}
         </UIButton>
       </div>
     </div>
@@ -2685,6 +2660,7 @@ function PerSiteReverseProxyPanel({
 }
 
 function RewritePanel({ templates }: { templates: RewriteTemplate[] }) {
+  const { t } = useLocale();
   const [selectedId, setSelectedId] = useState(templates[0]?.id ?? "");
   const [content, setContent] = useState(templates[0]?.content ?? "");
 
@@ -2698,7 +2674,7 @@ function RewritePanel({ templates }: { templates: RewriteTemplate[] }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="grid gap-1">
-        <UILabel>模板</UILabel>
+        <UILabel>{t("sites.templateLabel")}</UILabel>
         <Select
           value={selectedId}
           onValueChange={(id) => {
@@ -2708,7 +2684,7 @@ function RewritePanel({ templates }: { templates: RewriteTemplate[] }) {
           }}
         >
           <SelectTrigger>
-            <SelectValue placeholder="选择模板" />
+            <SelectValue placeholder={t("sites.selectTemplatePlaceholder")} />
           </SelectTrigger>
           <SelectContent>
             {templates.map((template) => (
@@ -2726,9 +2702,7 @@ function RewritePanel({ templates }: { templates: RewriteTemplate[] }) {
         value={content}
         onChange={(event) => setContent(event.target.value)}
       />
-      <p className="text-xs text-muted-foreground">
-        伪静态目前只在前端预览;站点 vhost 写入由 site.rs render_site_config 决定,后续在 UpdateSite RPC 落地时把这段配置打通持久化。
-      </p>
+      <p className="text-xs text-muted-foreground">{t("sites.rewriteFooterNote")}</p>
     </div>
   );
 }
