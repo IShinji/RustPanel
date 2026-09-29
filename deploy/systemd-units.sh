@@ -187,6 +187,13 @@ APTCONF
 # 写全部单元并按节俭模式切换启动方式。已在跑的面板会被重启。
 rustpanel_write_units() {
   local frugal="${RUSTPANEL_FRUGAL:-0}"
+  # 老版 update.sh 会把新发布包整个解压进 bin/:把包里的新 update.sh 就位并清掉 bin/deploy,
+  # 之后的升级就走新流程(包内脚本、原子替换、自更新)
+  if [[ -f "$INSTALL_DIR/bin/deploy/update.sh" ]]; then
+    install -m 0755 "$INSTALL_DIR/bin/deploy/update.sh" "$INSTALL_DIR/deploy/update.sh.new"
+    mv -f "$INSTALL_DIR/deploy/update.sh.new" "$INSTALL_DIR/deploy/update.sh"
+    rm -rf "$INSTALL_DIR/bin/deploy"
+  fi
   # 先停:非节俭 → 节俭时面板自己占着端口,socket 单元会 bind 失败
   systemctl stop rustpanel-backend.service >/dev/null 2>&1 || true
   rustpanel_write_backend_service "$frugal"
