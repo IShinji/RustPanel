@@ -162,7 +162,8 @@ jobs:
       - if: steps.backend-crate.outputs.exists != 'true'
         run: echo "src/backend/Cargo.toml not found; skipping backend image build."
 
-  build-backend-binary:
+  # micro 二进制与镜像并行构建;完整版二进制不再单独编译,发布时直接从刚推送的镜像里取
+  build-micro-binary:
     if: github.event_name != 'pull_request'
     needs: verify
     runs-on: [self-hosted, Linux, ARM64, m4-runner, rustpanel-runner]
@@ -174,20 +175,6 @@ jobs:
           keep-state: true
           cleanup: false
           cache-binary: false
-      - name: Build linux/amd64 backend binary
-        run: |
-          rm -rf dist/backend-binary dist/release
-          mkdir -p dist/backend-binary dist/release
-          docker buildx build \
-            --builder rustpanel-backend-binary-builder \
-            --platform linux/amd64 \
-            --target binary-export \
-            --output type=local,dest=dist/backend-binary \
-            -f src/backend/Dockerfile .
-          # 部署脚本随二进制一起发布:升级时二进制与单元脚本版本一致
-          mkdir -p dist/backend-binary/deploy
-          cp deploy/systemd-units.sh deploy/update.sh dist/backend-binary/deploy/
-          tar -C dist/backend-binary -czf dist/release/rustpanel-backend-linux-amd64.tar.gz rustpanel-backend deploy
       - name: Build linux/amd64 micro backend binary
         run: |
           rm -rf dist/backend-binary-micro
@@ -199,8 +186,52 @@ jobs:
             --build-arg BACKEND_CARGO_FLAGS=--no-default-features \
             --output type=local,dest=dist/backend-binary-micro \
             -f src/backend/Dockerfile .
-          mkdir -p dist/backend-binary-micro/deploy
-          cp deploy/systemd-units.sh deploy/update.sh dist/backend-binary-micro/deploy/
+          ls -l dist/backend-binary-micro/rustpanel-backend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustpanel-backend-micro
+          path: dist/backend-binary-micro/rustpanel-backend
+          retention-days: 1
+
+  publish-binaries:
+    if: github.event_name != 'pull_request'
+    needs: [build-backend-image, build-micro-binary]
+    runs-on: [self-hosted, Linux, ARM64, m4-runner, rustpanel-runner]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Prepare image repository
+        id: image_ref
+        run: |
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "image_repository=ghcr.io/${owner_lc}/rustpanel-backend" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract full backend binary from image
+        env:
+          IMAGE: ${{ steps.image_ref.outputs.image_repository }}:sha-${{ github.sha }}
+        run: |
+          rm -rf dist/backend-binary dist/release
+          mkdir -p dist/backend-binary dist/release
+          docker pull --platform linux/amd64 "$IMAGE"
+          container="$(docker create --platform linux/amd64 "$IMAGE")"
+          docker cp "$container:/app/rustpanel-backend" dist/backend-binary/rustpanel-backend
+          docker rm "$container" >/dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          name: rustpanel-backend-micro
+          path: dist/backend-binary-micro
+      - name: Package release archives
+        run: |
+          chmod +x dist/backend-binary/rustpanel-backend dist/backend-binary-micro/rustpanel-backend
+          # 部署脚本随二进制一起发布:升级时二进制与单元脚本版本一致
+          for dir in dist/backend-binary dist/backend-binary-micro; do
+            mkdir -p "$dir/deploy"
+            cp deploy/systemd-units.sh deploy/update.sh "$dir/deploy/"
+          done
+          tar -C dist/backend-binary -czf dist/release/rustpanel-backend-linux-amd64.tar.gz rustpanel-backend deploy
           tar -C dist/backend-binary-micro -czf dist/release/rustpanel-backend-micro-linux-amd64.tar.gz rustpanel-backend deploy
           ls -l dist/backend-binary/rustpanel-backend dist/backend-binary-micro/rustpanel-backend
       - uses: actions/setup-node@v6
