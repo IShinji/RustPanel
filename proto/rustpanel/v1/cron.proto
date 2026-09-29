@@ -99,7 +99,17 @@ message GetCronTaskLogResponse {
 service CronService {
   rpc ListCronTasks(ListCronTasksRequest) returns (ListCronTasksResponse);
   rpc CreateCronTask(CreateCronTaskRequest) returns (CreateCronTaskResponse);
+  rpc DeleteCronTask(DeleteCronTaskRequest) returns (DeleteCronTaskResponse);
   rpc UpdateCronTaskState(UpdateCronTaskStateRequest) returns (UpdateCronTaskStateResponse);
   rpc RunCronTask(RunCronTaskRequest) returns (RunCronTaskResponse);
   rpc GetCronTaskLog(GetCronTaskLogRequest) returns (GetCronTaskLogResponse);
+}
+
+// DeleteCronTaskRequest 删除计划任务(同时从系统 crontab 移除)。
+message DeleteCronTaskRequest {
+  string task_id = 1;
+}
+
+message DeleteCronTaskResponse {
+  Response status = 1;
 }

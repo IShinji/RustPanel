@@ -919,9 +919,45 @@ function SmartSiteForm({
     [installedApps]
   );
 
+  const submitEdit = async () => {
+    if (!site) return;
+    const domains = domain
+      .split(/[\s,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (domains.length === 0) {
+      onError("至少保留一个域名");
+      return;
+    }
+    if (domainConflict) {
+      onError("域名已被其他站点使用");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await clients.site.updateSite({
+        name: site.name,
+        domains,
+        proxyTarget: kind === "reverse-proxy" ? proxyTarget.trim() : "",
+        tlsStrategy:
+          tls === "none"
+            ? SiteTlsStrategy.NONE
+            : tls === "imported"
+              ? SiteTlsStrategy.IMPORTED
+              : SiteTlsStrategy.LETSENCRYPT_DNS01
+      });
+      onMessage(`${site.name} 已更新`);
+      onChanged();
+    } catch (err) {
+      onError(safeError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const submit = async () => {
     if (isEdit) {
-      onError("当前后端无 UpdateSite RPC,暂不支持编辑已有站点。删了重建可绕过。");
+      await submitEdit();
       return;
     }
     // 硬校验:撞名 / 撞 root / 撞域名一律拒
@@ -1110,7 +1146,6 @@ function SmartSiteForm({
           <UIInput
             id="site-domain"
             value={domain}
-            disabled={isEdit}
             onChange={(event) => setDomain(event.target.value)}
           />
         </div>
@@ -1269,7 +1304,6 @@ function SmartSiteForm({
               id="site-upstream"
               placeholder="http://127.0.0.1:3000"
               value={proxyTarget}
-              disabled={isEdit}
               onChange={(event) => setProxyTarget(event.target.value)}
             />
             <span className="text-xs text-muted-foreground">
@@ -1362,7 +1396,6 @@ function SmartSiteForm({
           <Select
             value={tls}
             onValueChange={(value) => setTls(value as typeof tls)}
-            disabled={isEdit}
           >
             <SelectTrigger>
               <SelectValue />
@@ -1409,16 +1442,16 @@ function SmartSiteForm({
         </div>
       )}
       <div className="flex justify-end gap-2">
-        <UIButton onClick={() => void submit()} disabled={isEdit || submitting}>
+        <UIButton onClick={() => void submit()} disabled={submitting}>
           {submitting ? (
             <>
               <Loader2 className="size-4 animate-spin" />
-              正在创建...
+              {isEdit ? "正在保存..." : "正在创建..."}
             </>
           ) : (
             <>
               <Save className="size-4" />
-              {isEdit ? "暂不支持编辑(UpdateSite RPC 待落地)" : "创建站点"}
+              {isEdit ? "保存修改" : "创建站点"}
             </>
           )}
         </UIButton>

@@ -25,8 +25,9 @@ use crate::{
         ReloadNginxRequest, ReloadNginxResponse, RenderRewriteTemplateRequest,
         RenderRewriteTemplateResponse, ReverseProxyRule, RewriteTemplate, RollbackSiteRequest,
         RollbackSiteResponse, SiteArchive, SiteBindKind, SiteBinding, SiteItem, SiteKind,
-        SiteServiceAction, SiteTlsStrategy, UpdateSiteServicesRequest, UpdateSiteServicesResponse,
-        UpsertReverseProxyRuleRequest, UpsertReverseProxyRuleResponse, UpstreamTarget,
+        SiteServiceAction, SiteTlsStrategy, UpdateSiteRequest, UpdateSiteResponse,
+        UpdateSiteServicesRequest, UpdateSiteServicesResponse, UpsertReverseProxyRuleRequest,
+        UpsertReverseProxyRuleResponse, UpstreamTarget,
     },
 };
 
@@ -640,6 +641,66 @@ impl SiteService for SiteServiceImpl {
         Ok(GrpcResponse::new(ListSiteArchivesResponse {
             status: Some(ok_response("ok")),
             archives,
+        }))
+    }
+
+    async fn update_site(
+        &self,
+        request: Request<UpdateSiteRequest>,
+    ) -> Result<GrpcResponse<UpdateSiteResponse>, Status> {
+        crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
+        let request = request.into_inner();
+        let existing = self.linked_site(&request.name).await?;
+        let domains: Vec<String> = request
+            .domains
+            .iter()
+            .map(|domain| domain.trim().to_owned())
+            .filter(|domain| !domain.is_empty())
+            .collect();
+        let proxy_target = request.proxy_target.trim();
+        let tls_strategy = if request.tls_strategy == SiteTlsStrategy::Unspecified as i32 {
+            existing.tls_strategy
+        } else {
+            request.tls_strategy
+        };
+        // 其余字段沿用;复用 create_site 按新值重新生成 vhost / rpxy 片段 / sidecar
+        let rebuilt = CreateSiteRequest {
+            name: existing.name.clone(),
+            domains: if domains.is_empty() {
+                existing.domains.clone()
+            } else {
+                domains
+            },
+            root: existing.root.clone(),
+            proxy_target: if proxy_target.is_empty() {
+                existing.proxy_target.clone()
+            } else {
+                proxy_target.to_owned()
+            },
+            ssl_enabled: tls_strategy != SiteTlsStrategy::None as i32
+                && tls_strategy != SiteTlsStrategy::Unspecified as i32,
+            engine: existing.engine.clone(),
+            listen_addr: existing.listen_addr.clone(),
+            kind: existing.kind,
+            binding: existing.binding.clone(),
+            tls_strategy,
+            binary_path: String::new(),
+        };
+        let created = self.create_site(Request::new(rebuilt)).await?.into_inner();
+        let mut site = created
+            .site
+            .ok_or_else(|| Status::internal("site rebuild returned no site"))?;
+        // create_site 不认识关联服务,把原来的关联补回去
+        if !existing.service_units.is_empty() || !existing.log_paths.is_empty() {
+            let _guard = self.store.write_lock.lock().await;
+            site.service_units = existing.service_units;
+            site.log_paths = existing.log_paths;
+            self.store.save_nginx_site_metadata(&site).await?;
+        }
+        Ok(GrpcResponse::new(UpdateSiteResponse {
+            status: Some(ok_response("站点已更新")),
+            site: Some(site),
+            rendered_config: created.rendered_config,
         }))
     }
 

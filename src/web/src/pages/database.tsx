@@ -11,7 +11,7 @@ import { CronRunState, CronTask, CronTaskState } from "../gen/rustpanel/v1/cron_
 import { RedisInfo, SqliteFile } from "../gen/rustpanel/v1/db_pb";
 import { formatBytes, formatDuration, safeError } from "../lib/format";
 import { type Clients } from "../lib/rpc";
-import { Clock, Download, FileText, Play, Plus, RefreshCw, RotateCw, Save } from "lucide-react";
+import { Clock, Download, FileText, Pause, Pencil, Play, Plus, RefreshCw, RotateCw, Save, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useMountEffect } from "../lib/hooks";
 
@@ -779,6 +779,8 @@ export function CronPanel({ clients }: { clients: Clients }) {
   const [form, setForm] = useState({ name: "daily-backup", cron: "0 0 2 * * *", command: "echo ok" });
   const [presetId, setPresetId] = useState("custom");
   const [log, setLog] = useState("");
+  // 编辑中的任务;null 表示新建
+  const [editing, setEditing] = useState<CronTask | null>(null);
 
   const load = async () => {
     const response = await clients.cron.listCronTasks({});
@@ -787,19 +789,59 @@ export function CronPanel({ clients }: { clients: Clients }) {
 
   useMountEffect(() => load());
 
-  const createTask = async () => {
-    await clients.cron.createCronTask({
-      task: {
-        id: "",
-        name: form.name,
-        cronExpression: form.cron,
-        command: form.command,
-        state: CronTaskState.ENABLED,
-        timeoutSeconds: 300n,
-        nextRunAt: ""
-      }
-    });
-    await load();
+  const saveTask = async () => {
+    try {
+      // CreateCronTask 按 id 覆盖,带上原 id 就是编辑
+      await clients.cron.createCronTask({
+        task: {
+          id: editing?.id ?? "",
+          name: form.name,
+          cronExpression: form.cron,
+          command: form.command,
+          state: editing?.state ?? CronTaskState.ENABLED,
+          timeoutSeconds: editing?.timeoutSeconds ?? 300n,
+          nextRunAt: ""
+        }
+      });
+      setLog(`${form.name} 已保存`);
+      setEditing(null);
+      await load();
+    } catch (err) {
+      setLog(safeError(err));
+    }
+  };
+
+  const startEdit = (task: CronTask) => {
+    setEditing(task);
+    setPresetId("custom");
+    setForm({ name: task.name, cron: task.cronExpression, command: task.command });
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setForm({ name: "daily-backup", cron: "0 0 2 * * *", command: "echo ok" });
+  };
+
+  const toggleTask = async (task: CronTask) => {
+    const next = task.state === CronTaskState.ENABLED ? CronTaskState.PAUSED : CronTaskState.ENABLED;
+    try {
+      await clients.cron.updateCronTaskState({ taskId: task.id, state: next });
+      await load();
+    } catch (err) {
+      setLog(safeError(err));
+    }
+  };
+
+  const deleteTask = async (task: CronTask) => {
+    if (!window.confirm(`删除计划任务「${task.name}」?系统 crontab 里的对应条目也会移除。`)) return;
+    try {
+      await clients.cron.deleteCronTask({ taskId: task.id });
+      if (editing?.id === task.id) cancelEdit();
+      setLog(`${task.name} 已删除`);
+      await load();
+    } catch (err) {
+      setLog(safeError(err));
+    }
   };
 
   const runTask = async (task: CronTask) => {
@@ -819,7 +861,7 @@ export function CronPanel({ clients }: { clients: Clients }) {
       </header>
 
       <div className="panel">
-        <div className="panel-title"><Clock size={18} /><span>创建任务</span></div>
+        <div className="panel-title"><Clock size={18} /><span>{editing ? `编辑任务:${editing.name}` : "创建任务"}</span></div>
         <div className="input-row">
           <span>常用模板</span>
           <Select
@@ -848,7 +890,12 @@ export function CronPanel({ clients }: { clients: Clients }) {
         <Input label="名称" value={form.name} onChange={(name) => setForm({ ...form, name })} />
         <Input label="Cron" value={form.cron} onChange={(cron) => setForm({ ...form, cron })} />
         <Input label="脚本" value={form.command} onChange={(command) => setForm({ ...form, command })} />
-        <button onClick={() => void createTask()} type="button"><Save size={15} />保存</button>
+        <div className="flex gap-2">
+          <button onClick={() => void saveTask()} type="button"><Save size={15} />{editing ? "保存修改" : "保存"}</button>
+          {editing && (
+            <button onClick={cancelEdit} type="button">取消编辑</button>
+          )}
+        </div>
       </div>
 
       <div className="panel wide-panel">
@@ -861,6 +908,13 @@ export function CronPanel({ clients }: { clients: Clients }) {
             </div>
             <StatusPill label={task.state === CronTaskState.ENABLED ? "启用" : "暂停"} tone={task.state === CronTaskState.ENABLED ? "good" : "muted"} />
             <IconButton label="运行" icon={Play} onClick={() => void runTask(task)} />
+            <IconButton
+              label={task.state === CronTaskState.ENABLED ? "暂停" : "启用"}
+              icon={task.state === CronTaskState.ENABLED ? Pause : RotateCw}
+              onClick={() => void toggleTask(task)}
+            />
+            <IconButton label="编辑" icon={Pencil} onClick={() => startEdit(task)} />
+            <IconButton label="删除" icon={Trash2} onClick={() => void deleteTask(task)} />
           </div>
         ))}
       </div>

@@ -171,6 +171,20 @@ message CreateSiteResponse {
   string rendered_config = 3;
 }
 
+// UpdateSiteRequest 编辑站点;domains 为空、proxy_target 为空表示不改。
+message UpdateSiteRequest {
+  string name = 1;
+  repeated string domains = 2;
+  string proxy_target = 3;
+  SiteTlsStrategy tls_strategy = 4;
+}
+
+message UpdateSiteResponse {
+  Response status = 1;
+  SiteItem site = 2;
+  string rendered_config = 3;
+}
+
 // DeleteSiteRequest 表示删除站点请求(按 name 精确匹配)。
 message DeleteSiteRequest {
   string name = 1;
@@ -296,6 +310,8 @@ message DeleteSiteArchiveResponse {
 service SiteService {
   rpc ListSites(ListSitesRequest) returns (ListSitesResponse);
   rpc CreateSite(CreateSiteRequest) returns (CreateSiteResponse);
+  // 编辑已有站点的域名 / 反代上游 / HTTPS 策略(其余字段沿用),配置按新值重新生成
+  rpc UpdateSite(UpdateSiteRequest) returns (UpdateSiteResponse);
   rpc DeleteSite(DeleteSiteRequest) returns (DeleteSiteResponse);
   rpc ReloadNginx(ReloadNginxRequest) returns (ReloadNginxResponse);
   rpc ListRewriteTemplates(ListRewriteTemplatesRequest) returns (ListRewriteTemplatesResponse);

@@ -14,9 +14,10 @@ use crate::{
     ok_response,
     proto::rustpanel::v1::{
         cron_service_server::CronService, CreateCronTaskRequest, CreateCronTaskResponse, CronRun,
-        CronRunState, CronTask, CronTaskState, GetCronTaskLogRequest, GetCronTaskLogResponse,
-        ListCronTasksRequest, ListCronTasksResponse, RunCronTaskRequest, RunCronTaskResponse,
-        UpdateCronTaskStateRequest, UpdateCronTaskStateResponse,
+        CronRunState, CronTask, CronTaskState, DeleteCronTaskRequest, DeleteCronTaskResponse,
+        GetCronTaskLogRequest, GetCronTaskLogResponse, ListCronTasksRequest, ListCronTasksResponse,
+        RunCronTaskRequest, RunCronTaskResponse, UpdateCronTaskStateRequest,
+        UpdateCronTaskStateResponse,
     },
 };
 
@@ -86,6 +87,24 @@ impl CronService for CronServiceImpl {
         Ok(GrpcResponse::new(CreateCronTaskResponse {
             status: Some(ok_response("cron task saved")),
             task: Some(task),
+        }))
+    }
+
+    async fn delete_cron_task(
+        &self,
+        request: Request<DeleteCronTaskRequest>,
+    ) -> Result<GrpcResponse<DeleteCronTaskResponse>, Status> {
+        let task_id = request.into_inner().task_id;
+        let mut tasks = self.store.load().await?;
+        let before = tasks.len();
+        tasks.retain(|task| task.id != task_id);
+        if tasks.len() == before {
+            return Err(Status::not_found("cron task not found"));
+        }
+        self.store.save(&tasks).await?;
+        sync_system_crontab(&self.store, &tasks).await?;
+        Ok(GrpcResponse::new(DeleteCronTaskResponse {
+            status: Some(ok_response("cron task deleted")),
         }))
     }
 
