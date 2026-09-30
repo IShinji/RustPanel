@@ -30,8 +30,8 @@ jobs:
   cleanup:
     runs-on: [self-hosted, Linux, ARM64, m4-runner, rustpanel-runner]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Verify runner Bun
