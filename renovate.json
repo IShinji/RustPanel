@@ -1,0 +1,85 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "timezone": "America/Los_Angeles",
+  "labels": ["dependencies"],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/target/**"
+  ],
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "prConcurrentLimit": 0,
+  "schedule": ["* 0-3 * * *"],
+  "rebaseWhen": "conflicted",
+  "prHourlyLimit": 0,
+  "dependencyDashboardTitle": "🤖 Renovate 依赖看板",
+  "dependencyDashboardAutoclose": true,
+  "minimumReleaseAge": "1 day",
+  "minimumReleaseAgeBehaviour": "timestamp-optional",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["* 0-3 * * *"]
+  },
+  "packageRules": [
+    {
+      "description": "统一 commit / PR 前缀为 chore(deps):覆盖 config:recommended 对生产依赖使用 fix 的默认行为,与仓库提交约定一致",
+      "matchPackageNames": ["*"],
+      "semanticCommitType": "chore"
+    },
+    {
+      "description": "生产运行镜像(rust:1-bookworm / debian:bookworm-slim / oven/bun)patch + minor 在 CI 通过后自动合并;major 单独开 PR 人工确认",
+      "matchManagers": ["dockerfile"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "groupName": "Docker 基础镜像 (patch/minor)",
+      "groupSlug": "docker-base-images-minor-patch"
+    },
+    {
+      "description": "前端依赖(根目录 scripts 工具链 + src/web 面板)同步抬高 package.json 版本范围,对齐人工 ncu -u 习惯",
+      "matchManagers": ["bun"],
+      "rangeStrategy": "bump"
+    },
+    {
+      "description": "前端依赖 patch + minor 合并升级;CI(bun lint / bun test / bun run build)通过后自动合并",
+      "matchManagers": ["bun"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "groupName": "前端依赖 (patch/minor)",
+      "groupSlug": "frontend-minor-patch"
+    },
+    {
+      "description": "前端 major 升级每个依赖单独开 PR;CI 通过即自动合并,失败则保留 PR 待人工处理 Breaking Change",
+      "matchManagers": ["bun"],
+      "matchUpdateTypes": ["major"],
+      "automerge": true
+    },
+    {
+      "description": "Rust crate 的 patch + minor 合并升级;CI(cargo fmt / clippy / test,含 --no-default-features)通过后自动合并",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "groupName": "Rust 依赖 (patch/minor)",
+      "groupSlug": "rust-crates-minor-patch"
+    },
+    {
+      "description": "Rust crate major 升级每个 crate 单独开 PR,CI 通过即自动合并",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["major"],
+      "automerge": true
+    },
+    {
+      "description": "GitHub Actions 全部升级(含 major)合并为一个 PR,只跑一轮 CI,通过即自动合并",
+      "matchManagers": ["github-actions"],
+      "automerge": true,
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions"
+    }
+  ]
+}
