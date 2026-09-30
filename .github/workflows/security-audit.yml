@@ -4,6 +4,8 @@ name: Security Audit
 # 工具链 + src/web 面板)各自用 bun audit。Renovate 只对直接依赖即时出漏洞修复 PR,
 # bun / cargo 的传递依赖要靠锁文件维护刷新;这里每天扫一次现有锁文件,发现已知漏洞
 # 即失败(GitHub 发送 workflow 失败通知),不等人工察觉。
+# 已知暂时没有修复版本的漏洞在 .cargo/audit.toml 里显式 ignore 并注明原因,不然
+# 这个 workflow 会被卡成永久红,大家看惯了红色就不会再点进去看了。
 on:
   schedule:
     # UTC 15:00 = PDT 08:00 / PST 07:00:排在 Renovate 每日锁文件维护窗口(America/Los_Angeles 0-3 点)之后
@@ -11,7 +13,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/backend/Cargo.lock'
+      - 'Cargo.lock'
+      - '.cargo/audit.toml'
       - 'bun.lock'
       - 'src/web/bun.lock'
       - '.github/workflows/security-audit.yml'
@@ -55,9 +58,11 @@ jobs:
         continue-on-error: true
         run: |
           set -uo pipefail
+          # Cargo.lock 在仓库根(src/backend 是 workspace member),cargo audit 要从根目录跑
+          # 才能找到锁文件,也才能读到 .cargo/audit.toml 里的 ignore 列表。
           # advisory-db 从 GitHub 拉取,runner 出网偶发 connection refused,失败时重试
           for attempt in 1 2 3; do
-            (cd src/backend && cargo audit) 2>&1 | tee "$RUNNER_TEMP/cargo-audit.log"
+            cargo audit 2>&1 | tee "$RUNNER_TEMP/cargo-audit.log"
             status=${PIPESTATUS[0]}
             if [ "$status" -eq 0 ]; then
               exit 0
@@ -96,7 +101,7 @@ jobs:
         run: |
           {
             echo "### Security audit"
-            echo "- Rust (cargo audit, src/backend/Cargo.lock): \`${CARGO_OUTCOME}\`"
+            echo "- Rust (cargo audit, Cargo.lock): \`${CARGO_OUTCOME}\`"
             echo "- Frontend (bun audit --audit-level=${BUN_AUDIT_LEVEL}): \`${BUN_OUTCOME}\`"
             if [ "$CARGO_OUTCOME" = "failure" ]; then
               echo ""
@@ -104,7 +109,7 @@ jobs:
               echo '```'
               grep -E '^(Crate|Version|Title|ID|Solution|Dependency tree):' "$RUNNER_TEMP/cargo-audit.log" 2>/dev/null | head -60 || true
               echo '```'
-              echo "修复:\`cd src/backend && cargo update -p <crate>\`(或在 Renovate 看板勾选 lock file maintenance 立即刷新锁文件)"
+              echo "修复:\`cargo update -p <crate>\`;暂无修复版本的就在 .cargo/audit.toml 里 ignore 并注明原因(或在 Renovate 看板勾选 lock file maintenance 立即刷新锁文件)"
             fi
             if [ "$BUN_OUTCOME" = "failure" ]; then
               echo ""

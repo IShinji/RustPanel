@@ -1,0 +1,6 @@
+[advisories]
+ignore = [
+    # rsa: Marvin Attack 时序旁道,上游至今(2026-09)无修复版本。经由 jsonwebtoken(RS256
+    # 校验)和 sqlx-mysql 间接引入,cargo update 拉不动,只能等上游发版后再摘掉这行。
+    "RUSTSEC-2023-0071",
+]
