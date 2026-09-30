@@ -127,9 +127,26 @@ RUSTPANEL_SYSTEMD_DIR=/tmp/systemd
 
 ### 5.2 NO SUPPORT 活命三件套(上线前必做)
 
-1. **30 秒自动回滚护栏开起来**:任何改防火墙 / SSH / 面板入口
-   的操作,都经 `ScheduleRollback` —— 30 秒内不主动 keepalive
-   就自动还原,防止自己把自己锁外面。
+1. **30 秒自动回滚护栏只覆盖面板入口三项设置,不覆盖防火墙 / SSH**:
+   保存 `panel_listen_addr`(监听地址)、`panel_access_path`(访问路径)、
+   `two_factor_required`(强制 2FA)任意一项时,`update_security_options`
+   会自动调 `arm_rollback_watchdog` 经 `ScheduleRollback` 挂一个默认
+   30 秒(最长可配到 600 秒)的倒计时:到点前没有主动确认,就用挂起
+   时保存的 JSON 快照 + revert 命令自动还原这三项设置。**防火墙规则、
+   SSH 端口 / 密钥、Cloudflare Access 等改动不触发这个护栏**,改这些
+   之前自己按第 2 条留好退路。
+   - 前端表现:改完上述任一项设置后,顶部会出现一条带实时倒计时的
+     警告横幅(`RollbackBanner`,每 3 秒轮询一次待处理回滚),确认没问题
+     就点横幅上的按钮调用 `ConfirmRollback` 拆除倒计时;不点,到点自动
+     revert。
+   - 状态落盘在 `/var/lib/rustpanel/security/state.json`
+     (可用 `RUSTPANEL_SECURITY_ROOT` 覆盖根目录)。
+   - **真被锁在面板入口外、30 秒又已经过期或者本来就不在这三项范围内**:
+     SSH 进机器(或用服务商的 rescue / VNC 控制台),手动改回
+     `state.json` 里的 `panel_listen_addr` / `panel_access_path` /
+     `two_factor_required` 字段(或者从第 3 条的整机备份里把这个文件
+     连同 `/etc` 一起恢复),然后 `systemctl restart rustpanel-backend.service`
+     使其生效。
 2. **第二条进入路径**:除了 SSH,留一条 Cloudflare Tunnel /
    面板 web terminal 在另一个 NAT 端口,防火墙写歪时还有救。
 3. **整机配置 cron 备份**:用 `restic`(appstore 已有)每天把
