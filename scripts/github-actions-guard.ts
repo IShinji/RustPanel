@@ -76,9 +76,15 @@ if (fs.existsSync(backendWorkflowPath)) {
 
 if (fs.existsSync(dockerfilePath)) {
   const dockerfile = fs.readFileSync(dockerfilePath, 'utf8')
+  // 这两行的版本号由 Renovate 的 dockerfile manager 自动升级,只认结构不认版本号,
+  // 不然每次 Renovate 提的基础镜像升级 PR 都会被这个 guard 拦下来。
+  if (!/^# syntax=docker\/dockerfile:[\d.]+$/m.test(dockerfile)) {
+    issues.push('src/backend/Dockerfile: missing required cache marker "# syntax=docker/dockerfile:<version>"')
+  }
+  if (!/^FROM oven\/bun:[\d.]+ AS web-builder$/m.test(dockerfile)) {
+    issues.push('src/backend/Dockerfile: missing required cache marker "FROM oven/bun:<version> AS web-builder"')
+  }
   for (const required of [
-    '# syntax=docker/dockerfile:1.7',
-    'FROM oven/bun:1.3.13 AS web-builder',
     'bun install --frozen-lockfile',
     'bun run build',
     'COPY --from=web-builder /app/src/web/dist /app/src/web/dist',
