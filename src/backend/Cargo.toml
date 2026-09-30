@@ -47,7 +47,7 @@ prost-types = "0.13"
 rcgen = "0.13"
 # 两步验证绑定时生成 otpauth 二维码(纯 Rust SVG 渲染,不带图片编码依赖)
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
-redis = { version = "0.27", default-features = false, features = ["tokio-comp"], optional = true }
+redis = { version = "1.0", default-features = false, features = ["tokio-comp"], optional = true }
 regex = "1"
 # 通知告警出站 HTTP(Webhook/Telegram/钉钉/企业微信/Bark)。走 rustls + 内置根证书,
 # 不引 openssl,适配最小镜像;复用已在树里的 rustls/hyper。
@@ -63,7 +63,7 @@ sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["any", "json", "runtime-tokio", "sqlite"] }
 sysinfo = "0.30"
 tar = "0.4"
-tera = "1"
+tera = "2"
 thiserror = "2"
 # rcgen 0.13 内部就用 time;直接 depend 一份对齐版本,设 not_after 用。
 time = { version = "0.3", default-features = false, features = ["std"] }
