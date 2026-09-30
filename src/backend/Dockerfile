@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.27
 
 FROM rust:1-bookworm AS chef
 WORKDIR /app
@@ -12,7 +12,7 @@ ENV SCCACHE_DIR=/sccache
 ENV SCCACHE_CACHE_SIZE=50G
 ENV CARGO_INCREMENTAL=0
 
-FROM oven/bun:1.3.13 AS web-builder
+FROM oven/bun:1.4.2 AS web-builder
 WORKDIR /app/src/web
 COPY src/web/package.json src/web/bun.lock ./
 RUN --mount=type=cache,id=bun-web-install-v1,target=/root/.bun/install/cache,sharing=locked \
