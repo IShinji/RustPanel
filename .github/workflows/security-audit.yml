@@ -1,0 +1,123 @@
+name: Security Audit
+
+# 依赖已知漏洞扫描:Rust 用 RustSec advisory-db(cargo audit),前端(根目录 scripts
+# 工具链 + src/web 面板)各自用 bun audit。Renovate 只对直接依赖即时出漏洞修复 PR,
+# bun / cargo 的传递依赖要靠锁文件维护刷新;这里每天扫一次现有锁文件,发现已知漏洞
+# 即失败(GitHub 发送 workflow 失败通知),不等人工察觉。
+on:
+  schedule:
+    # UTC 15:00 = PDT 08:00 / PST 07:00:排在 Renovate 每日锁文件维护窗口(America/Los_Angeles 0-3 点)之后
+    - cron: '0 15 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'src/backend/Cargo.lock'
+      - 'bun.lock'
+      - 'src/web/bun.lock'
+      - '.github/workflows/security-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  # 前端传递依赖大多是构建工具,不进入线上包;只对 high 及以上判失败,避免低危告警变成噪音
+  BUN_AUDIT_LEVEL: high
+
+jobs:
+  audit:
+    name: Dependency vulnerability audit
+    runs-on: [self-hosted, Linux, ARM64, m4-runner, rustpanel-runner]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Verify preinstalled runner Bun
+        run: bun --revision
+
+      - name: Install cargo-audit
+        run: |
+          set -euo pipefail
+          # 装到共享的 CARGO_HOME,runner 池各实例复用
+          if ! command -v cargo-audit >/dev/null 2>&1; then
+            cargo install cargo-audit --locked
+          fi
+          cargo audit --version
+
+      - name: Audit Rust dependencies
+        id: cargo-audit
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          # advisory-db 从 GitHub 拉取,runner 出网偶发 connection refused,失败时重试
+          for attempt in 1 2 3; do
+            (cd src/backend && cargo audit) 2>&1 | tee "$RUNNER_TEMP/cargo-audit.log"
+            status=${PIPESTATUS[0]}
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            fi
+            if ! grep -qiE 'failed to (fetch|clone|open)|connection refused|network' "$RUNNER_TEMP/cargo-audit.log"; then
+              exit "$status"
+            fi
+            echo "::warning::advisory-db 拉取失败,第 ${attempt} 次重试"
+            sleep $((attempt * 15))
+          done
+          exit 1
+
+      - name: Audit frontend dependencies
+        id: bun-audit
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          failed=0
+          : > "$RUNNER_TEMP/bun-audit.log"
+          for dir in . src/web; do
+            echo "::group::bun audit $dir"
+            (cd "$dir" && bun audit --audit-level="$BUN_AUDIT_LEVEL") 2>&1 | tee -a "$RUNNER_TEMP/bun-audit.log"
+            if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+              failed=1
+              echo "$dir" >> "$RUNNER_TEMP/bun-audit-failed.txt"
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+      - name: Summarize audit
+        if: always()
+        env:
+          CARGO_OUTCOME: ${{ steps.cargo-audit.outcome }}
+          BUN_OUTCOME: ${{ steps.bun-audit.outcome }}
+        run: |
+          {
+            echo "### Security audit"
+            echo "- Rust (cargo audit, src/backend/Cargo.lock): \`${CARGO_OUTCOME}\`"
+            echo "- Frontend (bun audit --audit-level=${BUN_AUDIT_LEVEL}): \`${BUN_OUTCOME}\`"
+            if [ "$CARGO_OUTCOME" = "failure" ]; then
+              echo ""
+              echo "#### Rust advisories"
+              echo '```'
+              grep -E '^(Crate|Version|Title|ID|Solution|Dependency tree):' "$RUNNER_TEMP/cargo-audit.log" 2>/dev/null | head -60 || true
+              echo '```'
+              echo "修复:\`cd src/backend && cargo update -p <crate>\`(或在 Renovate 看板勾选 lock file maintenance 立即刷新锁文件)"
+            fi
+            if [ "$BUN_OUTCOME" = "failure" ]; then
+              echo ""
+              echo "#### Frontend advisories($(tr '\n' ' ' < "$RUNNER_TEMP/bun-audit-failed.txt" 2>/dev/null))"
+              echo '```'
+              grep -vE '^\[.*\]|^bun audit v' "$RUNNER_TEMP/bun-audit.log" 2>/dev/null | head -60 || true
+              echo '```'
+              echo "修复:在对应目录执行 \`bun audit fix\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail on known vulnerabilities
+        if: steps.cargo-audit.outcome == 'failure' || steps.bun-audit.outcome == 'failure'
+        run: |
+          echo "::error::发现已知漏洞,详见 job summary"
+          exit 1
