@@ -39,7 +39,7 @@ http-body-util = "0.1"
 # rustls 无法自动选 CryptoProvider,ACME 一发起 TLS 就 panic(panic=abort 直接崩进程)。
 # 顺带去掉 aws-lc-rs 这个大 C 库。
 instant-acme = { version = "0.8", default-features = false, features = ["ring", "hyper-rustls"] }
-jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
+jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto"] }
 mime_guess = "2"
 portable-pty = { version = "0.8", optional = true }
 prost = "0.13"
