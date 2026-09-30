@@ -1,0 +1,100 @@
+name: Runner Maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only print cleanup actions without deleting stale data.
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+  schedule:
+    # 早于 Renovate 的每日锁文件维护窗口(America/Los_Angeles 0-3 点):
+    # UTC 07:00 = PDT 00:00 / PST 23:00
+    - cron: '0 7 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  NODE_OPTIONS: '--no-deprecation'
+  BUILDKIT_CACHE_ROOT: ${{ vars.BUILDKIT_CACHE_ROOT || '/cache/buildkit' }}
+  BUILDKIT_CACHE_PROJECT: rustpanel
+  DOCKER_BUILDER_KEEP_STORAGE: 25GB
+  RUNNER_CLEANUP_RETENTION_DAYS: '7'
+  CARGO_SWEEP_RETENTION_DAYS: '14'
+  CARGO_SWEEP_PROJECT_PATH: src/backend
+  CARGO_SWEEP_MAXSIZE: 60GB
+
+jobs:
+  runner-cleanup:
+    name: Self-hosted runner cleanup
+    runs-on: [self-hosted, Linux, ARM64, m4-runner, rustpanel-runner]
+    timeout-minutes: 20
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Verify preinstalled runner Bun
+        run: bun --revision
+
+      # runner 镜像构建时安装的 Bun 不会自动更新;Renovate 总用最新 Bun 生成 bun.lock,
+      # runner 落后时可能出现 lockfileVersion 不识别、frozen install 失败。每日跟随最新稳定版。
+      - name: Upgrade Bun
+        if: env.DRY_RUN != 'true'
+        run: |
+          before="$(bun --version)"
+          bun upgrade --stable
+          after="$(bun --version)"
+          echo "Bun: ${before} -> ${after}"
+          echo "- Bun: \`${before}\` -> \`${after}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run self-hosted runner cleanup
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            scripts/cleanup-self-hosted-runner.sh --dry-run
+          else
+            scripts/cleanup-self-hosted-runner.sh --execute
+          fi
+
+      - name: Install cargo-sweep
+        run: |
+          if command -v cargo-sweep >/dev/null 2>&1; then
+            exit 0
+          fi
+          cargo install --root "$RUNNER_TEMP/rustpanel-cargo-tools" cargo-sweep --locked
+          echo "$RUNNER_TEMP/rustpanel-cargo-tools/bin" >> "$GITHUB_PATH"
+
+      - name: Run Rust target cleanup
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            scripts/cleanup-cargo-target.sh --dry-run
+          else
+            scripts/cleanup-cargo-target.sh --execute
+          fi
+
+      - name: Summarize runner cleanup
+        if: always()
+        run: |
+          {
+            echo "### Runner cleanup"
+            echo "- Mode: \`$DRY_RUN\`"
+            echo "- Retention days: \`$RUNNER_CLEANUP_RETENTION_DAYS\`"
+            echo "- BuildKit cache root: \`$BUILDKIT_CACHE_ROOT\`"
+            echo "- BuildKit cache project: \`$BUILDKIT_CACHE_PROJECT\`"
+            echo "- Docker builder keep storage: \`$DOCKER_BUILDER_KEEP_STORAGE\`"
+            echo "- Cargo sweep retention days: \`$CARGO_SWEEP_RETENTION_DAYS\`"
+            echo "- Cargo sweep project: \`$CARGO_SWEEP_PROJECT_PATH\`"
+            echo "- Cargo sweep max target size: \`$CARGO_SWEEP_MAXSIZE\`"
+            echo "- Docker volumes pruned: \`false\`"
+          } >> "$GITHUB_STEP_SUMMARY"
