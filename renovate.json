@@ -80,6 +80,14 @@
       "automerge": true,
       "groupName": "GitHub Actions",
       "groupSlug": "github-actions"
+    },
+    {
+      "description": "0.x 版本号的 minor 升级(如 0.12 → 0.13)按 Cargo/npm 的 ^0.y.z 兼容规则等价于 breaking change,不能跟真正安全的 minor/patch 混在一批自动合并;从上面几条分组规则里摘出来单独开 PR、关掉自动合并,人工确认后再合(参考:reqwest 0.12→0.13 直接改名了 rustls-tls feature,Renovate 自己都生成不出锁文件)",
+      "matchCurrentVersion": "<1.0.0",
+      "matchUpdateTypes": ["minor"],
+      "automerge": false,
+      "groupName": "0.x 版本 minor 升级(视为 breaking,需人工确认)",
+      "groupSlug": "zero-major-minor-manual-review"
     }
   ]
 }
