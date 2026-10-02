@@ -110,6 +110,14 @@ if [[ "${RUSTPANEL_INSTALL_MODE:-docker}" == "binary" ]]; then
       kill "$(cat "$PROJECT_ROOT/rustpanel.pid")" >/dev/null 2>&1 || true
     fi
     export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
+    # 非 systemd 主机升级时原来没有重新确保证书续签 cron 回退还在——如果是从老版本
+    # 升上来、或者 cron.d/crontab 中途被清过,续签就会悄悄停掉
+    if [[ -f "$PROJECT_ROOT/deploy/systemd-units.sh" ]]; then
+      INSTALL_DIR="$PROJECT_ROOT"
+      # shellcheck disable=SC1091
+      source "$PROJECT_ROOT/deploy/systemd-units.sh"
+      rustpanel_write_cert_renew_cron
+    fi
     set -a
     # shellcheck disable=SC1091
     source "$PROJECT_ROOT/.env"

@@ -82,18 +82,33 @@ if [[ "$ASSUME_YES" != "1" && -t 0 ]]; then
   esac
 fi
 
-# 1. 停止并禁用 systemd 服务
+# 1. 停止并禁用 systemd 单元:节俭模式的 .socket、证书续签/告警扫描的 .timer 都要
+#    一起清,不然卸载后这几个单元还在埋伏(.timer 到点还会拉起一个找不到二进制的
+#    service 报错)。
 if command -v systemctl >/dev/null 2>&1; then
-  if systemctl list-unit-files 2>/dev/null | grep -q '^rustpanel-backend\.service'; then
-    log "stopping rustpanel-backend.service"
-    systemctl stop rustpanel-backend.service 2>/dev/null || true
-    systemctl disable rustpanel-backend.service 2>/dev/null || true
-  fi
-  if [[ -f /etc/systemd/system/rustpanel-backend.service ]]; then
-    rm -f /etc/systemd/system/rustpanel-backend.service
-    systemctl daemon-reload 2>/dev/null || true
-  fi
+  for unit in rustpanel-backend.service rustpanel-backend.socket \
+    rustpanel-cert-renew.service rustpanel-cert-renew.timer \
+    rustpanel-alerts.service rustpanel-alerts.timer; do
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${unit//./\\.}"; then
+      log "stopping $unit"
+      systemctl disable --now "$unit" 2>/dev/null || true
+    fi
+    if [[ -f "/etc/systemd/system/$unit" ]]; then
+      rm -f "/etc/systemd/system/$unit"
+    fi
+  done
+  systemctl daemon-reload 2>/dev/null || true
 fi
+
+# 1b. 清理证书续签的 cron 回退(/etc/cron.d 或 root crontab 标记段)
+if [[ -f "$INSTALL_DIR/deploy/systemd-units.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "$INSTALL_DIR/deploy/systemd-units.sh"
+  rustpanel_cron_unset rustpanel-cert-renew 2>/dev/null || true
+fi
+# 面板自身"计划任务"功能落在 /etc/cron.d/rustpanel(RUSTPANEL_SYSTEM_CRONTAB),
+# 现在只有这一种落盘方式,直接删文件即可
+rm -f /etc/cron.d/rustpanel
 
 # 2. 杀掉 daemon 模式下未托管的进程
 if [[ -f "$INSTALL_DIR/rustpanel.pid" ]]; then
