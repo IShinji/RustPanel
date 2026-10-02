@@ -11,6 +11,18 @@
 
 RUSTPANEL_SYSTEMD_DIR="${RUSTPANEL_SYSTEMD_DIR:-/etc/systemd/system}"
 RUSTPANEL_CRON_D_DIR="${RUSTPANEL_CRON_D_DIR:-/etc/cron.d}"
+RUSTPANEL_OPENRC_INIT_DIR="${RUSTPANEL_OPENRC_INIT_DIR:-/etc/init.d}"
+RUSTPANEL_OPENRC_LOG_DIR="${RUSTPANEL_OPENRC_LOG_DIR:-/var/log/rustpanel}"
+
+# systemd 是否真的在当 PID 1——跟 Rust 那边 service_manager::detect() 判断标准
+# 一致,不是看有没有 systemctl 命令(容器里经常有命令没有真正的 systemd)。
+rustpanel_has_systemd() {
+  [[ -d /run/systemd/system ]]
+}
+
+rustpanel_has_openrc() {
+  command -v rc-service >/dev/null 2>&1 || command -v openrc >/dev/null 2>&1
+}
 
 rustpanel_listen_stream() {
   local host="$1"
@@ -150,6 +162,69 @@ WantedBy=timers.target
 EOF
 }
 
+# OpenRC 版本的常驻服务:没有 .socket unit 这种概念,节俭模式直接把
+# `rustpanel-backend --activate`(可移植的 socket activation 监督者,见
+# src/backend/src/activate.rs)交给 supervise-daemon 托管——监督者自己
+# bind 端口、按需 fork 真正的服务进程,OpenRC 只需要管这一个进程。
+# 非节俭模式就直接管面板二进制本身,效果上对应 systemd 的 Restart=always。
+rustpanel_write_openrc_service() {
+  local frugal="$1"
+  local listen command_args
+  listen="$(rustpanel_listen_stream "$RUSTPANEL_BIND_HOST" "$RUSTPANEL_API_PORT")"
+  if [[ "$frugal" == "1" ]]; then
+    command_args="--activate --addr $listen --bin $INSTALL_DIR/bin/rustpanel-backend"
+  else
+    command_args="--addr $listen"
+  fi
+  mkdir -p "$RUSTPANEL_OPENRC_LOG_DIR"
+  cat > "$RUSTPANEL_OPENRC_INIT_DIR/rustpanel-backend" <<EOF
+#!/sbin/openrc-run
+
+description="RustPanel backend service"
+command="$INSTALL_DIR/bin/rustpanel-backend"
+command_args="$command_args"
+directory="$INSTALL_DIR"
+supervisor="supervise-daemon"
+pidfile="/run/\${RC_SVCNAME}.pid"
+respawn_delay=3
+output_log="$RUSTPANEL_OPENRC_LOG_DIR/rustpanel-backend.log"
+error_log="$RUSTPANEL_OPENRC_LOG_DIR/rustpanel-backend.log"
+
+start_pre() {
+	if [ -f "$INSTALL_DIR/.env" ]; then
+		set -a
+		. "$INSTALL_DIR/.env"
+		set +a
+	fi
+	export MALLOC_ARENA_MAX=2
+}
+
+depend() {
+	need net
+	after net-online
+}
+EOF
+  chmod 0755 "$RUSTPANEL_OPENRC_INIT_DIR/rustpanel-backend"
+}
+
+# 无 systemd 的 OpenRC 主机:rc-update/rc-service 替代 systemctl,证书续签和
+# 节俭模式下的告警扫描都走 cron(rustpanel_cron_set 自动识别 cron.d 还是
+# crontab 回退),OpenRC 没有 .timer 这种概念。
+rustpanel_write_openrc_units() {
+  local frugal="${RUSTPANEL_FRUGAL:-0}"
+  rc-service rustpanel-backend stop >/dev/null 2>&1 || true
+  rustpanel_write_openrc_service "$frugal"
+  rc-update add rustpanel-backend default >/dev/null 2>&1 || true
+  rc-service rustpanel-backend start
+  rustpanel_write_cert_renew_cron
+  if [[ "$frugal" == "1" ]]; then
+    rustpanel_cron_set rustpanel-alerts "*/15 * * * *" \
+      "set -a; . '$INSTALL_DIR/.env'; set +a; MALLOC_ARENA_MAX=2 TOKIO_WORKER_THREADS=1 '$INSTALL_DIR/bin/rustpanel-backend' --scan-alerts >/dev/null 2>&1"
+  else
+    rustpanel_cron_unset rustpanel-alerts
+  fi
+}
+
 # 写一条系统级计划任务:优先用 /etc/cron.d,没有这个目录就退到 root 的 crontab
 # (兼容 Alpine 默认的 busybox crond,它不读 /etc/cron.d)。用标记行包住 crontab 里
 # 的那一段,方便覆盖/删除,不碰用户 crontab 里其它手写的内容。
@@ -236,6 +311,10 @@ rustpanel_write_units() {
     install -m 0755 "$INSTALL_DIR/bin/deploy/update.sh" "$INSTALL_DIR/deploy/update.sh.new"
     mv -f "$INSTALL_DIR/deploy/update.sh.new" "$INSTALL_DIR/deploy/update.sh"
     rm -rf "$INSTALL_DIR/bin/deploy"
+  fi
+  if ! rustpanel_has_systemd; then
+    rustpanel_write_openrc_units
+    return
   fi
   # 先停:非节俭 → 节俭时面板自己占着端口,socket 单元会 bind 失败
   systemctl stop rustpanel-backend.service >/dev/null 2>&1 || true

@@ -9,6 +9,9 @@ BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/ishinji/rustpanel-backend:latest}"
 FULL_BINARY_URL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-linux-amd64.tar.gz"
 # micro 档默认用精简构建(--no-default-features:无 Docker API / MySQL / Postgres / Redis)
 MICRO_BINARY_URL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-micro-linux-amd64.tar.gz"
+# Alpine 用 musl libc,上面两个 glibc 产物跑不了,对应 musl 构建的发布包
+FULL_BINARY_URL_MUSL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-linux-musl-amd64.tar.gz"
+MICRO_BINARY_URL_MUSL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-micro-linux-musl-amd64.tar.gz"
 BINARY_URL="${RUSTPANEL_BINARY_URL:-$FULL_BINARY_URL}"
 RUSTPANEL_API_PORT="${RUSTPANEL_API_PORT:-18080}"
 RUSTPANEL_BIND_HOST="${RUSTPANEL_BIND_HOST:-0.0.0.0}"
@@ -129,13 +132,39 @@ detect_virtualization() {
   printf 'unknown\n'
 }
 
+# 解析 /etc/os-release 的 ID/ID_LIKE,取法跟 Rust 那边 distro.rs 保持一致
+# (ID 优先,认不出来再按 ID_LIKE 里认识的词退),两边判断标准不要各写一套。
+# 这次只认 debian 系和 alpine——RHEL 系 / Arch 按计划留给独立的后续项目。
+detect_distro() {
+  local os_release="${RUSTPANEL_OS_RELEASE_PATH:-/etc/os-release}"
+  [[ -f "$os_release" ]] || { printf 'unknown\n'; return; }
+  local id id_like
+  id="$(sed -n 's/^ID=//p' "$os_release" | tr -d '"' | head -n1)"
+  id_like="$(sed -n 's/^ID_LIKE=//p' "$os_release" | tr -d '"' | head -n1)"
+  case " $id $id_like " in
+    *' debian '*|*' ubuntu '*) printf 'debian\n' ;;
+    *' alpine '*) printf 'alpine\n' ;;
+    *) printf 'unknown\n' ;;
+  esac
+}
+
 docker_ready() {
   command_exists docker && docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1
 }
 
-# 探测主机首个非环回 IP;NAT 机上拿到的常是内网地址,仅作为默认值占位,需用户在交互里覆盖
+# 探测主机首个非环回 IP;NAT 机上拿到的常是内网地址,仅作为默认值占位,需用户在交互里覆盖。
+# hostname -I 是 GNU 的东西,Alpine 默认的 busybox hostname 没有这个参数;改用
+# ip(busybox 自带的精简版也认 route get / addr show),两条都拿不到才退回 hostname -I。
 public_ip() {
-  hostname -I 2>/dev/null | awk '{print $1}'
+  local ip
+  ip="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')"
+  if [[ -z "$ip" ]]; then
+    ip="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1)"
+  fi
+  if [[ -z "$ip" ]] && command_exists hostname; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+  printf '%s' "$ip"
 }
 
 # 校验端口字符串是否为合法 1-65535 整数,失败时返回非零并打印原因
@@ -589,6 +618,17 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   fail "RustPanel one-click install currently supports Linux hosts only"
 fi
 
+# Rust std 要求内核 >= 3.2;最便宜那档 NAT 小鸡常见的老 OpenVZ 6 宿主机还在跑
+# 2.6.32,不管用什么 libc 构建的二进制都起不来,得在这里就拦下来给出清楚的报错,
+# 而不是跑到一半才崩。
+kernel_version="$(uname -r | grep -oE '^[0-9]+\.[0-9]+' || true)"
+kernel_major="${kernel_version%%.*}"
+kernel_minor="${kernel_version#*.}"
+if [[ -n "$kernel_major" && -n "$kernel_minor" ]] \
+  && (( kernel_major < 3 || (kernel_major == 3 && kernel_minor < 2) )); then
+  fail "kernel $(uname -r) is too old (Rust requires Linux >= 3.2); this is common on legacy OpenVZ 6 hosts and cannot be worked around by this installer — ask your provider for a newer host kernel"
+fi
+
 case "$RUSTPANEL_API_PORT" in
   ''|*[!0-9]*)
     fail "--port must be a number"
@@ -737,6 +777,8 @@ ensure_compose_plugin() {
     dnf install -y docker-compose-plugin
   elif command -v yum >/dev/null 2>&1; then
     yum install -y docker-compose-plugin
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache docker-cli-compose
   else
     fail "Docker Compose plugin is required; install docker compose and rerun"
   fi
@@ -745,8 +787,13 @@ ensure_compose_plugin() {
 }
 
 start_docker() {
-  if command -v systemctl >/dev/null 2>&1; then
+  # systemctl 命令存在不等于 systemd 真的是 PID 1(容器环境常见),用
+  # /run/systemd/system 目录判断,跟 Rust 那边 service_manager::detect() 一致。
+  if [[ -d /run/systemd/system ]]; then
     systemctl enable --now docker >/dev/null 2>&1 || true
+  elif command -v rc-service >/dev/null 2>&1; then
+    rc-update add docker default >/dev/null 2>&1 || true
+    rc-service docker start >/dev/null 2>&1 || true
   elif command -v service >/dev/null 2>&1; then
     service docker start >/dev/null 2>&1 || true
   fi
@@ -788,12 +835,24 @@ write_systemd_service() {
 }
 
 start_binary_backend() {
-  if command -v systemctl >/dev/null 2>&1; then
+  # 同样用 /run/systemd/system 判断,不认 systemctl 命令是否存在。
+  if [[ -d /run/systemd/system ]]; then
     write_systemd_service
     return
   fi
 
-  log "systemd not found, starting RustPanel with daemon mode"
+  if command -v rc-service >/dev/null 2>&1; then
+    log "OpenRC detected, writing openrc-run service"
+    # shellcheck disable=SC1091
+    source "$INSTALL_DIR/deploy/systemd-units.sh"
+    rustpanel_write_units
+    if [[ "$RUSTPANEL_INSTALL_PROFILE" == "micro" ]]; then
+      rustpanel_apply_small_disk_tweaks
+    fi
+    return
+  fi
+
+  log "neither systemd nor OpenRC found, starting RustPanel with daemon mode"
   export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
   # shellcheck disable=SC1091
   source "$INSTALL_DIR/deploy/systemd-units.sh"
@@ -822,7 +881,8 @@ install_proxy_runtime() {
   if command -v curl >/dev/null 2>&1; then
     local api asset
     api="$(curl -fsSL https://api.github.com/repos/shadowsocks/shadowsocks-rust/releases/latest 2>/dev/null || true)"
-    asset="$(printf '%s\n' "$api" | sed -n 's/.*"browser_download_url": "\(.*x86_64-unknown-linux-gnu.*\.tar\.xz\)".*/\1/p' | head -n 1)"
+    # musl 静态产物在 glibc 主机上也能直接跑,统一用它就不用再按发行版分支下载
+    asset="$(printf '%s\n' "$api" | sed -n 's/.*"browser_download_url": "\(.*x86_64-unknown-linux-musl.*\.tar\.xz\)".*/\1/p' | head -n 1)"
     if [[ -n "$asset" ]]; then
       install_shadowsocks_from_url "$asset" "$target" || true
     fi
@@ -856,8 +916,15 @@ write_env_var() {
   printf "'\n"
 }
 
-if [[ "$RUSTPANEL_INSTALL_PROFILE" == "micro" && "$BINARY_URL" == "$FULL_BINARY_URL" ]]; then
-  BINARY_URL="$MICRO_BINARY_URL"
+# 只有用户没显式传 --binary-url / RUSTPANEL_BINARY_URL 时才按档位 / 发行版自动选;
+# 用户自己指定的话原样尊重。
+if [[ "$BINARY_URL" == "$FULL_BINARY_URL" ]]; then
+  if [[ "$(detect_distro)" == "alpine" ]]; then
+    BINARY_URL="$FULL_BINARY_URL_MUSL"
+    [[ "$RUSTPANEL_INSTALL_PROFILE" == "micro" ]] && BINARY_URL="$MICRO_BINARY_URL_MUSL"
+  elif [[ "$RUSTPANEL_INSTALL_PROFILE" == "micro" ]]; then
+    BINARY_URL="$MICRO_BINARY_URL"
+  fi
 fi
 
 # 节俭模式只对 systemd 二进制安装有意义(要靠 socket 单元按需唤醒)
