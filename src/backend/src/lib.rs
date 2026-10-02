@@ -42,6 +42,7 @@ pub mod cli;
 pub mod cluster;
 pub mod cron;
 pub mod database;
+pub mod distro;
 pub mod dns;
 #[cfg(feature = "docker")]
 pub mod docker;
