@@ -72,6 +72,70 @@ fn unsupported(op: &str) -> Status {
     )))
 }
 
+/// 常驻服务重启策略。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RestartPolicy {
+    Always,
+    OnFailure,
+}
+
+impl RestartPolicy {
+    fn as_systemd_str(self) -> &'static str {
+        match self {
+            RestartPolicy::Always => "always",
+            RestartPolicy::OnFailure => "on-failure",
+        }
+    }
+}
+
+/// 一个常驻服务的描述,跟具体 init 系统无关——调用方只填这个,渲染成什么格式
+/// 由 `render_systemd_unit`(以后还有 OpenRC 的渲染函数)决定。
+/// 字段按需添加:现在只覆盖 `cli.rs::systemd_service()` 需要的部分,deploy/
+/// systemd-units.sh 那套更完整的生成逻辑(节俭模式 socket 依赖等)留给后续
+/// 把它也迁过来的里程碑再扩展这个结构体。
+pub struct ServiceSpec<'a> {
+    pub description: &'a str,
+    pub exec: &'a std::path::Path,
+    pub args: &'a [&'a str],
+    pub env: &'a [(&'a str, &'a str)],
+    pub workdir: Option<&'a std::path::Path>,
+    pub restart: RestartPolicy,
+    pub restart_sec: u32,
+    pub timeout_stop_sec: u32,
+}
+
+/// `ServiceSpec` → systemd `.service` unit 文本。
+pub fn render_systemd_unit(spec: &ServiceSpec) -> String {
+    let mut unit = String::new();
+    unit.push_str("[Unit]\n");
+    unit.push_str(&format!("Description={}\n", spec.description));
+    unit.push_str("After=network-online.target\n");
+    unit.push_str("Wants=network-online.target\n");
+    unit.push('\n');
+    unit.push_str("[Service]\n");
+    unit.push_str("Type=simple\n");
+    if let Some(workdir) = spec.workdir {
+        unit.push_str(&format!("WorkingDirectory={}\n", workdir.display()));
+    }
+    let args = if spec.args.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", spec.args.join(" "))
+    };
+    unit.push_str(&format!("ExecStart={}{args}\n", spec.exec.display()));
+    for (key, value) in spec.env {
+        unit.push_str(&format!("Environment={key}={value}\n"));
+    }
+    unit.push_str(&format!("Restart={}\n", spec.restart.as_systemd_str()));
+    unit.push_str(&format!("RestartSec={}\n", spec.restart_sec));
+    unit.push_str(&format!("TimeoutStopSec={}\n", spec.timeout_stop_sec));
+    unit.push_str("NoNewPrivileges=true\n");
+    unit.push('\n');
+    unit.push_str("[Install]\n");
+    unit.push_str("WantedBy=multi-user.target\n");
+    unit
+}
+
 /// unit 文件写入目录,`RUSTPANEL_SYSTEMD_DIR` env 可覆盖(测试 / 容器沙箱用)。
 /// 迁自 appstore.rs::systemd_unit_dir,行为不变。
 pub fn unit_dir() -> PathBuf {

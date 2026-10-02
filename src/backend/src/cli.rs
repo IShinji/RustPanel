@@ -76,26 +76,24 @@ impl Cli {
     }
 
     pub fn systemd_service(&self) -> String {
-        format!(
-            "[Unit]\n\
-Description=RustPanel backend service\n\
-After=network-online.target\n\
-Wants=network-online.target\n\n\
-[Service]\n\
-Type=simple\n\
-ExecStart={} --port {}\n\
-Environment=RUSTPANEL_ENV=production\n\
-Environment=RUSTPANEL_JWT_SECRET=replace-with-at-least-32-random-bytes\n\
-Environment=MALLOC_ARENA_MAX=2\n\
-Restart=always\n\
-RestartSec=3\n\
-TimeoutStopSec=15\n\
-NoNewPrivileges=true\n\n\
-[Install]\n\
-WantedBy=multi-user.target\n",
-            self.bin.display(),
-            self.listen_addr().port()
-        )
+        let port = self.listen_addr().port().to_string();
+        crate::service_manager::render_systemd_unit(&crate::service_manager::ServiceSpec {
+            description: "RustPanel backend service",
+            exec: &self.bin,
+            args: &["--port", &port],
+            env: &[
+                ("RUSTPANEL_ENV", "production"),
+                (
+                    "RUSTPANEL_JWT_SECRET",
+                    "replace-with-at-least-32-random-bytes",
+                ),
+                ("MALLOC_ARENA_MAX", "2"),
+            ],
+            workdir: None,
+            restart: crate::service_manager::RestartPolicy::Always,
+            restart_sec: 3,
+            timeout_stop_sec: 15,
+        })
     }
 }
 
@@ -137,5 +135,30 @@ mod tests {
         assert!(service.contains("ExecStart=/usr/local/bin/rustpanel-backend --port 18080"));
         assert!(service.contains("RUSTPANEL_JWT_SECRET=replace-with-at-least-32-random-bytes"));
         assert!(service.contains("Environment=MALLOC_ARENA_MAX=2"));
+    }
+
+    // 改走 service_manager::render_systemd_unit 之前/之后字节级一致,逐行锁定,
+    // 不只是 contains() 抽查。
+    #[test]
+    fn systemd_service_output_matches_pre_refactor_text_exactly() {
+        let cli =
+            Cli::try_parse_from(["rustpanel-backend", "--setup", "--port", "18080"]).expect("cli");
+        let expected = "[Unit]\n\
+Description=RustPanel backend service\n\
+After=network-online.target\n\
+Wants=network-online.target\n\n\
+[Service]\n\
+Type=simple\n\
+ExecStart=/usr/local/bin/rustpanel-backend --port 18080\n\
+Environment=RUSTPANEL_ENV=production\n\
+Environment=RUSTPANEL_JWT_SECRET=replace-with-at-least-32-random-bytes\n\
+Environment=MALLOC_ARENA_MAX=2\n\
+Restart=always\n\
+RestartSec=3\n\
+TimeoutStopSec=15\n\
+NoNewPrivileges=true\n\n\
+[Install]\n\
+WantedBy=multi-user.target\n";
+        assert_eq!(cli.systemd_service(), expected);
     }
 }
