@@ -849,17 +849,9 @@ async fn reload_active_proxy() -> String {
     // rpxy:用 systemctl reload(unit 自身定义了什么是 reload;rpxy 0.11
     // 有 --config-watch 也行,但 reload 走 SIGHUP 更可靠)。先 is-active
     // 避免对 inactive unit reload 留个无用错误。
-    let rpxy_active = tokio::process::Command::new("systemctl")
-        .args(["is-active", "--quiet", "rpxy.service"])
-        .status()
-        .await
-        .map(|s| s.success())
-        .unwrap_or(false);
+    let rpxy_active = crate::service_manager::is_active("rpxy.service").await;
     if rpxy_active {
-        let out = tokio::process::Command::new("systemctl")
-            .args(["reload-or-restart", "rpxy.service"])
-            .output()
-            .await;
+        let out = crate::service_manager::run_raw(&["reload-or-restart", "rpxy.service"]).await;
         match out {
             Ok(o) if o.status.success() => tried.push("rpxy reloaded".to_owned()),
             Ok(o) => tried.push(format!(

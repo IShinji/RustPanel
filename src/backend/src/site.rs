@@ -401,10 +401,7 @@ impl SiteService for SiteServiceImpl {
         if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
             let unit = format!("sws@{safe}.service");
             // disable --now 即使 unit 不存在也容错;失败不阻塞
-            let _ = tokio::process::Command::new("systemctl")
-                .args(["disable", "--now", &unit])
-                .output()
-                .await;
+            let _ = crate::service_manager::disable_now(&unit).await;
         }
 
         // 5) builtin sites.json 里的记录(engine = builtin 的路径)

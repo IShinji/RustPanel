@@ -111,10 +111,8 @@ pub(super) async fn unit_status(unit: &str) -> SiteServiceStatus {
         unit: unit.to_owned(),
         ..Default::default()
     };
-    let output = tokio::process::Command::new("systemctl")
-        .args(["show", unit, "--no-pager", "-p", SHOW_PROPERTIES])
-        .output()
-        .await;
+    let output =
+        crate::service_manager::run_raw(&["show", unit, "--no-pager", "-p", SHOW_PROPERTIES]).await;
     let output = match output {
         Ok(output) if output.status.success() => output,
         Ok(output) => {
@@ -183,9 +181,7 @@ pub(super) async fn control_unit(unit: &str, action: SiteServiceAction) -> Resul
     };
     // oneshot 服务(比如抓取任务)start 会阻塞到跑完;--no-block 让面板立刻返回,
     // 状态由前端轮询 GetSiteServices 看。
-    let output = tokio::process::Command::new("systemctl")
-        .args([verb, "--no-block", unit])
-        .output()
+    let output = crate::service_manager::run_raw(&[verb, "--no-block", unit])
         .await
         .map_err(|error| {
             Status::unavailable(trf!(
@@ -214,10 +210,7 @@ pub(super) fn clamp_lines(lines: u32) -> u32 {
 
 /// journal 里某单元的最后 N 行。
 pub(super) async fn journal_tail(unit: &str, lines: u32) -> Result<(String, bool), Status> {
-    let output = tokio::process::Command::new("journalctl")
-        .args(["-u", unit, "--no-pager", "-o", "short-iso", "-n"])
-        .arg(lines.to_string())
-        .output()
+    let text = crate::service_manager::logs_tail(unit, lines)
         .await
         .map_err(|error| {
             Status::unavailable(trf!(
@@ -225,7 +218,6 @@ pub(super) async fn journal_tail(unit: &str, lines: u32) -> Result<(String, bool
                 "journalctl unavailable: {error}"
             ))
         })?;
-    let text = String::from_utf8_lossy(&output.stdout);
     Ok(cap_tail(&text))
 }
 

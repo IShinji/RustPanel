@@ -1491,17 +1491,13 @@ async fn apply_ssh_config(settings: &mut StoredSshSettings) -> Result<(), Status
                 String::from_utf8_lossy(&output.stderr).to_string(),
             ));
         }
-        let reload = Command::new("sh")
-            .arg("-c")
-            .arg("systemctl reload sshd || systemctl reload ssh || service sshd reload || service ssh reload")
-            .output()
-            .await
-            .map_err(io_status)?;
-        if !reload.status.success() {
-            return Err(Status::internal(
-                String::from_utf8_lossy(&reload.stderr).to_string(),
-            ));
-        }
+        crate::service_manager::try_commands(&[
+            "systemctl reload sshd",
+            "systemctl reload ssh",
+            "service sshd reload",
+            "service ssh reload",
+        ])
+        .await?;
         settings.last_apply_message = "ssh config written and service reloaded".to_owned();
     } else {
         settings.last_apply_message = format!("ssh config written to {}", settings.config_path);

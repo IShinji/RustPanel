@@ -15,6 +15,7 @@ use std::{env, path::PathBuf, sync::OnceLock};
 use tonic::Status;
 
 use crate::appstore::sanitize_status_text;
+use crate::trf;
 
 fn io_status(error: impl std::fmt::Display) -> Status {
     Status::internal(sanitize_status_text(error.to_string()))
@@ -64,8 +65,10 @@ pub fn current() -> InitSystem {
 }
 
 fn unsupported(op: &str) -> Status {
-    Status::unavailable(sanitize_status_text(format!(
-        "{op}: 当前主机既不是 systemd 也不是已支持的 OpenRC 环境"
+    Status::unavailable(sanitize_status_text(trf!(
+        "{}: 当前主机既不是 systemd 也不是已支持的 OpenRC 环境",
+        "{}: this host is neither systemd nor a supported OpenRC environment",
+        op
     )))
 }
 
@@ -141,6 +144,68 @@ pub async fn reload(unit: &str) -> Result<(), Status> {
         InitSystem::Systemd => run_systemctl(&["reload", unit]).await,
         _ => Err(unsupported("reload")),
     }
+}
+
+/// unit 自己定义「reload」是什么(没配 `ExecReload` 的话 systemd 会自动退化成
+/// restart),不需要像 `reload`/`can_reload` 那样先查一遍能力。
+pub async fn reload_or_restart(unit: &str) -> Result<(), Status> {
+    match current() {
+        InitSystem::Systemd => run_systemctl(&["reload-or-restart", unit]).await,
+        _ => Err(unsupported("reload_or_restart")),
+    }
+}
+
+/// 低层:直接跑一条 systemctl 命令拿原始 `Output`,给需要自定义报错文案的调用方
+/// (比如 site_service.rs 要保留自己的双语错误格式)。大多数场景请优先用上面
+/// 这些已经包好成功/失败判断的高层函数。
+pub async fn run_raw(args: &[&str]) -> Result<std::process::Output, Status> {
+    match current() {
+        InitSystem::Systemd => tokio::process::Command::new("systemctl")
+            .args(args)
+            .output()
+            .await
+            .map_err(io_status),
+        _ => Err(unsupported("run_raw")),
+    }
+}
+
+/// `logs()`:systemd 上读 journal;OpenRC 没有 journal,后续里程碑改成尾读
+/// `ServiceSpec.log_file`。
+pub async fn logs_tail(unit: &str, lines: u32) -> Result<String, Status> {
+    match current() {
+        InitSystem::Systemd => {
+            let output = tokio::process::Command::new("journalctl")
+                .args(["-u", unit, "--no-pager", "-o", "short-iso", "-n"])
+                .arg(lines.to_string())
+                .output()
+                .await
+                .map_err(io_status)?;
+            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        }
+        _ => Err(unsupported("logs_tail")),
+    }
+}
+
+/// 依次尝试几条候选 shell 命令(各自独立 `sh -c` 执行),第一条成功就返回;
+/// 全部失败则把最后一条的 stderr 包成 `Status::internal`(不做百分号转义,
+/// 和迁移前 security.rs 里这段的既有行为一致)。用于 sshd 这类服务名在不同
+/// 发行版下可能不一样、systemctl 之外还能退到 sysvinit `service` 的场景——
+/// 等价于 shell 里的 `A || B || C`,只是用 Rust 控制流代替一行长 `sh -c`。
+pub async fn try_commands(commands: &[&str]) -> Result<(), Status> {
+    let mut last_stderr = String::new();
+    for command in commands {
+        let output = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .output()
+            .await
+            .map_err(io_status)?;
+        if output.status.success() {
+            return Ok(());
+        }
+        last_stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    }
+    Err(Status::internal(last_stderr))
 }
 
 /// 查状态是只读操作,任何失败(包括非 systemd 主机)都当"没在跑",不往上抛错——
