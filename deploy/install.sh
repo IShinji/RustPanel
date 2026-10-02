@@ -9,8 +9,10 @@ BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/ishinji/rustpanel-backend:latest}"
 FULL_BINARY_URL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-linux-amd64.tar.gz"
 # micro 档默认用精简构建(--no-default-features:无 Docker API / MySQL / Postgres / Redis)
 MICRO_BINARY_URL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-micro-linux-amd64.tar.gz"
-# Alpine 用 musl libc,上面两个 glibc 产物跑不了,对应 musl 构建的发布包
-FULL_BINARY_URL_MUSL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-linux-musl-amd64.tar.gz"
+# Alpine 用 musl libc,上面两个 glibc 产物跑不了,对应 musl 构建的发布包。
+# CI 这次只建了 micro 档的 musl 产物(128MB 级 Alpine 小鸡唯一的目标场景,
+# full 档在 Alpine 上没有实际需求),没有 full 档 musl 这个资产——下面统一指向
+# micro 档,--profile full/standard 配 Alpine 是目前没有覆盖到的边缘组合。
 MICRO_BINARY_URL_MUSL="https://github.com/IShinji/RustPanel/releases/download/micro-latest/rustpanel-backend-micro-linux-musl-amd64.tar.gz"
 BINARY_URL="${RUSTPANEL_BINARY_URL:-$FULL_BINARY_URL}"
 RUSTPANEL_API_PORT="${RUSTPANEL_API_PORT:-18080}"
@@ -920,8 +922,10 @@ write_env_var() {
 # 用户自己指定的话原样尊重。
 if [[ "$BINARY_URL" == "$FULL_BINARY_URL" ]]; then
   if [[ "$(detect_distro)" == "alpine" ]]; then
-    BINARY_URL="$FULL_BINARY_URL_MUSL"
-    [[ "$RUSTPANEL_INSTALL_PROFILE" == "micro" ]] && BINARY_URL="$MICRO_BINARY_URL_MUSL"
+    if [[ "$RUSTPANEL_INSTALL_PROFILE" != "micro" ]]; then
+      log "no full-profile musl build published yet; using the micro musl binary on Alpine regardless of --profile"
+    fi
+    BINARY_URL="$MICRO_BINARY_URL_MUSL"
   elif [[ "$RUSTPANEL_INSTALL_PROFILE" == "micro" ]]; then
     BINARY_URL="$MICRO_BINARY_URL"
   fi
