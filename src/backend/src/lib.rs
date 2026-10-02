@@ -33,6 +33,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 pub mod access;
 pub mod access_log;
 pub mod acme;
+pub mod activate;
 pub mod appstore;
 pub mod audit;
 pub mod auth;

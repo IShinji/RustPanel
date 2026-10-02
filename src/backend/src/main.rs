@@ -11,6 +11,11 @@ fn main() -> Result<(), BoxError> {
     // rustls 自动选择会 panic(ACME / 出站 HTTPS 一发起就崩)。已安装过则忽略。
     let _ = rustls::crypto::ring::default_provider().install_default();
     let cli = Cli::parse();
+    // 可移植 socket activation 监督者:自己不是服务进程,只 fork+exec 真正的
+    // 服务进程,不能起 tokio(fork 要求单线程),所以在最前面单独分支处理。
+    if cli.activate {
+        return rustpanel_backend::activate::run(cli.listen_addr(), &cli.bin).map_err(Into::into);
+    }
     // fork 必须发生在 tokio 起线程之前:fork 后子进程里只剩调用线程,
     // 之前在 runtime 内 daemonize 会让 worker 线程全部"消失"。
     let serving = cli.is_serving();

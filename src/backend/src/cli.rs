@@ -14,6 +14,11 @@ pub struct Cli {
     pub daemon: bool,
     #[arg(long)]
     pub setup: bool,
+    // 可移植的 socket activation 监督者:取代 systemd .socket unit,给 OpenRC /
+    // 没有 init 系统的场景用。监督者自己绑 --addr/--port,子进程(就是不带这个
+    // flag 重新 exec 自己)靠 RUSTPANEL_ACTIVATED_FD 拿到监听 fd。
+    #[arg(long)]
+    pub activate: bool,
     #[arg(
         long,
         env = "RUSTPANEL_BACKEND_BIN",

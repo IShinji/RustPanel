@@ -119,6 +119,30 @@ pub async fn wait_until_idle(limit: Duration) {
 pub fn take_activated_listener() -> std::io::Result<Option<std::net::TcpListener>> {
     use std::os::fd::{FromRawFd, RawFd};
 
+    // 可移植监督者(`rustpanel-backend --activate`)用的私有协议:比 systemd 的
+    // LISTEN_PID/LISTEN_FDS 简单——监督者只需要设这一个环境变量,不用在 fork
+    // 之后用 async-signal-不安全的方式再模拟 LISTEN_PID。两条路径互斥,
+    // 这个判断在前,命中就不会再看下面的 systemd 协议。
+    if let Ok(value) = env::var("RUSTPANEL_ACTIVATED_FD") {
+        env::remove_var("RUSTPANEL_ACTIVATED_FD");
+        let fd: RawFd = value.trim().parse().map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "RUSTPANEL_ACTIVATED_FD 不是合法的文件描述符",
+            )
+        })?;
+        // SAFETY: fcntl 只改 fd 标志位,fd 无效时返回 -1,不涉及内存。
+        if unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) } == -1 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: activate 监督者的协议保证这个 fd 是专门为本进程 dup2 过来的
+        // 监听 socket,此后由 TcpListener 独占所有权。
+        let listener = unsafe { std::net::TcpListener::from_raw_fd(fd) };
+        listener.local_addr()?;
+        listener.set_nonblocking(true)?;
+        return Ok(Some(listener));
+    }
+
     const SD_LISTEN_FDS_START: RawFd = 3;
 
     let for_us = env::var("LISTEN_PID")
