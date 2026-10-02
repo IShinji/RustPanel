@@ -59,7 +59,7 @@ impl AppStoreService for AppStoreServiceImpl {
         let response = match InstallMethod::try_from(template.install_method).unwrap_or_default() {
             InstallMethod::DockerCompose => deploy_via_compose(template, request).await?,
             InstallMethod::BinaryDownload => deploy_via_binary(template, request).await?,
-            InstallMethod::NativePackage => deploy_via_apt(template, request).await?,
+            InstallMethod::NativePackage => deploy_via_native_package(template, request).await?,
             other => {
                 return Err(Status::unimplemented(trf!(
                     "install method {other:?} 暂未实现执行路径",
@@ -95,7 +95,7 @@ impl AppStoreService for AppStoreServiceImpl {
         let response = match InstallMethod::try_from(template.install_method).unwrap_or_default() {
             InstallMethod::DockerCompose => uninstall_via_compose(&app_name).await?,
             InstallMethod::BinaryDownload => uninstall_via_binary(template, &app).await?,
-            InstallMethod::NativePackage => uninstall_via_apt(template, &app).await?,
+            InstallMethod::NativePackage => uninstall_via_native_package(template, &app).await?,
             other => {
                 return Err(Status::unimplemented(trf!(
                     "install method {other:?} 暂未实现卸载路径",
@@ -125,7 +125,7 @@ impl AppStoreService for AppStoreServiceImpl {
             InstallMethod::BinaryDownload => {
                 update_via_binary(template, app, &request.version).await?
             }
-            InstallMethod::NativePackage => update_via_apt(template, app).await?,
+            InstallMethod::NativePackage => update_via_native_package(template, app).await?,
             other => {
                 return Err(Status::unimplemented(trf!(
                     "install method {other:?} 暂未实现更新路径",
@@ -705,6 +705,244 @@ async fn execute_apt_upgrade(pkg: &str) -> Result<(), Status> {
     run_apt(&["update"]).await?;
     run_apt(&["install", "--only-upgrade", "-y", pkg]).await?;
     Ok(())
+}
+
+// =====================================================================
+// NativePackage 的包管理器选择:apt(Debian/Ubuntu)一直是唯一实现,这次加
+// apk(Alpine)。**不迁移存量状态**——`InstalledApp.compose_path` 里已有的
+// `"apt:{pkg}"` 前缀永远有效,新装的按实际发行版写对应前缀。装新应用按
+// `distro::current()` 选当前主机的包管理器;卸载/升级已装应用按记录本身的
+// 前缀走(万一从备份恢复到了不同发行版,两者会对不上,这时直接报错,不跨
+// manager 瞎猜落到错误的包管理器上)。
+// =====================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NativePackageManager {
+    Apt,
+    Apk,
+}
+
+/// 解析 `InstalledApp.compose_path` 里 `"<manager>:<pkg>"` 这个格式的唯一入口。
+pub(crate) struct NativeRef {
+    pub manager: NativePackageManager,
+    pub pkg: String,
+}
+
+impl NativeRef {
+    pub(crate) fn parse(compose_path: &str) -> Result<Self, Status> {
+        if let Some(pkg) = compose_path.strip_prefix("apt:") {
+            return Ok(Self {
+                manager: NativePackageManager::Apt,
+                pkg: pkg.to_owned(),
+            });
+        }
+        if let Some(pkg) = compose_path.strip_prefix("apk:") {
+            return Ok(Self {
+                manager: NativePackageManager::Apk,
+                pkg: pkg.to_owned(),
+            });
+        }
+        Err(Status::internal(sanitize_status_text(format!(
+            "无法识别的 NativePackage 安装记录: {compose_path}"
+        ))))
+    }
+}
+
+/// 新装应用时,按当前主机的发行版选包管理器;认不出来就直接报错,不瞎猜。
+fn native_package_manager_for_host() -> Result<NativePackageManager, Status> {
+    match crate::distro::current() {
+        crate::distro::Distro::Debian => Ok(NativePackageManager::Apt),
+        crate::distro::Distro::Alpine => Ok(NativePackageManager::Apk),
+        crate::distro::Distro::Unknown => Err(Status::failed_precondition(trf!(
+            "当前主机既不是 Debian 系也不是 Alpine,NativePackage 路径暂不支持",
+            "this host is neither Debian-based nor Alpine; the NativePackage path isn't supported here"
+        ))),
+    }
+}
+
+/// slug → 真实的 apk 包名映射,对齐 slug_to_apt_package 覆盖的同一批 slug。
+/// nginx-mainline 在 apk 下没有照搬 apt 那套 nginx.org 源 + pinning 逻辑
+/// (Alpine 用 apk 的签名仓库机制,跟 apt 的 deb 源完全不是一回事,这次范围
+/// 内不做),直接退化成 Alpine 自带仓库的 nginx(没有 http_v3_module)。
+pub(crate) fn slug_to_apk_package(slug: &str) -> &str {
+    match slug {
+        "redis-tuned" => "redis",
+        "postgres-tiny" => "postgresql",
+        "sqlite" => "sqlite",
+        // 容器 / OpenVZ 跑不了内核 WireGuard 模块,这里只装用户态工具链
+        "wireguard" => "wireguard-tools",
+        "nginx-mainline" => "nginx",
+        other => other,
+    }
+}
+
+async fn ensure_apk_available() -> Result<(), Status> {
+    let output = tokio::process::Command::new("sh")
+        .args(["-c", "command -v apk"])
+        .output()
+        .await
+        .map_err(io_status)?;
+    if !output.status.success() {
+        return Err(Status::failed_precondition(trf!(
+            "当前主机没有 apk,NativePackage 路径的这条分支仅支持 Alpine",
+            "this host has no apk; this branch of the NativePackage path only supports Alpine"
+        )));
+    }
+    Ok(())
+}
+
+async fn run_apk(args: &[&str]) -> Result<(), Status> {
+    let output = tokio::process::Command::new("apk")
+        .args(args)
+        .output()
+        .await
+        .map_err(io_status)?;
+    if !output.status.success() {
+        return Err(Status::unavailable(sanitize_status_text(trf!(
+            "apk {} 失败: {}",
+            "apk {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))));
+    }
+    Ok(())
+}
+
+async fn execute_apk_install(pkg: &str) -> Result<(), Status> {
+    ensure_apk_available().await?;
+    // apk add 自己会先刷新索引,不需要像 apt 那样单独 update 一步。
+    run_apk(&["add", "--no-cache", pkg]).await?;
+    Ok(())
+}
+
+async fn execute_apk_remove(pkg: &str) -> Result<(), Status> {
+    ensure_apk_available().await?;
+    run_apk(&["del", pkg]).await?;
+    Ok(())
+}
+
+async fn execute_apk_upgrade(pkg: &str) -> Result<(), Status> {
+    ensure_apk_available().await?;
+    run_apk(&["add", "--no-cache", "--upgrade", pkg]).await?;
+    Ok(())
+}
+
+async fn deploy_via_apk(
+    template: AppTemplate,
+    request: DeployAppRequest,
+) -> Result<DeployAppResponse, Status> {
+    let app_name = sanitize_app_name(if request.app_name.trim().is_empty() {
+        &template.slug
+    } else {
+        &request.app_name
+    })?;
+    let pkg = slug_to_apk_package(&template.slug).to_owned();
+    let summary = trf!(
+        "apk 包: {pkg}\n安装命令: apk add --no-cache {pkg}\n备注: 由 OpenRC 控制启动 / 服务状态,RustPanel 不接管 init 脚本。",
+        "apk package: {pkg}\nInstall command: apk add --no-cache {pkg}\nNote: OpenRC controls startup / service status; RustPanel does not manage the init script."
+    );
+    let state = if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
+        "planned".to_owned()
+    } else {
+        execute_apk_install(&pkg).await?;
+        "installed".to_owned()
+    };
+    let now = current_timestamp();
+    let app = InstalledApp {
+        app_name: app_name.clone(),
+        slug: template.slug,
+        version: "system".to_owned(),
+        image: String::new(),
+        compose_path: format!("apk:{pkg}"),
+        state,
+        installed_at_seconds: now,
+        updated_at_seconds: now,
+    };
+    save_installed_app(&app).await?;
+    Ok(DeployAppResponse {
+        status: Some(ok_response("apk app deployed")),
+        compose_path: format!("apk:{pkg}"),
+        compose_yaml: summary,
+        app: Some(app),
+    })
+}
+
+async fn uninstall_via_apk(
+    native: NativeRef,
+    app: &InstalledApp,
+) -> Result<UninstallAppResponse, Status> {
+    if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
+        execute_apk_remove(&native.pkg).await?;
+    }
+    let app_dir = appstore_root().join(&app.app_name);
+    if tokio::fs::try_exists(&app_dir).await.unwrap_or(false) {
+        tokio::fs::remove_dir_all(app_dir)
+            .await
+            .map_err(io_status)?;
+    }
+    Ok(UninstallAppResponse {
+        status: Some(ok_response("apk app uninstalled")),
+    })
+}
+
+async fn update_via_apk(
+    native: NativeRef,
+    mut app: InstalledApp,
+) -> Result<UpdateAppResponse, Status> {
+    let summary = trf!(
+        "apk 升级: apk add --no-cache --upgrade {}\n备注: 系统包升级由 apk 仓库决定可获取版本,RustPanel 不强制锁定版本号。",
+        "apk upgrade: apk add --no-cache --upgrade {}\nNote: the available version for system packages is decided by the apk repo; RustPanel doesn't pin a specific version.",
+        native.pkg
+    );
+    if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
+        execute_apk_upgrade(&native.pkg).await?;
+    }
+    app.state = "updated".to_owned();
+    app.updated_at_seconds = current_timestamp();
+    save_installed_app(&app).await?;
+    Ok(UpdateAppResponse {
+        status: Some(ok_response("apk app updated")),
+        app: Some(app),
+        compose_yaml: summary,
+    })
+}
+
+/// 新装应用的 NativePackage 分发:按当前主机实际的发行版选 apt/apk。
+async fn deploy_via_native_package(
+    template: AppTemplate,
+    request: DeployAppRequest,
+) -> Result<DeployAppResponse, Status> {
+    match native_package_manager_for_host()? {
+        NativePackageManager::Apt => deploy_via_apt(template, request).await,
+        NativePackageManager::Apk => deploy_via_apk(template, request).await,
+    }
+}
+
+/// 卸载/更新已装应用的 NativePackage 分发:按这条记录自己的前缀走,不是按
+/// 当前主机——两者在正常情况下应该一致,只有备份跨发行版恢复这种边缘场景
+/// 才会不一致,这时 NativeRef::parse 之后、具体 execute_apt_*/execute_apk_*
+/// 调用前的可用性检查(ensure_apt_available/ensure_apk_available)会给出
+/// 清楚的报错,而不是静默地用错包管理器。
+async fn uninstall_via_native_package(
+    template: AppTemplate,
+    app: &InstalledApp,
+) -> Result<UninstallAppResponse, Status> {
+    let native = NativeRef::parse(&app.compose_path)?;
+    match native.manager {
+        NativePackageManager::Apt => uninstall_via_apt(template, app).await,
+        NativePackageManager::Apk => uninstall_via_apk(native, app).await,
+    }
+}
+
+async fn update_via_native_package(
+    template: AppTemplate,
+    app: InstalledApp,
+) -> Result<UpdateAppResponse, Status> {
+    let native = NativeRef::parse(&app.compose_path)?;
+    match native.manager {
+        NativePackageManager::Apt => update_via_apt(template, app).await,
+        NativePackageManager::Apk => update_via_apk(native, app).await,
+    }
 }
 
 // =====================================================================
@@ -2898,6 +3136,36 @@ mod tests {
         assert_eq!(slug_to_apt_package("nginx-mainline"), "nginx");
         // 未知 slug 也兜底,executor 端的 apt-get 自己报"无此包"
         assert_eq!(slug_to_apt_package("nonexistent"), "nonexistent");
+    }
+
+    #[test]
+    fn slug_to_apk_package_maps_known_slugs_and_falls_back() {
+        assert_eq!(slug_to_apk_package("redis-tuned"), "redis");
+        assert_eq!(slug_to_apk_package("postgres-tiny"), "postgresql");
+        assert_eq!(slug_to_apk_package("sqlite"), "sqlite");
+        assert_eq!(slug_to_apk_package("wireguard"), "wireguard-tools");
+        // Alpine 下退化成仓库自带 nginx,没有 nginx.org mainline 那套
+        assert_eq!(slug_to_apk_package("nginx-mainline"), "nginx");
+        assert_eq!(slug_to_apk_package("nonexistent"), "nonexistent");
+    }
+
+    #[test]
+    fn native_ref_parses_known_prefixes_and_rejects_unknown() {
+        let apt = NativeRef::parse("apt:redis-server").expect("apt prefix");
+        assert_eq!(apt.manager, NativePackageManager::Apt);
+        assert_eq!(apt.pkg, "redis-server");
+
+        let apk = NativeRef::parse("apk:redis").expect("apk prefix");
+        assert_eq!(apk.manager, NativePackageManager::Apk);
+        assert_eq!(apk.pkg, "redis");
+
+        // 老版本只有 apt 一种前缀,这条记录永远有效,不做迁移
+        let legacy = NativeRef::parse("apt:nginx").expect("legacy apt prefix still valid");
+        assert_eq!(legacy.manager, NativePackageManager::Apt);
+
+        // 认不出来的前缀(比如以后真要加 dnf/pacman 之前)直接报错,不瞎猜
+        assert!(NativeRef::parse("dnf:nginx").is_err());
+        assert!(NativeRef::parse("not-a-native-ref").is_err());
     }
 
     #[test]
