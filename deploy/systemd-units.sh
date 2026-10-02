@@ -150,15 +150,58 @@ WantedBy=timers.target
 EOF
 }
 
-# 无 systemd 时的证书续签后备:cron.d 每天一次。
-rustpanel_write_cert_renew_cron() {
-  [[ -d "$RUSTPANEL_CRON_D_DIR" ]] || return 0
-  cat > "$RUSTPANEL_CRON_D_DIR/rustpanel-cert-renew" <<EOF
-# 由 RustPanel 安装器生成:每天续签一次临期证书
+# 写一条系统级计划任务:优先用 /etc/cron.d,没有这个目录就退到 root 的 crontab
+# (兼容 Alpine 默认的 busybox crond,它不读 /etc/cron.d)。用标记行包住 crontab 里
+# 的那一段,方便覆盖/删除,不碰用户 crontab 里其它手写的内容。
+# 用法:rustpanel_cron_set <name> <schedule 例如 "17 3 * * *"> <command>
+rustpanel_cron_set() {
+  local name="$1" schedule="$2" command="$3"
+  if [[ -d "$RUSTPANEL_CRON_D_DIR" ]]; then
+    cat > "$RUSTPANEL_CRON_D_DIR/$name" <<EOF
+# 由 RustPanel 安装器生成,勿手动编辑
 SHELL=/bin/sh
-17 3 * * * root set -a; . '$INSTALL_DIR/.env'; set +a; MALLOC_ARENA_MAX=2 TOKIO_WORKER_THREADS=1 '$INSTALL_DIR/bin/rustpanel-backend' --renew-certs >/dev/null 2>&1
+$schedule root $command
 EOF
-  chmod 0644 "$RUSTPANEL_CRON_D_DIR/rustpanel-cert-renew"
+    chmod 0644 "$RUSTPANEL_CRON_D_DIR/$name"
+    return 0
+  fi
+  if command -v crontab >/dev/null 2>&1; then
+    local begin="# rustpanel:$name begin" end="# rustpanel:$name end" existing
+    existing="$(crontab -l 2>/dev/null || true)"
+    {
+      printf '%s\n' "$existing" | awk -v b="$begin" -v e="$end" '
+        $0==b { skip=1 }
+        !skip { print }
+        $0==e { skip=0 }
+      '
+      printf '%s\n%s %s\n%s\n' "$begin" "$schedule" "$command" "$end"
+    } | crontab -
+    return 0
+  fi
+  return 1
+}
+
+rustpanel_cron_unset() {
+  local name="$1"
+  if [[ -d "$RUSTPANEL_CRON_D_DIR" ]]; then
+    rm -f "$RUSTPANEL_CRON_D_DIR/$name"
+  fi
+  if command -v crontab >/dev/null 2>&1; then
+    local begin="# rustpanel:$name begin" end="# rustpanel:$name end" existing
+    existing="$(crontab -l 2>/dev/null || true)"
+    [[ -n "$existing" ]] || return 0
+    printf '%s\n' "$existing" | awk -v b="$begin" -v e="$end" '
+      $0==b { skip=1; next }
+      $0==e { skip=0; next }
+      !skip { print }
+    ' | crontab -
+  fi
+}
+
+# 无 systemd 时的证书续签后备:每天一次。
+rustpanel_write_cert_renew_cron() {
+  rustpanel_cron_set rustpanel-cert-renew "17 3 * * *" \
+    "set -a; . '$INSTALL_DIR/.env'; set +a; MALLOC_ARENA_MAX=2 TOKIO_WORKER_THREADS=1 '$INSTALL_DIR/bin/rustpanel-backend' --renew-certs >/dev/null 2>&1"
 }
 
 # 小硬盘优化(micro 档默认):apt 不留 .deb / pkgcache、索引保持压缩;journal 上限 20MB
