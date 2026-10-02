@@ -21,8 +21,8 @@ redis = ["dep:redis"]
 pty = ["dep:portable-pty"]
 
 [dependencies]
-axum = { version = "0.7", features = ["multipart", "ws"] }
-bollard = { version = "0.17", optional = true }
+axum = { version = "0.8", features = ["multipart", "ws"] }
+bollard = { version = "0.21", optional = true }
 bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4", features = ["derive", "env"] }
@@ -31,7 +31,7 @@ data-encoding = "2.11"
 flate2 = "1"
 futures-core = "0.3"
 futures-util = "0.3"
-hmac = "0.12"
+hmac = "0.13"
 # systemd socket activation 给 fd 打 CLOEXEC 用;tokio 早已依赖,不增体积。
 libc = "0.2"
 http-body-util = "0.1"
@@ -41,27 +41,27 @@ http-body-util = "0.1"
 instant-acme = { version = "0.8", default-features = false, features = ["ring", "hyper-rustls"] }
 jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto"] }
 mime_guess = "2"
-portable-pty = { version = "0.8", optional = true }
-prost = "0.13"
-prost-types = "0.13"
-rcgen = "0.13"
+portable-pty = { version = "0.9", optional = true }
+prost = "0.14"
+prost-types = "0.14"
+rcgen = "0.14"
 # 两步验证绑定时生成 otpauth 二维码(纯 Rust SVG 渲染,不带图片编码依赖)
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 redis = { version = "1.0", default-features = false, features = ["tokio-comp"], optional = true }
 regex = "1"
 # 通知告警出站 HTTP(Webhook/Telegram/钉钉/企业微信/Bark)。走 rustls + 内置根证书,
 # 不引 openssl,适配最小镜像;复用已在树里的 rustls/hyper。
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-tls", "json", "stream"] }
 rust-embed = "8"
 # 启动时显式安装进程级 CryptoProvider(见 main.rs),防依赖变动再引入双 provider。
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
-sha1 = "0.10"
-sha2 = "0.10"
-sqlx = { version = "0.8", default-features = false, features = ["any", "json", "runtime-tokio", "sqlite"] }
-sysinfo = "0.30"
+sha1 = "0.11"
+sha2 = "0.11"
+sqlx = { version = "0.9", default-features = false, features = ["any", "json", "runtime-tokio", "sqlite"] }
+sysinfo = "0.39"
 tar = "0.4"
 tera = "2"
 thiserror = "2"
@@ -70,8 +70,8 @@ time = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = { version = "0.7", features = ["io"] }
-tonic = "0.12"
-tonic-web = "0.12"
+tonic = "0.14"
+tonic-web = "0.14"
 tower = { version = "0.5", features = ["make", "util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
@@ -81,7 +81,7 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 
 [build-dependencies]
 protoc-bin-vendored = "3"
-tonic-build = "0.12"
+tonic-build = "0.14"
 
 [dev-dependencies]
 tempfile = "3"
