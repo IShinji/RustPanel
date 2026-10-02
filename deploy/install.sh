@@ -38,9 +38,15 @@ ASSUME_RECOMMENDED="${RUSTPANEL_ASSUME_RECOMMENDED:-0}"
 DRY_RUN="${RUSTPANEL_DRY_RUN:-0}"
 FORCE="${RUSTPANEL_INSTALL_FORCE:-0}"
 
-# 资源硬门禁阈值,低于此线安装注定失败,提前 fail 给用户清理建议
+# 资源硬门禁阈值,低于此线安装注定失败,提前 fail 给用户清理建议。
+# Debian/glibc 系维持原来的数字;Alpine 用 musl + 节俭模式的 activate 监督者,
+# 实测(docs/guides/alpine-128mb-feasibility.md)装完 OS+面板只占 ~38MB、
+# 空闲 RSS 个位数 MB,门禁可以定得低很多——但没有压测过 ACME 签发/终端会话/
+# zip 打包这几个更吃内存的场景,留了明显余量,不是贴着实测数字定。
 MIN_DISK_MB=500
 MIN_MEMORY_MB=80
+MIN_DISK_MB_ALPINE=100
+MIN_MEMORY_MB_ALPINE=64
 NAT_PORT_LOW=""
 NAT_PORT_HIGH=""
 
@@ -221,14 +227,23 @@ validate_port_against_nat() {
 
 # 资源硬门禁:磁盘 / 内存低于阈值则提前 fail,避免装到一半 OOM 或塞满磁盘
 preflight_resources() {
-  local disk_mb memory_mb
+  local disk_mb memory_mb min_disk min_memory clean_hint
   disk_mb="$(detect_disk_mb)"
   memory_mb="$(detect_memory_mb)"
-  if [[ -n "$disk_mb" ]] && (( disk_mb < MIN_DISK_MB )); then
-    fail "free disk space ${disk_mb}MB is below ${MIN_DISK_MB}MB; clean up with 'apt-get clean && journalctl --vacuum-size=50M' and retry"
+  if [[ "$(detect_distro)" == "alpine" ]]; then
+    min_disk="$MIN_DISK_MB_ALPINE"
+    min_memory="$MIN_MEMORY_MB_ALPINE"
+    clean_hint="clean up with 'apk cache clean' and retry"
+  else
+    min_disk="$MIN_DISK_MB"
+    min_memory="$MIN_MEMORY_MB"
+    clean_hint="clean up with 'apt-get clean && journalctl --vacuum-size=50M' and retry"
   fi
-  if [[ -n "$memory_mb" ]] && (( memory_mb > 0 && memory_mb < MIN_MEMORY_MB )); then
-    fail "total memory ${memory_mb}MB is below ${MIN_MEMORY_MB}MB; RustPanel requires at least ${MIN_MEMORY_MB}MB"
+  if [[ -n "$disk_mb" ]] && (( disk_mb < min_disk )); then
+    fail "free disk space ${disk_mb}MB is below ${min_disk}MB; ${clean_hint}"
+  fi
+  if [[ -n "$memory_mb" ]] && (( memory_mb > 0 && memory_mb < min_memory )); then
+    fail "total memory ${memory_mb}MB is below ${min_memory}MB; RustPanel requires at least ${min_memory}MB"
   fi
 }
 

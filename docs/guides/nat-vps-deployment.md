@@ -5,6 +5,10 @@ NO SUPPORT** 这一类极小 VPS,给出 RustPanel 推荐配置与典型用法。
 普通 VPS(独立 IP、≥1GB RAM)请直接走默认 `standard` profile,
 不需要本文。
 
+**磁盘比这还极限(128MB 级,不是 2GB)的小鸡见第七节**——同样是
+"micro 档",但对机器形态的要求更窄,不是随便一台 128MB 内存的
+VPS 都装得下。
+
 ## 一、机器形状决定了能跑什么
 
 | 资源 | 实际含义 |
@@ -164,7 +168,72 @@ RUSTPANEL_SYSTEMD_DIR=/tmp/systemd
 | 媒体 | Plex / Jellyfin / Frigate | RAM + 带宽都不够 |
 | 容器化一切 | Docker / Podman | OpenVZ + 128MB 直接放弃 |
 
-## 七、相关 commit 参考
+## 七、128MB 磁盘级(Alpine + LXC/OpenVZ 专属,不是本文前面那种 2GB 盘)
+
+### 8.1 这个目标只在特定虚拟化类型上成立
+
+**128MB 磁盘目标只在 LXC/OpenVZ 这类"共享宿主机内核、容器里不落盘内核
+镜像"的虚拟化上现实。KVM 完整虚拟机不行**——KVM 上哪怕是 Alpine,自己
+也要装一份内核 + initramfs + 内核模块,落盘体积通常 60-90MB,跟 128MB
+预算冲突。装机前先确认你这台 VPS 是 LXC/OpenVZ 容器,不是 KVM。
+
+这个目标**也只在 Alpine 上成立**,不是随便换个发行版都行:Debian/Ubuntu
+系统身的 OS 基础占用就有几十到上百 MB(本文第一节的 2GB 盘场景假设
+"系统 + RustPanel ~600MB" 就是这个量级),跟 128MB 预算差了 4-5 倍。
+Alpine 的 minirootfs 本身只有 ~10MB。
+
+### 8.2 实测数据
+
+详见 `docs/guides/alpine-128mb-feasibility.md`(Milestone 0 可行性验证的
+完整记录),这里摘要结论:
+
+| 项目 | 实测值 | 对应 128MB 预算的占比 |
+|------|-------|----------------------|
+| 磁盘:OS + OpenRC + OpenSSH + chrony + sqlite + 面板二进制 + 最小运行态 | ~37-38MB | ~30% |
+| 内存:空闲 | 4.9MB | ~4% |
+| 内存:轻负载(50 次 HTTP 请求)后 | 9.1MB | ~7% |
+
+**没有压测过的场景**(留给以后端到端验证时补):ACME 证书签发、WebSocket
+终端会话、zip 打包这几个相对吃内存的操作;真实 OpenRC-as-PID1 的开机自启
+/ 崩溃恢复行为(本次实测用 Docker 近似,不是真 LXC)。
+
+### 8.3 装机方式
+
+跟本文前面的 2GB 盘场景共用同一个 `install.sh`,区别只是机器形态不同、
+装机器自己会识别:
+
+```sh
+curl -fsSL https://example.com/install.sh | bash -s -- \
+  --profile micro \
+  --public-host <对外 IPv4 或域名>
+```
+
+- `detect_distro()` 探测到 Alpine 后自动下载 musl 静态二进制
+  (`rustpanel-backend-micro-linux-musl-amd64.tar.gz`),不是 glibc 版本。
+- 资源硬门禁对 Alpine 单独放宽:磁盘 100MB / 内存 64MB(Debian 系仍是
+  500MB / 80MB)——数字定得比实测结果留了余量,不是贴着 37MB/9MB 这两个
+  数字定的,给站点数据、日志、证书留空间。
+- 没有 systemd:面板的"节俭模式"(空闲挂起)靠 `rustpanel-backend
+  --activate` 这个可移植监督者实现,由 OpenRC 的 `supervise-daemon` 托管,
+  效果跟 systemd 的 `.socket` unit 等价,但只需要管一个进程。
+- 证书续签、告警扫描都走 cron(`/etc/cron.d` 或 busybox crond 兼容的
+  root crontab 回退),没有 systemd timer 可用。
+
+### 8.4 已知局限
+
+- **软件商店在这个磁盘预算上意义不大**:Redis/PostgreSQL 这类原生包装了
+  也装不下多少数据,`apk` 后端这次只做了基础的装/卸/升级,没有照搬 apt 那套
+  nginx.org 官方源 + pinning 逻辑——Alpine 上的 `nginx-mainline` 模板退化成
+  Alpine 自带仓库的 nginx,没有 HTTP/3(`http_v3_module`)。
+- **RHEL 系(Rocky/Alma/CentOS)和 Arch 不支持**:这两家默认带 SELinux
+  (非标准端口监听需要 `semanage port`)和 firewalld,是独立的工程量,
+  这次不在范围内,以后有需求再做。
+- 本节内容没有在真实 Alpine LXC 容器里跑过完整的端到端安装(建站点 /
+  ACME 签发 / 重启验证开机自启这些),只验证到"各个独立环节在真实 Alpine
+  容器里行为正确"这一步——第一次在生产 LXC 容器上装之前,建议先在测试机
+  上走一遍完整流程。
+
+## 八、相关 commit 参考
 
 - `b998aa0` —— Phase G 5 个 Rust 栈包模板入软件商店
 - `ba74841` —— InstallPlan 数据契约 + Phase G versions + 描述里的官网
