@@ -251,7 +251,7 @@ async fn deploy_via_binary(
     })?;
     let resolved = resolve_release_asset(&plan, &request.version).await?;
     let summary = render_install_plan_summary(&plan, &resolved.version, &resolved.asset_name);
-    let unit_path = systemd_unit_dir().join(format!("{}.service", template.slug));
+    let unit_path = crate::service_manager::unit_dir().join(format!("{}.service", template.slug));
 
     let state = if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
         "planned".to_owned()
@@ -329,7 +329,7 @@ async fn update_via_binary(
     if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
         execute_binary_install(&template.slug, &plan, &resolved).await?;
         // install_atomic 已经走 rename,服务在 restart 时拿到新二进制
-        systemctl(&["restart", &format!("{}.service", template.slug)]).await?;
+        crate::service_manager::restart(&format!("{}.service", template.slug)).await?;
     }
 
     app.version = resolved.version;
@@ -951,27 +951,17 @@ pub(crate) async fn reload_rpxy_if_running() -> Result<(), Status> {
     if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_ok() {
         return Ok(());
     }
-    let is_active = tokio::process::Command::new("systemctl")
-        .args(["is-active", "--quiet", "rpxy.service"])
-        .status()
-        .await
-        .map_err(io_status)?;
-    if !is_active.success() {
+    if !crate::service_manager::is_active("rpxy.service").await {
         // 没装 / 没启用,直接返回 OK —— 站点片段已写好,装上 rpxy 后
         // 它启动时会自动读到。这里报错只会让 site 操作失败。
         return Ok(());
     }
     // rpxy 自己 watch 配置文件,改完即生效;常见的 rpxy.service 没配 ExecReload,
     // 硬 reload 只会报 "Job type reload is not applicable" 的误导性警告。
-    let can_reload = tokio::process::Command::new("systemctl")
-        .args(["show", "-p", "CanReload", "--value", "rpxy.service"])
-        .output()
-        .await
-        .map_err(io_status)?;
-    if String::from_utf8_lossy(&can_reload.stdout).trim() != "yes" {
+    if !crate::service_manager::can_reload("rpxy.service").await {
         return Ok(());
     }
-    systemctl(&["reload", "rpxy.service"]).await
+    crate::service_manager::reload("rpxy.service").await
 }
 
 // =====================================================================
@@ -1021,16 +1011,11 @@ fn sws_site_config_path(site_name: &str) -> PathBuf {
 /// 写 SWS systemd template unit(只在不存在时写)。每台机器一份即可,
 /// 后续 sws@<site>.service 都共享它。
 pub(crate) async fn ensure_sws_template_unit() -> Result<PathBuf, Status> {
-    let dir = systemd_unit_dir();
-    tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
-    let path = dir.join("sws@.service");
+    let path = crate::service_manager::unit_dir().join("sws@.service");
     if tokio::fs::try_exists(&path).await.unwrap_or(false) {
         return Ok(path);
     }
-    crate::statefile::write_atomic(&path, SWS_TEMPLATE_UNIT)
-        .await
-        .map_err(io_status)?;
-    Ok(path)
+    crate::service_manager::write_unit("sws@.service", SWS_TEMPLATE_UNIT).await
 }
 
 /// 写一份 per-site SWS 配置;后续调用方再 `systemctl enable --now
@@ -1108,8 +1093,8 @@ pub(crate) async fn start_sws_for_site(
     ensure_site_root_with_placeholder(site_name, root).await?;
     write_sws_site_config(site_name, root, port).await?;
     if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
-        systemctl(&["daemon-reload"]).await?;
-        systemctl(&["enable", "--now", &format!("sws@{site_name}.service")]).await?;
+        crate::service_manager::daemon_reload().await?;
+        crate::service_manager::enable_now(&format!("sws@{site_name}.service")).await?;
     }
     Ok(true)
 }
@@ -1829,18 +1814,10 @@ pub(crate) fn sanitize_status_text(input: impl Into<String>) -> String {
 // BinaryDownload executor 的底层工具:
 // - 网络:shell out 到 curl(避免引入 reqwest 这个重依赖)
 // - 解压:flate2 + tar(项目已用)
-// - systemd:Command::new("systemctl")
+// - systemd/OpenRC:走 crate::service_manager,不再直接 Command::new("systemctl")
 // 所有外部副作用调用都被 RUSTPANEL_APPSTORE_SKIP_EXECUTE 包住,
 // 测试在 skip 模式下走纯数据路径。
 // =====================================================================
-
-/// /etc/systemd/system 的写入目录,RUSTPANEL_SYSTEMD_DIR env 可覆盖
-/// (测试 / 容器内沙箱用)。
-fn systemd_unit_dir() -> PathBuf {
-    env::var("RUSTPANEL_SYSTEMD_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/etc/systemd/system"))
-}
 
 /// 把 BinaryInstallPlan.asset_pattern 里的 {version} 占位符替换为
 /// 解析出来的 bare 版本。pattern 自己显式写 `v{version}` 时,
@@ -1852,7 +1829,7 @@ fn expand_asset_pattern(pattern: &str, version: &str) -> String {
 /// 给前端 / 用户的"装这个包会做什么"摘要 —— 用纯文本而不是 JSON,
 /// 复用 DeployAppResponse.compose_yaml 字段返回,前端直接显示。
 fn render_install_plan_summary(plan: &BinaryInstallPlan, version: &str, asset: &str) -> String {
-    let unit = systemd_unit_dir()
+    let unit = crate::service_manager::unit_dir()
         .join(format!(
             "{slug}.service",
             slug = plan.install_to.rsplit('/').next().unwrap_or("app")
@@ -2170,18 +2147,6 @@ async fn install_binary_atomic(src: &Path, dest: &Path) -> Result<(), Status> {
     Ok(())
 }
 
-/// 写 systemd unit 到 RUSTPANEL_SYSTEMD_DIR(默认 /etc/systemd/system),
-/// 同样 tmp + rename 保证原子。
-async fn write_systemd_unit(slug: &str, content: &str) -> Result<PathBuf, Status> {
-    let dir = systemd_unit_dir();
-    tokio::fs::create_dir_all(&dir).await.map_err(io_status)?;
-    let path = dir.join(format!("{slug}.service"));
-    crate::statefile::write_atomic(&path, content)
-        .await
-        .map_err(io_status)?;
-    Ok(path)
-}
-
 /// 写配置文件 —— **只在不存在时写**,绝不覆盖用户已经手改过的内容。
 async fn write_config_if_missing(path: &Path, content: &str) -> Result<(), Status> {
     if tokio::fs::try_exists(path).await.unwrap_or(false) {
@@ -2193,23 +2158,6 @@ async fn write_config_if_missing(path: &Path, content: &str) -> Result<(), Statu
     tokio::fs::write(path, content.as_bytes())
         .await
         .map_err(io_status)?;
-    Ok(())
-}
-
-/// 包一层 systemctl —— 失败时把 stderr 直接当作 Status::unavailable 抛出。
-async fn systemctl(args: &[&str]) -> Result<(), Status> {
-    let output = tokio::process::Command::new("systemctl")
-        .args(args)
-        .output()
-        .await
-        .map_err(io_status)?;
-    if !output.status.success() {
-        return Err(Status::unavailable(sanitize_status_text(format!(
-            "systemctl {} 失败: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&output.stderr)
-        ))));
-    }
     Ok(())
 }
 
@@ -2266,10 +2214,10 @@ async fn execute_binary_install(
     }
 
     install_binary_atomic(&binary_src, Path::new(plan.install_to)).await?;
-    write_systemd_unit(slug, plan.systemd_unit).await?;
+    crate::service_manager::write_unit(&format!("{slug}.service"), plan.systemd_unit).await?;
     write_config_if_missing(Path::new(plan.config_path), plan.config_template).await?;
-    systemctl(&["daemon-reload"]).await?;
-    systemctl(&["enable", "--now", &format!("{slug}.service")]).await?;
+    crate::service_manager::daemon_reload().await?;
+    crate::service_manager::enable_now(&format!("{slug}.service")).await?;
     Ok(())
 }
 
@@ -2328,8 +2276,8 @@ fn sweep_install_scratch_in(root: &Path) {
 async fn execute_binary_uninstall(slug: &str, plan: &BinaryInstallPlan) -> Result<(), Status> {
     let service = format!("{slug}.service");
     // 停 + disable 即使 unit 已经不存在也不该 fatal —— 容错处理。
-    let _ = systemctl(&["disable", "--now", &service]).await;
-    let unit_path = systemd_unit_dir().join(&service);
+    let _ = crate::service_manager::disable_now(&service).await;
+    let unit_path = crate::service_manager::unit_dir().join(&service);
     if tokio::fs::try_exists(&unit_path).await.unwrap_or(false) {
         tokio::fs::remove_file(&unit_path)
             .await
@@ -2341,7 +2289,7 @@ async fn execute_binary_uninstall(slug: &str, plan: &BinaryInstallPlan) -> Resul
             .await
             .map_err(io_status)?;
     }
-    let _ = systemctl(&["daemon-reload"]).await;
+    let _ = crate::service_manager::daemon_reload().await;
     Ok(())
 }
 

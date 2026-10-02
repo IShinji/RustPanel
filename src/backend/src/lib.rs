@@ -55,6 +55,7 @@ pub mod proxy;
 pub mod rollback;
 pub mod runtime;
 pub mod security;
+pub mod service_manager;
 pub mod site;
 pub mod ssl;
 pub mod statefile;
