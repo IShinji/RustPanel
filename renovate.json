@@ -82,12 +82,12 @@
       "groupSlug": "github-actions"
     },
     {
-      "description": "0.x 版本号的 minor 升级(如 0.12 → 0.13)按 Cargo/npm 的 ^0.y.z 兼容规则等价于 breaking change,不能跟真正安全的 minor/patch 混在一批自动合并;从上面几条分组规则里摘出来单独开 PR、关掉自动合并,人工确认后再合",
-      "matchCurrentVersion": "<1.0.0",
-      "matchUpdateTypes": ["minor"],
+      "description": "用官方 matchIsBreaking 替代手写的 matchCurrentVersion<1.0.0 判断:Renovate 的 Cargo versioning 原生就把 0.x crate 的 minor 升级(如 0.12 → 0.13)判定为 breaking(0.0.x 任何变化都算,比我们自己拼的条件更精确),npm 生态同理对 0.x 包的 minor/patch 升级也判 breaking;命中时哪怕 updateType 只是 minor/patch,也不能跟上面几条分组规则混在一批自动合并,摘出来单独开 PR、人工确认后再合",
+      "matchIsBreaking": true,
+      "matchUpdateTypes": ["minor", "patch"],
       "automerge": false,
-      "groupName": "0.x 版本 minor 升级(视为 breaking,需人工确认)",
-      "groupSlug": "zero-major-minor-manual-review"
+      "groupName": "breaking 更新(matchIsBreaking,需人工确认)",
+      "groupSlug": "breaking-updates-manual-review"
     }
   ]
 }
