@@ -582,7 +582,9 @@ async fn webdav_upload(
         .await
         .map_err(|error| error.to_string())?;
     let body = reqwest::Body::wrap_stream(ReaderStream::new(file));
-    let client = reqwest::Client::new();
+    let client = crate::http_client::client_builder()
+        .build()
+        .map_err(|error| error.to_string())?;
     let response = client
         .put(webdav_url(target, archive_name))
         .basic_auth(&target.username, Some(&target.password))
@@ -602,7 +604,9 @@ async fn webdav_download(
     archive_name: &str,
     archive_path: &Path,
 ) -> Result<(), String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::client_builder()
+        .build()
+        .map_err(|error| error.to_string())?;
     let response = client
         .get(webdav_url(target, archive_name))
         .basic_auth(&target.username, Some(&target.password))
@@ -632,7 +636,9 @@ async fn webdav_download(
 }
 
 async fn webdav_delete(target: &StoredTarget, archive_name: &str) -> Result<(), String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::client_builder()
+        .build()
+        .map_err(|error| error.to_string())?;
     client
         .delete(webdav_url(target, archive_name))
         .basic_auth(&target.username, Some(&target.password))
@@ -797,7 +803,9 @@ async fn s3_upload(target: &StoredTarget, key: &str, archive_path: &Path) -> Res
         .await
         .map_err(|error| error.to_string())?;
     let body = reqwest::Body::wrap_stream(ReaderStream::new(file));
-    let client = reqwest::Client::new();
+    let client = crate::http_client::client_builder()
+        .build()
+        .map_err(|error| error.to_string())?;
     let mut request = client.put(&signed.url).body(body);
     for (name, value) in &signed.headers {
         request = request.header(name.as_str(), value.as_str());
@@ -820,7 +828,9 @@ async fn s3_upload(target: &StoredTarget, key: &str, archive_path: &Path) -> Res
 
 async fn s3_download(target: &StoredTarget, key: &str, archive_path: &Path) -> Result<(), String> {
     let signed = s3_sign(target, "GET", key, "UNSIGNED-PAYLOAD")?;
-    let client = reqwest::Client::new();
+    let client = crate::http_client::client_builder()
+        .build()
+        .map_err(|error| error.to_string())?;
     let mut request = client.get(&signed.url);
     for (name, value) in &signed.headers {
         request = request.header(name.as_str(), value.as_str());
@@ -850,7 +860,9 @@ async fn s3_download(target: &StoredTarget, key: &str, archive_path: &Path) -> R
 
 async fn s3_delete(target: &StoredTarget, key: &str) -> Result<(), String> {
     let signed = s3_sign(target, "DELETE", key, "UNSIGNED-PAYLOAD")?;
-    let client = reqwest::Client::new();
+    let client = crate::http_client::client_builder()
+        .build()
+        .map_err(|error| error.to_string())?;
     let mut request = client.delete(&signed.url);
     for (name, value) in &signed.headers {
         request = request.header(name.as_str(), value.as_str());

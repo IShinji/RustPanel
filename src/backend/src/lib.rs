@@ -49,6 +49,7 @@ pub mod dns;
 pub mod docker;
 pub mod files;
 pub mod frugal;
+pub mod http_client;
 pub mod i18n;
 pub mod monitor;
 pub mod notification;

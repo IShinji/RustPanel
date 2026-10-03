@@ -88,12 +88,6 @@
       "automerge": false,
       "groupName": "0.x 版本 minor 升级(视为 breaking,需人工确认)",
       "groupSlug": "zero-major-minor-manual-review"
-    },
-    {
-      "description": "reqwest 0.13 把 rustls-tls 这个 feature 整个改名了,Cargo.toml 里的 features = [\"rustls-tls\", ...] 没跟着改之前,Renovate 连 Cargo.lock 都生不出来,每次扫描都会徒劳地把它塞进上面那条 0.x minor 分组里再失败一次。彻底关掉这个包的更新建议,等专门腾出时间评估新 feature 名(牵涉项目唯一 CryptoProvider=ring 的架构约束,不能在批量依赖升级里顺手做)后再手动摘掉这条规则。",
-      "matchManagers": ["cargo"],
-      "matchPackageNames": ["reqwest"],
-      "enabled": false
     }
   ]
 }

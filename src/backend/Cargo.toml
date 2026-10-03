@@ -51,7 +51,13 @@ redis = { version = "1.0", default-features = false, features = ["tokio-comp"], 
 regex = "1"
 # 通知告警出站 HTTP(Webhook/Telegram/钉钉/企业微信/Bark)。走 rustls + 内置根证书,
 # 不引 openssl,适配最小镜像;复用已在树里的 rustls/hyper。
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+# 0.13 起证书验证默认换成了 rustls-platform-verifier——Linux 上靠系统
+# ca-certificates 包发现信任链,这跟低配主机方针冲突(精简镜像可能没装这个包)。
+# rustls-no-provider 只开 rustls 后端、不带任何 CryptoProvider(实测确认不会像
+# 公开的 "rustls" feature 那样偷偷拉 aws-lc-rs),配合 http_client.rs 手动接入
+# 的、基于 webpki-roots 的 TLS 配置(不依赖系统证书包,跟升级前行为等价)。
+# form/query 这两个老版本隐式可用的便利方法,0.13 里拆成了独立 feature。
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "stream", "form", "query"] }
 rust-embed = "8"
 # 启动时显式安装进程级 CryptoProvider(见 main.rs),防依赖变动再引入双 provider。
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
@@ -77,6 +83,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2"
+# 给 http_client.rs 手搓 rustls ClientConfig 用,见那边的注释
+webpki-roots = "1"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 
 [build-dependencies]

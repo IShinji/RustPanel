@@ -255,7 +255,7 @@ async fn dispatch(
     body: &str,
     include_disabled: bool,
 ) -> (Vec<String>, Vec<String>) {
-    let client = match reqwest::Client::builder()
+    let client = match crate::http_client::client_builder()
         .timeout(Duration::from_secs(HTTP_TIMEOUT_SECONDS))
         .build()
     {

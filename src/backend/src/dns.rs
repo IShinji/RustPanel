@@ -251,7 +251,7 @@ fn doh_base() -> String {
 
 /// 通过 DoH(默认 cloudflare-dns.com)查 TXT 是否已生效,绕开本机 resolver 缓存。
 pub(crate) async fn txt_record_visible(name: &str, value: &str) -> bool {
-    let Ok(client) = reqwest::Client::builder()
+    let Ok(client) = crate::http_client::client_builder()
         .timeout(Duration::from_secs(10))
         .build()
     else {
@@ -402,7 +402,7 @@ async fn cf_request(
     url: &str,
     body: Option<Value>,
 ) -> Result<Value, String> {
-    let client = reqwest::Client::builder()
+    let client = crate::http_client::client_builder()
         .timeout(Duration::from_secs(HTTP_TIMEOUT_SECONDS))
         .build()
         .map_err(|error| error.to_string())?;
