@@ -18,7 +18,7 @@
     "@bufbuild/protoc-gen-es": "^2.16.0",
     "@connectrpc/connect": "^2.2.0",
     "@connectrpc/connect-web": "^2.2.0",
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.4",
     "typescript": "~6.0.3"
   }
 }
