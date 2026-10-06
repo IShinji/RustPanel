@@ -768,7 +768,7 @@ fn system_load_percent() -> Option<u32> {
         return None;
     }
     let mut sys = System::new();
-    sys.refresh_cpu();
+    sys.refresh_cpu_all();
     let cores = sys.cpus().len().max(1);
     Some(((load / cores as f64) * 100.0).round() as u32)
 }

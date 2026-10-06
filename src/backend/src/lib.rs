@@ -25,8 +25,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::IntervalStream;
 use tokio_util::io::ReaderStream;
-use tonic::{transport::Server, Request as GrpcRequest, Response as GrpcResponse, Status};
-use tower::{service_fn, ServiceExt};
+use tonic::{service::Routes, Request as GrpcRequest, Response as GrpcResponse, Status};
+use tower::{service_fn, Layer, ServiceExt};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -363,7 +363,7 @@ fn http_router_with_state(state: HttpState, authority: auth::JwtAuthority) -> Ro
 
     Router::new()
         .route("/healthz", get(http_health_check))
-        .route("/sites/*path", get(http_builtin_static_site))
+        .route("/sites/{*path}", get(http_builtin_static_site))
         .merge(api_routes)
         .fallback(static_fallback)
         .with_state(state)
@@ -409,10 +409,7 @@ fn multiplex_service_with_auth(
     // RollbackService 需要在 SecurityServiceImpl 之前构造,这样 SecurityService
     // 就能在改面板端口 / 2FA 前调它的 ScheduleRollback 把 30s 计时器排上。
     let rollback_service = rollback::RollbackServiceImpl::new();
-    let grpc = Server::builder()
-        .accept_http1(true)
-        .layer(tonic_web::GrpcWebLayer::new())
-        .add_service(AuthServiceServer::new(auth_service))
+    let grpc = Routes::new(AuthServiceServer::new(auth_service))
         .add_service(AuditServiceServer::with_interceptor(
             audit::AuditServiceImpl,
             auth_interceptor.clone(),
@@ -516,7 +513,7 @@ fn multiplex_service_with_auth(
     );
     #[cfg(not(feature = "docker"))]
     drop(auth_interceptor);
-    let grpc = grpc.into_service();
+    let grpc = tonic_web::GrpcWebLayer::new().layer(grpc.prepare());
 
     service_fn(move |request: Request| {
         let grpc = grpc.clone();
@@ -1231,7 +1228,7 @@ async fn handle_deploy_progress_ws(mut socket: WebSocket, job_id: String) {
             message: format!("job `{job_id}` not found (maybe expired)"),
         })
         .unwrap_or_else(|_| "{}".to_owned());
-        let _ = socket.send(WsMessage::Text(payload)).await;
+        let _ = socket.send(WsMessage::Text(payload.into())).await;
         let _ = socket.close().await;
         return;
     };
@@ -1248,7 +1245,7 @@ async fn handle_deploy_progress_ws(mut socket: WebSocket, job_id: String) {
             files_extracted: 0,
         })
         .unwrap_or_else(|_| "{}".to_owned());
-        let _ = socket.send(WsMessage::Text(payload)).await;
+        let _ = socket.send(WsMessage::Text(payload.into())).await;
         let _ = socket.close().await;
         return;
     }
@@ -1261,7 +1258,7 @@ async fn handle_deploy_progress_ws(mut socket: WebSocket, job_id: String) {
                     DeployProgress::Done { .. } | DeployProgress::Error { .. }
                 );
                 let payload = serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_owned());
-                if socket.send(WsMessage::Text(payload)).await.is_err() {
+                if socket.send(WsMessage::Text(payload.into())).await.is_err() {
                     break;
                 }
                 if is_terminal {
@@ -1464,7 +1461,7 @@ async fn handle_terminal_socket(socket: WebSocket, cwd: Option<std::path::PathBu
             outgoing = output.next() => {
                 match outgoing {
                     Some(data) => {
-                        if sender.send(WsMessage::Binary(data)).await.is_err() {
+                        if sender.send(WsMessage::Binary(data.into())).await.is_err() {
                             break;
                         }
                     }
@@ -1718,6 +1715,46 @@ mod tests {
         assert_eq!(response.health, HealthStatus::Serving as i32);
 
         server.abort();
+    }
+
+    #[tokio::test]
+    async fn multiplexed_server_accepts_browser_grpc_web() {
+        let authority = auth::JwtAuthority::from_env().expect("authority");
+        let issued = authority.issue("admin").expect("issue token");
+        // 空的 HealthCheck protobuf 消息:压缩标志为 0,消息长度为 0。
+        let response = multiplex_service()
+            .oneshot(
+                HttpRequest::builder()
+                    .method("POST")
+                    .uri("/rustpanel.v1.SystemService/HealthCheck")
+                    .header("content-type", "application/grpc-web+proto")
+                    .header("x-grpc-web", "1")
+                    .header("authorization", format!("Bearer {}", issued.token))
+                    .body(Body::from(vec![0u8; 5]))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()["content-type"],
+            "application/grpc-web+proto"
+        );
+        let body = response
+            .into_body()
+            .collect()
+            .await
+            .expect("body")
+            .to_bytes();
+        assert_eq!(body[0], 0);
+        let len = u32::from_be_bytes(body[1..5].try_into().expect("frame length")) as usize;
+        let health = <proto::rustpanel::v1::HealthCheckResponse as prost::Message>::decode(
+            &body[5..5 + len],
+        )
+        .expect("health response");
+        assert_eq!(health.health, HealthStatus::Serving as i32);
+        assert_eq!(body[5 + len], 0x80);
+        assert!(String::from_utf8_lossy(&body[10 + len..]).contains("grpc-status:0"));
     }
 
     #[tokio::test]

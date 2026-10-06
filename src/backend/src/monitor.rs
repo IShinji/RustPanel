@@ -435,10 +435,10 @@ impl SystemCollector {
             .lock()
             .map_err(|_| Status::internal("system collector lock poisoned"))?;
 
-        state.system.refresh_cpu();
+        state.system.refresh_cpu_all();
         state.system.refresh_memory();
-        state.networks.refresh();
-        state.disks.refresh();
+        state.networks.refresh(true);
+        state.disks.refresh(true);
 
         let previous_disk_counters = state.disk_counters.clone();
         state.disk_counters = DiskCounters::read();
@@ -597,7 +597,7 @@ fn collect_process_snapshot(limit: usize) -> Vec<ProcessResourceSnapshot> {
         .iter()
         .map(|(pid, process)| ProcessResourceSnapshot {
             pid: pid.to_string(),
-            name: process.name().to_owned(),
+            name: process.name().to_string_lossy().into_owned(),
             cpu_usage_percent: process.cpu_usage(),
             memory_bytes: process.memory(),
         })

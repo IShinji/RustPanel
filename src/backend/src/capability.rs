@@ -185,7 +185,7 @@ impl CapabilityService for CapabilityServiceImpl {
     ) -> Result<GrpcResponse<GetResourceBudgetResponse>, Status> {
         let mut sys = sysinfo::System::new();
         sys.refresh_memory();
-        sys.refresh_cpu();
+        sys.refresh_cpu_all();
 
         let memory = MemoryBudget {
             total_bytes: sys.total_memory(),
@@ -196,7 +196,7 @@ impl CapabilityService for CapabilityServiceImpl {
         };
 
         let mut disks_view = sysinfo::Disks::new_with_refreshed_list();
-        disks_view.refresh();
+        disks_view.refresh(true);
         let mut disks: Vec<DiskBudget> = disks_view
             .list()
             .iter()
@@ -353,7 +353,7 @@ pub fn probe_capabilities_sync() -> Capabilities {
 pub fn snapshot_resource_budget_sync() -> ResourceBudget {
     let mut sys = sysinfo::System::new();
     sys.refresh_memory();
-    sys.refresh_cpu();
+    sys.refresh_cpu_all();
 
     let memory = MemoryBudget {
         total_bytes: sys.total_memory(),
@@ -364,7 +364,7 @@ pub fn snapshot_resource_budget_sync() -> ResourceBudget {
     };
 
     let mut disks_view = sysinfo::Disks::new_with_refreshed_list();
-    disks_view.refresh();
+    disks_view.refresh(true);
     let mut disks: Vec<DiskBudget> = disks_view
         .list()
         .iter()

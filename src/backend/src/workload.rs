@@ -8,7 +8,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use sysinfo::{Pid, System};
+use sysinfo::{Pid, ProcessesToUpdate, System};
 use tokio::sync::Mutex;
 use tonic::{Request, Response as GrpcResponse, Status};
 use uuid::Uuid;
@@ -570,7 +570,7 @@ fn process_memory_bytes(pid: i32) -> u64 {
         return 0;
     };
     let mut system = System::new();
-    system.refresh_process(Pid::from_u32(pid));
+    system.refresh_processes(ProcessesToUpdate::Some(&[Pid::from_u32(pid)]), true);
     system
         .process(Pid::from_u32(pid))
         .map(|process| process.memory())
