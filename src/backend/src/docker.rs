@@ -7,15 +7,16 @@ use std::{
 };
 
 use bollard::{
-    container::{
-        InspectContainerOptions, ListContainersOptions, LogsOptions, PruneContainersOptions,
-        RemoveContainerOptions, RestartContainerOptions, StartContainerOptions,
-        StopContainerOptions, UpdateContainerOptions,
+    models::{
+        ContainerInspectResponse, ContainerSummary, ContainerUpdateBody, CreateImageInfo,
+        ImageSummary, PortSummary as Port,
     },
-    image::{CreateImageOptions, ListImagesOptions, PruneImagesOptions, TagImageOptions},
-    network::PruneNetworksOptions,
-    secret::{ContainerInspectResponse, ContainerSummary, CreateImageInfo, ImageSummary, Port},
-    volume::PruneVolumesOptions,
+    query_parameters::{
+        CreateImageOptions, InspectContainerOptions, ListContainersOptions, ListImagesOptions,
+        LogsOptions, PruneContainersOptions, PruneImagesOptions, PruneNetworksOptions,
+        PruneVolumesOptions, RemoveContainerOptions, RestartContainerOptions,
+        StartContainerOptions, StopContainerOptions, TagImageOptions,
+    },
     Docker,
 };
 use futures_core::Stream;
@@ -59,7 +60,7 @@ impl DockerService for DockerServiceImpl {
     ) -> Result<GrpcResponse<ListContainersResponse>, Status> {
         let docker = docker_client()?;
         let summaries = docker
-            .list_containers(Some(ListContainersOptions::<String> {
+            .list_containers(Some(ListContainersOptions {
                 all: request.into_inner().all,
                 ..Default::default()
             }))
@@ -86,7 +87,7 @@ impl DockerService for DockerServiceImpl {
         docker
             .start_container(
                 &request.into_inner().container_id,
-                None::<StartContainerOptions<String>>,
+                None::<StartContainerOptions>,
             )
             .await
             .map_err(docker_status)?;
@@ -176,8 +177,8 @@ impl DockerService for DockerServiceImpl {
         let docker = docker_client()?;
         let mut stream = docker.create_image(
             Some(CreateImageOptions {
-                from_image: request.image,
-                tag: request.tag,
+                from_image: Some(request.image),
+                tag: Some(request.tag),
                 ..Default::default()
             }),
             None,
@@ -203,8 +204,8 @@ impl DockerService for DockerServiceImpl {
         let stream = docker
             .create_image(
                 Some(CreateImageOptions {
-                    from_image: request.image,
-                    tag: request.tag,
+                    from_image: Some(request.image),
+                    tag: Some(request.tag),
                     ..Default::default()
                 }),
                 None,
@@ -226,10 +227,11 @@ impl DockerService for DockerServiceImpl {
     ) -> Result<GrpcResponse<ListImagesResponse>, Status> {
         let docker = docker_client()?;
         let images = docker
-            .list_images(Some(ListImagesOptions::<String> {
+            .list_images(Some(ListImagesOptions {
                 all: request.into_inner().all,
-                filters: HashMap::new(),
+                filters: Some(HashMap::new()),
                 digests: true,
+                ..Default::default()
             }))
             .await
             .map_err(docker_status)?
@@ -257,7 +259,7 @@ impl DockerService for DockerServiceImpl {
         docker
             .update_container(
                 &request.container_id,
-                UpdateContainerOptions::<String> {
+                ContainerUpdateBody {
                     nano_cpus,
                     memory,
                     memory_swap: memory,
@@ -299,7 +301,9 @@ impl DockerService for DockerServiceImpl {
                 filters.insert("dangling".to_owned(), vec!["false".to_owned()]);
             }
             let result = docker
-                .prune_images(Some(PruneImagesOptions::<String> { filters }))
+                .prune_images(Some(PruneImagesOptions {
+                    filters: Some(filters),
+                }))
                 .await
                 .map_err(docker_status)?;
             let count = result.images_deleted.unwrap_or_default().len() as u32;
@@ -309,8 +313,8 @@ impl DockerService for DockerServiceImpl {
         }
         if request.containers {
             let result = docker
-                .prune_containers(Some(PruneContainersOptions::<String> {
-                    filters: HashMap::new(),
+                .prune_containers(Some(PruneContainersOptions {
+                    filters: Some(HashMap::new()),
                 }))
                 .await
                 .map_err(docker_status)?;
@@ -321,8 +325,8 @@ impl DockerService for DockerServiceImpl {
         }
         if request.volumes {
             let result = docker
-                .prune_volumes(Some(PruneVolumesOptions::<String> {
-                    filters: HashMap::new(),
+                .prune_volumes(Some(PruneVolumesOptions {
+                    filters: Some(HashMap::new()),
                 }))
                 .await
                 .map_err(docker_status)?;
@@ -333,8 +337,8 @@ impl DockerService for DockerServiceImpl {
         }
         if request.networks {
             let result = docker
-                .prune_networks(Some(PruneNetworksOptions::<String> {
-                    filters: HashMap::new(),
+                .prune_networks(Some(PruneNetworksOptions {
+                    filters: Some(HashMap::new()),
                 }))
                 .await
                 .map_err(docker_status)?;
@@ -366,8 +370,8 @@ impl DockerService for DockerServiceImpl {
             .tag_image(
                 &request.source_image,
                 Some(TagImageOptions {
-                    repo: request.target_repository,
-                    tag: request.target_tag,
+                    repo: Some(request.target_repository),
+                    tag: Some(request.target_tag),
                 }),
             )
             .await
@@ -467,7 +471,7 @@ impl DockerService for DockerServiceImpl {
         let stream = docker
             .logs(
                 &request.container_id,
-                Some(LogsOptions::<String> {
+                Some(LogsOptions {
                     follow: true,
                     stdout: true,
                     stderr: true,
@@ -511,7 +515,10 @@ fn container_summary(summary: ContainerSummary) -> ContainerItem {
             .trim_start_matches('/')
             .to_owned(),
         image: summary.image.unwrap_or_default(),
-        state: summary.state.unwrap_or_default(),
+        state: summary
+            .state
+            .map(|state| state.to_string())
+            .unwrap_or_default(),
         status_text: summary.status.unwrap_or_default(),
         ports: summary
             .ports
@@ -613,7 +620,7 @@ fn container_port(port: Port) -> ContainerPort {
 }
 
 fn image_pull_event(info: CreateImageInfo) -> Result<WatchImagePullResponse, Status> {
-    if let Some(error) = info.error {
+    if let Some(error) = info.error_detail.and_then(|detail| detail.message) {
         return Err(Status::unavailable(error));
     }
     let status_text = info.status.unwrap_or_default();
@@ -629,7 +636,11 @@ fn image_pull_event(info: CreateImageInfo) -> Result<WatchImagePullResponse, Sta
         status: Some(ok_response("ok")),
         image_id: info.id.unwrap_or_default(),
         status_text,
-        progress: info.progress.unwrap_or_default(),
+        progress: if total_bytes > 0 {
+            format!("{current_bytes}/{total_bytes}")
+        } else {
+            String::new()
+        },
         current_bytes,
         total_bytes,
         done,
@@ -843,6 +854,33 @@ fn log_output_text(output: bollard::container::LogOutput) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn maps_image_pull_progress_and_errors() {
+        let info = serde_json::from_value(serde_json::json!({
+            "id": "layer-1", "status": "Downloading",
+            "progressDetail": { "current": 128, "total": 256 }
+        }))
+        .expect("pull progress");
+        let event = image_pull_event(info).expect("event");
+        assert_eq!((event.current_bytes, event.total_bytes), (128, 256));
+        assert_eq!(event.progress, "128/256");
+        assert!(!event.done);
+
+        let info = serde_json::from_value(serde_json::json!({
+            "errorDetail": { "message": "pull access denied" }
+        }))
+        .expect("pull error");
+        let error = image_pull_event(info).expect_err("failed pull");
+        assert_eq!(error.code(), tonic::Code::Unavailable);
+        assert_eq!(error.message(), "pull access denied");
+
+        let info = serde_json::from_value(serde_json::json!({
+            "status": "Status: Downloaded newer image"
+        }))
+        .expect("pull complete");
+        assert!(image_pull_event(info).expect("event").done);
+    }
 
     #[test]
     fn maps_container_port_defaults() {
