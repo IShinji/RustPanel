@@ -240,6 +240,13 @@ EOF
     chmod 0644 "$RUSTPANEL_CRON_D_DIR/$name"
     return 0
   fi
+  # 自定义 cron.d 目录用于隔离测试;目录不存在时不能回退污染宿主 crontab。
+  # 正式回退只适用于 Linux root(例如 Alpine),不能写开发机用户的 crontab。
+  if [[ "$RUSTPANEL_CRON_D_DIR" != /etc/cron.d ]] ||
+     [[ "$(uname -s)" != Linux || "$(id -u)" != 0 ]]; then
+    printf '%s\n' 'RustPanel: refusing host crontab fallback outside Linux root with the default cron directory' >&2
+    return 1
+  fi
   if command -v crontab >/dev/null 2>&1; then
     local begin="# rustpanel:$name begin" end="# rustpanel:$name end" existing
     existing="$(crontab -l 2>/dev/null || true)"
@@ -261,6 +268,9 @@ rustpanel_cron_unset() {
   if [[ -d "$RUSTPANEL_CRON_D_DIR" ]]; then
     rm -f "$RUSTPANEL_CRON_D_DIR/$name"
   fi
+  # 隔离目录的清理同样不得访问宿主 crontab。
+  [[ "$RUSTPANEL_CRON_D_DIR" == /etc/cron.d ]] || return 0
+  [[ "$(uname -s)" == Linux && "$(id -u)" == 0 ]] || return 0
   if command -v crontab >/dev/null 2>&1; then
     local begin="# rustpanel:$name begin" end="# rustpanel:$name end" existing
     existing="$(crontab -l 2>/dev/null || true)"

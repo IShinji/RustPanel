@@ -31,6 +31,8 @@ node dist/node-scripts/scripts/github-actions-guard.js
 # 里加硬编码中文,这里做防回归扫描(真正的例外用行尾 `i18n-ignore` 逃生舱)。
 node dist/node-scripts/scripts/check-cjk.js
 bash -n scripts/warm-docker-base-images.sh
+bash -n deploy/systemd-units.sh deploy/uninstall.sh
+bash scripts/test-cron-isolation.sh
 
 if [[ -f src/backend/Cargo.toml ]]; then
   cd "$root_dir/src/backend"

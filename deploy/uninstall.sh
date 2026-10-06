@@ -105,6 +105,7 @@ if [[ -f "$INSTALL_DIR/deploy/systemd-units.sh" ]]; then
   # shellcheck disable=SC1091
   source "$INSTALL_DIR/deploy/systemd-units.sh"
   rustpanel_cron_unset rustpanel-cert-renew 2>/dev/null || true
+  rustpanel_cron_unset rustpanel-alerts 2>/dev/null || true
 fi
 # 面板自身"计划任务"功能落在 /etc/cron.d/rustpanel(RUSTPANEL_SYSTEM_CRONTAB),
 # 现在只有这一种落盘方式,直接删文件即可
