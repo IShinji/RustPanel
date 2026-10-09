@@ -100,6 +100,98 @@ impl SiteServiceImpl {
     }
 }
 
+impl SiteServiceImpl {
+    /// 改名前置校验:新名合法、不撞已有站点,且站点形态允许改名。
+    async fn ensure_can_rename(&self, existing: &SiteItem, new_name: &str) -> Result<(), Status> {
+        let new_safe = safe_name(new_name)?;
+        let old_safe = safe_name(&existing.name)?;
+        // Rust 二进制站点的 systemd 单元名和本地端口都由站点名派生,
+        // 改名后用户已部署的服务不会跟着换,会直接 502,所以不支持
+        if existing.kind == SiteKind::RustBinary as i32 {
+            return Err(Status::failed_precondition(trf!(
+                "Rust 二进制站点的 systemd 单元与本地端口由站点名派生,暂不支持改名;请新建站点后迁移",
+                "a Rust-binary site's systemd unit and local port are derived from its name, so renaming is unsupported; create a new site and migrate"
+            )));
+        }
+        // 只是大小写 / 标点变化(safe_name 相同):落盘资源名不变,不会撞别的站点
+        if new_safe == old_safe {
+            return Ok(());
+        }
+        let taken =
+            tokio::fs::try_exists(nginx_sites_dir().join(format!("rustpanel-{new_safe}.conf")))
+                .await
+                .unwrap_or(false)
+                || tokio::fs::try_exists(self.store.nginx_metadata_path(&new_safe))
+                    .await
+                    .unwrap_or(false)
+                || self
+                    .store
+                    .load_builtin_sites()
+                    .await?
+                    .iter()
+                    .any(|item| safe_name(&item.name).ok().as_deref() == Some(&new_safe));
+        if taken {
+            return Err(Status::already_exists(trf!(
+                "站点 `{}` 已存在",
+                "site `{}` already exists",
+                new_name
+            )));
+        }
+        Ok(())
+    }
+
+    /// 改名成功后清理旧名资源(best-effort:新站点已经可用,清理失败只记日志)。
+    /// 资源名由 safe_name 派生,safe_name 没变时不需要清理,否则会把刚写的新资源删掉。
+    async fn cleanup_renamed_site(&self, old: &SiteItem, new: &SiteItem) {
+        let (Ok(old_safe), Ok(new_safe)) = (safe_name(&old.name), safe_name(&new.name)) else {
+            return;
+        };
+        if old_safe == new_safe {
+            return;
+        }
+        let conf_path = nginx_sites_dir().join(format!("rustpanel-{old_safe}.conf"));
+        if let Err(error) = tokio::fs::remove_file(&conf_path).await {
+            tracing::warn!(target = "site.rename", site = %old.name, error = %error, "remove old vhost failed");
+        }
+        let sidecar = self.store.nginx_metadata_path(&old_safe);
+        if let Err(error) = tokio::fs::remove_file(&sidecar).await {
+            tracing::warn!(target = "site.rename", site = %old.name, error = %error, "remove old metadata failed");
+        }
+        if crate::appstore::remove_rpxy_site_fragment(&old_safe)
+            .await
+            .is_ok()
+        {
+            let _ = crate::appstore::reload_rpxy_if_running().await;
+        }
+        if crate::appstore::remove_sws_site_config(&old_safe)
+            .await
+            .is_ok()
+            && env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err()
+        {
+            let _ = crate::service_manager::disable_now(&format!("sws@{old_safe}.service")).await;
+        }
+        // 保留下来的部署归档跟着站点走
+        if let (Ok(from), Ok(to)) = (site_archive_dir(&old.name), site_archive_dir(&new.name)) {
+            if tokio::fs::try_exists(&from).await.unwrap_or(false)
+                && !tokio::fs::try_exists(&to).await.unwrap_or(false)
+            {
+                if let Some(parent) = to.parent() {
+                    let _ = tokio::fs::create_dir_all(parent).await;
+                }
+                if let Err(error) = tokio::fs::rename(&from, &to).await {
+                    tracing::warn!(target = "site.rename", site = %old.name, error = %error, "move archives failed");
+                }
+            }
+        }
+        if env::var("RUSTPANEL_APPSTORE_SKIP_EXECUTE").is_err() {
+            let _ = tokio::process::Command::new("nginx")
+                .args(["-s", "reload"])
+                .output()
+                .await;
+        }
+    }
+}
+
 impl Default for SiteServiceImpl {
     fn default() -> Self {
         Self::new()
@@ -661,6 +753,11 @@ impl SiteService for SiteServiceImpl {
         crate::runtime::ensure_module_enabled(crate::runtime::MODULE_SITES)?;
         let request = request.into_inner();
         let existing = self.linked_site(&request.name).await?;
+        let new_name = request.new_name.trim().to_owned();
+        let renaming = !new_name.is_empty() && new_name != existing.name;
+        if renaming {
+            self.ensure_can_rename(&existing, &new_name).await?;
+        }
         let domains: Vec<String> = request
             .domains
             .iter()
@@ -675,7 +772,11 @@ impl SiteService for SiteServiceImpl {
         };
         // 其余字段沿用;复用 create_site 按新值重新生成 vhost / rpxy 片段 / sidecar
         let rebuilt = CreateSiteRequest {
-            name: existing.name.clone(),
+            name: if renaming {
+                new_name.clone()
+            } else {
+                existing.name.clone()
+            },
             domains: if domains.is_empty() {
                 existing.domains.clone()
             } else {
@@ -700,15 +801,24 @@ impl SiteService for SiteServiceImpl {
         let mut site = created
             .site
             .ok_or_else(|| Status::internal("site rebuild returned no site"))?;
-        // create_site 不认识关联服务,把原来的关联补回去
-        if !existing.service_units.is_empty() || !existing.log_paths.is_empty() {
+        // create_site 不认识关联服务,把原来的关联补回去。
+        // 改名时 create_site 按新名新写了一份,旧名那份不会有关联,必须补。
+        if renaming || !existing.service_units.is_empty() || !existing.log_paths.is_empty() {
             let _guard = self.store.write_lock.lock().await;
-            site.service_units = existing.service_units;
-            site.log_paths = existing.log_paths;
+            site.service_units = existing.service_units.clone();
+            site.log_paths = existing.log_paths.clone();
             self.store.save_nginx_site_metadata(&site).await?;
         }
+        // 新名资源已就绪,才清理旧名资源;create_site 失败时上面已经 `?` 返回,旧站点原样保留
+        if renaming {
+            self.cleanup_renamed_site(&existing, &site).await;
+        }
         Ok(GrpcResponse::new(UpdateSiteResponse {
-            status: Some(ok_response(trf!("站点已更新", "site updated"))),
+            status: Some(ok_response(if renaming {
+                trf!("站点已重命名并更新", "site renamed and updated")
+            } else {
+                trf!("站点已更新", "site updated")
+            })),
             site: Some(site),
             rendered_config: created.rendered_config,
         }))
@@ -1927,6 +2037,102 @@ fn current_timestamp() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 改名测试要改一堆进程级环境变量,串行化避免互相踩。
+    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    fn proxy_site(name: &str, domain: &str) -> CreateSiteRequest {
+        CreateSiteRequest {
+            name: name.to_owned(),
+            domains: vec![domain.to_owned()],
+            root: String::new(),
+            proxy_target: "http://127.0.0.1:3000".to_owned(),
+            ssl_enabled: false,
+            engine: SITE_ENGINE_NGINX.to_owned(),
+            listen_addr: String::new(),
+            kind: SiteKind::ReverseProxy as i32,
+            binding: None,
+            tls_strategy: SiteTlsStrategy::None as i32,
+            binary_path: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn update_site_renames_and_moves_resources() {
+        let _guard = ENV_LOCK.lock().await;
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let nginx = tmp.path().join("nginx");
+        let state = tmp.path().join("state");
+        env::set_var("RUSTPANEL_NGINX_SITES_DIR", &nginx);
+        env::set_var("RUSTPANEL_SITE_STATE_ROOT", &state);
+        env::set_var("RUSTPANEL_RPXY_FRAGMENT_DIR", tmp.path().join("rpxy.d"));
+        env::set_var("RUSTPANEL_RPXY_CONFIG_PATH", tmp.path().join("rpxy.toml"));
+        env::set_var("RUSTPANEL_SWS_CONFIG_DIR", tmp.path().join("sws"));
+        env::set_var("RUSTPANEL_APPSTORE_SKIP_EXECUTE", "1");
+
+        let svc = SiteServiceImpl::new();
+        svc.create_site(Request::new(proxy_site("old-name", "old.example.org")))
+            .await
+            .expect("create old");
+        svc.create_site(Request::new(proxy_site("other", "other.example.org")))
+            .await
+            .expect("create other");
+        svc.update_site_services(Request::new(UpdateSiteServicesRequest {
+            name: "old-name".to_owned(),
+            service_units: vec!["app.service".to_owned()],
+            log_paths: vec![],
+        }))
+        .await
+        .expect("link service");
+        let archives = state.join("archives").join("old-name");
+        std::fs::create_dir_all(&archives).expect("archive dir");
+        std::fs::write(archives.join("1.zip"), b"zip").expect("archive file");
+
+        // 撞名:不能改成已存在的站点,旧站点原样保留
+        let taken = svc
+            .update_site(Request::new(UpdateSiteRequest {
+                name: "old-name".to_owned(),
+                new_name: "Other".to_owned(),
+                ..Default::default()
+            }))
+            .await
+            .expect_err("rename onto existing site must fail");
+        assert_eq!(taken.code(), tonic::Code::AlreadyExists);
+        assert!(nginx.join("rustpanel-old-name.conf").exists());
+
+        let response = svc
+            .update_site(Request::new(UpdateSiteRequest {
+                name: "old-name".to_owned(),
+                new_name: "new-name".to_owned(),
+                ..Default::default()
+            }))
+            .await
+            .expect("rename")
+            .into_inner();
+        let site = response.site.expect("site");
+        assert_eq!(site.name, "new-name");
+        assert_eq!(site.service_units, vec!["app.service".to_owned()]);
+        assert_eq!(site.domains, vec!["old.example.org".to_owned()]);
+
+        assert!(nginx.join("rustpanel-new-name.conf").exists());
+        assert!(!nginx.join("rustpanel-old-name.conf").exists());
+        let store = SiteStore::from_env();
+        assert!(store.load_nginx_site_metadata("new-name").await.is_some());
+        assert!(store.load_nginx_site_metadata("old-name").await.is_none());
+        assert!(state.join("archives/new-name/1.zip").exists());
+        assert!(!archives.exists());
+
+        for key in [
+            "RUSTPANEL_NGINX_SITES_DIR",
+            "RUSTPANEL_SITE_STATE_ROOT",
+            "RUSTPANEL_RPXY_FRAGMENT_DIR",
+            "RUSTPANEL_RPXY_CONFIG_PATH",
+            "RUSTPANEL_SWS_CONFIG_DIR",
+            "RUSTPANEL_APPSTORE_SKIP_EXECUTE",
+        ] {
+            env::remove_var(key);
+        }
+    }
 
     #[test]
     fn renders_proxy_site_config() {

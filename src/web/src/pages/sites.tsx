@@ -933,10 +933,23 @@ function SmartSiteForm({
       onError(t("sites.domainInUseError"));
       return;
     }
+    const newName = name.trim();
+    const renaming = newName !== "" && newName !== site.name;
+    if (renaming) {
+      if (!safeName(newName)) {
+        onError(t("sites.siteNameRequired"));
+        return;
+      }
+      if (nameConflict) {
+        onError(t("sites.siteNameTaken", { name: newName }));
+        return;
+      }
+    }
     setSubmitting(true);
     try {
       await clients.site.updateSite({
         name: site.name,
+        newName: renaming ? newName : "",
         domains,
         proxyTarget: kind === "reverse-proxy" ? proxyTarget.trim() : "",
         tlsStrategy:
@@ -946,7 +959,24 @@ function SmartSiteForm({
               ? SiteTlsStrategy.IMPORTED
               : SiteTlsStrategy.LETSENCRYPT_DNS01
       });
-      onMessage(t("sites.siteUpdated", { name: site.name }));
+      onMessage(t("sites.siteUpdated", { name: renaming ? newName : site.name }));
+      if (renaming) {
+        // NAT 端口预留的 owner 带站点名,跟着改名换一次(失败不影响改名本身)
+        const natPort = site.binding?.kind === SiteBindKind.NAT_PORT ? site.binding.natPort : 0;
+        if (natPort > 0) {
+          await clients.capability.releasePort({ port: natPort }).catch(() => undefined);
+          await clients.capability
+            .reservePort({
+              port: natPort,
+              owner: `site:${newName}`,
+              description: domains[0] ?? "",
+              protocol: "tcp"
+            })
+            .catch(() => undefined);
+        }
+        // 列表刷新后路由 effect 会按新名重新选中站点
+        window.history.replaceState(null, "", `#sites/${newName}`);
+      }
       onChanged();
     } catch (err) {
       onError(safeError(err));
@@ -1131,9 +1161,12 @@ function SmartSiteForm({
           <UIInput
             id="site-name"
             value={name}
-            disabled={isEdit}
+            disabled={isEdit && site?.kind === SiteKind.RUST_BINARY}
             onChange={(event) => setName(event.target.value)}
           />
+          {isEdit && site?.kind === SiteKind.RUST_BINARY && (
+            <p className="text-xs text-muted-foreground">{t("sites.renameUnsupportedRustBinary")}</p>
+          )}
         </div>
         <div className="grid gap-1">
           <UILabel htmlFor="site-domain">{t("sites.domainFieldLabel")}</UILabel>

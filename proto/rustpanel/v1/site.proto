@@ -177,6 +177,9 @@ message UpdateSiteRequest {
   repeated string domains = 2;
   string proxy_target = 3;
   SiteTlsStrategy tls_strategy = 4;
+  // 非空且与 name 不同表示重命名:先按新名生成 vhost / rpxy 片段 / sws 配置 / 元数据,
+  // 成功后再清理旧名资源并迁移归档目录;失败不动旧站点。网站根目录(root)保持不变。
+  string new_name = 5;
 }
 
 message UpdateSiteResponse {
