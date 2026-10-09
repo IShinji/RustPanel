@@ -78,7 +78,16 @@ pub fn current() -> Distro {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use std::{io::Write, sync::Mutex};
+
+    // 这些测试都改同一个进程级环境变量,cargo 默认并行跑会互相覆盖,串行化。
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     fn write_release(contents: &str) -> tempfile::NamedTempFile {
         let mut file = tempfile::NamedTempFile::new().expect("tmp file");
@@ -88,6 +97,7 @@ mod tests {
 
     #[test]
     fn classifies_debian_ubuntu_alpine_and_unknown() {
+        let _guard = env_guard();
         let debian = write_release("ID=debian\nVERSION_CODENAME=bookworm\n");
         env::set_var("RUSTPANEL_OS_RELEASE_PATH", debian.path());
         assert_eq!(detect_uncached(), Distro::Debian);
@@ -110,6 +120,7 @@ mod tests {
 
     #[test]
     fn missing_file_is_unknown_not_a_panic() {
+        let _guard = env_guard();
         env::set_var("RUSTPANEL_OS_RELEASE_PATH", "/definitely/does/not/exist");
         assert_eq!(detect_uncached(), Distro::Unknown);
         env::remove_var("RUSTPANEL_OS_RELEASE_PATH");
