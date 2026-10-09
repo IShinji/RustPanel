@@ -114,6 +114,8 @@ export const sites: SitesMessages = {
   close: "Close",
 
   siteNameLabel: "Site Name",
+  renameUnsupportedRustBinary: "Renaming is unsupported: a Rust-binary site's systemd unit and local port are derived from its name",
+  siteNameRequired: "Site name is required",
   domainFieldLabel: "Domain(s) (space or comma separated)",
   engineLabel: "Site Engine (backend service)",
   recommendedPrefix: "Recommended: ",

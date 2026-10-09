@@ -114,6 +114,8 @@ export const sites = {
   close: "关闭",
 
   siteNameLabel: "站点名",
+  renameUnsupportedRustBinary: "暂不支持改名:Rust 二进制站点的 systemd 单元与本地端口由站点名派生",
+  siteNameRequired: "站点名不能为空",
   domainFieldLabel: "域名(空格或逗号分隔)",
   engineLabel: "网站引擎(后端服务)",
   recommendedPrefix: "推荐:",
