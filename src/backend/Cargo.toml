@@ -85,7 +85,7 @@ uuid = { version = "1", features = ["v4"] }
 walkdir = "2"
 # 给 http_client.rs 手搓 rustls ClientConfig 用,见那边的注释
 webpki-roots = "1"
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [build-dependencies]
 protoc-bin-vendored = "3"
