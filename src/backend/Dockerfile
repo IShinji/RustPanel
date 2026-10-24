@@ -31,7 +31,7 @@ RUN --mount=type=cache,id=rust-musl-cargo-registry-v1,target=/usr/local/cargo/re
 ENV CARGO_INCREMENTAL=0
 ENV PROTOC=/usr/bin/protoc
 
-FROM oven/bun:1.4.3 AS web-builder
+FROM oven/bun:1.4.4 AS web-builder
 WORKDIR /app/src/web
 COPY src/web/package.json src/web/bun.lock ./
 RUN --mount=type=cache,id=bun-web-install-v1,target=/root/.bun/install/cache,sharing=locked \
