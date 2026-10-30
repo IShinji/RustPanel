@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
       - name: Verify runner Bun
         run: bun --revision
       - run: rustup component add rustfmt clippy
@@ -59,7 +59,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: steps.backend-crate.outputs.exists == 'true'
         with:
-          node-version: '24'
+          node-version: '26'
       - name: Verify runner Bun
         if: steps.backend-crate.outputs.exists == 'true'
         run: bun --revision
@@ -274,7 +274,7 @@ jobs:
           ls -l dist/backend-binary/rustpanel-backend dist/backend-binary-micro/rustpanel-backend dist/backend-binary-musl/rustpanel-backend
       - uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
       - name: Verify runner Bun
         run: bun --revision
       - name: Build release scripts
