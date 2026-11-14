@@ -46,5 +46,8 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.2"
+  },
+  "overrides": {
+    "dompurify": "^3.4.17"
   }
 }
