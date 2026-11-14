@@ -177,7 +177,7 @@ impl<S> GatedMakeService<S> {
     }
 }
 
-impl<S: Clone> Service<IncomingStream<'_>> for GatedMakeService<S> {
+impl<S: Clone> Service<IncomingStream<'_, tokio::net::TcpListener>> for GatedMakeService<S> {
     type Response = Gate<S>;
     type Error = Infallible;
     type Future = Ready<Result<Gate<S>, Infallible>>;
@@ -186,7 +186,7 @@ impl<S: Clone> Service<IncomingStream<'_>> for GatedMakeService<S> {
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, incoming: IncomingStream<'_>) -> Self::Future {
+    fn call(&mut self, incoming: IncomingStream<'_, tokio::net::TcpListener>) -> Self::Future {
         let allowed = self.filter.allows(incoming.remote_addr().ip());
         ready(Ok(Gate {
             inner: self.inner.clone(),

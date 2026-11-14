@@ -5,7 +5,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-use sqlx::{any::AnyPoolOptions, Column, Row};
+use sqlx::{any::AnyPoolOptions, AssertSqlSafe, Column, Row};
 use tonic::{Request, Response as GrpcResponse, Status};
 
 use crate::{
@@ -79,7 +79,11 @@ impl DatabaseService for DatabaseServiceImpl {
                 ))
             }
         };
-        sqlx::query(&sql).execute(&pool).await.map_err(db_status)?;
+        // SQLx 0.9 要求显式审计动态 SQL:名称已通过 validate_identifier 校验。
+        sqlx::query(AssertSqlSafe(sql.as_str()))
+            .execute(&pool)
+            .await
+            .map_err(db_status)?;
 
         Ok(GrpcResponse::new(CreateDatabaseResponse {
             status: Some(ok_response("database created")),
@@ -93,9 +97,23 @@ impl DatabaseService for DatabaseServiceImpl {
         let request = request.into_inner();
         validate_identifier(&request.username)?;
         validate_identifier(&request.database)?;
-        let password = sql_string_literal(&request.password);
+        let engine = engine_from_dsn(&request.dsn)?;
         let pool = connect_any(&request.dsn).await?;
-        match engine_from_dsn(&request.dsn)? {
+        let mysql_no_backslash_escapes = if engine == DatabaseEngineKind::Mysql {
+            let row = sqlx::query("SELECT @@SESSION.sql_mode")
+                .fetch_one(&pool)
+                .await
+                .map_err(db_status)?;
+            row.try_get::<String, _>(0)
+                .map_err(db_status)?
+                .split(',')
+                .any(|mode| mode.trim().eq_ignore_ascii_case("NO_BACKSLASH_ESCAPES"))
+        } else {
+            false
+        };
+        let password = sql_string_literal(engine, &request.password, mysql_no_backslash_escapes);
+        // 用户名和库名已校验;密码按引擎转义,PG 块分隔符不能出现在密码中。
+        match engine {
             DatabaseEngineKind::Mysql => {
                 let create_user = format!(
                     "CREATE USER IF NOT EXISTS '{}'@'%' IDENTIFIED BY {}",
@@ -105,29 +123,29 @@ impl DatabaseService for DatabaseServiceImpl {
                     "GRANT ALL PRIVILEGES ON `{}`.* TO '{}'@'%'",
                     request.database, request.username
                 );
-                sqlx::query(&create_user)
+                sqlx::query(AssertSqlSafe(create_user.as_str()))
                     .execute(&pool)
                     .await
                     .map_err(db_status)?;
-                sqlx::query(&grant)
+                sqlx::query(AssertSqlSafe(grant.as_str()))
                     .execute(&pool)
                     .await
                     .map_err(db_status)?;
             }
             DatabaseEngineKind::Postgres => {
-                let create_user = format!(
-                    "DO $$ BEGIN CREATE USER \"{}\" WITH PASSWORD {}; EXCEPTION WHEN duplicate_object THEN NULL; END $$;",
+                let create_user = postgres_do_block(&format!(
+                    "BEGIN CREATE USER \"{}\" WITH PASSWORD {}; EXCEPTION WHEN duplicate_object THEN NULL; END",
                     request.username, password
-                );
+                ));
                 let grant = format!(
                     "GRANT ALL PRIVILEGES ON DATABASE \"{}\" TO \"{}\"",
                     request.database, request.username
                 );
-                sqlx::query(&create_user)
+                sqlx::query(AssertSqlSafe(create_user.as_str()))
                     .execute(&pool)
                     .await
                     .map_err(db_status)?;
-                sqlx::query(&grant)
+                sqlx::query(AssertSqlSafe(grant.as_str()))
                     .execute(&pool)
                     .await
                     .map_err(db_status)?;
@@ -148,8 +166,9 @@ impl DatabaseService for DatabaseServiceImpl {
     ) -> Result<GrpcResponse<ExecuteSqlResponse>, Status> {
         let request = request.into_inner();
         let pool = connect_any(&request.dsn).await?;
+        // SQL 控制台按设计执行已认证管理员提供的完整 SQL,不能把它当值绑定。
         if returns_rows(&request.sql) {
-            let rows = sqlx::query(&request.sql)
+            let rows = sqlx::query(AssertSqlSafe(request.sql.as_str()))
                 .fetch_all(&pool)
                 .await
                 .map_err(db_status)?;
@@ -180,7 +199,7 @@ impl DatabaseService for DatabaseServiceImpl {
                 rows_affected: 0,
             }))
         } else {
-            let result = sqlx::query(&request.sql)
+            let result = sqlx::query(AssertSqlSafe(request.sql.as_str()))
                 .execute(&pool)
                 .await
                 .map_err(db_status)?;
@@ -233,7 +252,8 @@ impl DatabaseService for DatabaseServiceImpl {
         let pool = connect_any(&request.dsn).await?;
 
         let count_sql = format!("SELECT COUNT(*) FROM {quoted}");
-        let total_rows = sqlx::query(&count_sql)
+        // 表名已校验,分页参数为整数,这里不含未经校验的 SQL 片段。
+        let total_rows = sqlx::query(AssertSqlSafe(count_sql.as_str()))
             .fetch_one(&pool)
             .await
             .ok()
@@ -242,7 +262,7 @@ impl DatabaseService for DatabaseServiceImpl {
             .unwrap_or(0);
 
         let data_sql = format!("SELECT * FROM {quoted} LIMIT {limit} OFFSET {offset}");
-        let rows = sqlx::query(&data_sql)
+        let rows = sqlx::query(AssertSqlSafe(data_sql.as_str()))
             .fetch_all(&pool)
             .await
             .map_err(db_status)?;
@@ -282,7 +302,8 @@ impl DatabaseService for DatabaseServiceImpl {
         // 前端会提示"复杂脚本请用 SQL 控制台"。
         let mut executed = 0u32;
         for statement in split_sql_statements(&request.sql) {
-            sqlx::query(&statement)
+            // 导入与 SQL 控制台一样,有意执行管理员提交的 SQL 脚本。
+            sqlx::query(AssertSqlSafe(statement.as_str()))
                 .execute(&pool)
                 .await
                 .map_err(db_status)?;
@@ -639,7 +660,7 @@ fn split_sql_statements(sql: &str) -> Vec<String> {
 }
 
 /// 取单标量并尽量转成 u64(i64 / f64 / 字符串数字都兼容),失败返 0。
-async fn fetch_scalar_u64(pool: &sqlx::AnyPool, sql: &str) -> u64 {
+async fn fetch_scalar_u64(pool: &sqlx::AnyPool, sql: &'static str) -> u64 {
     match sqlx::query(sql).fetch_one(pool).await {
         Ok(row) => row
             .try_get::<i64, _>(0)
@@ -674,8 +695,37 @@ fn validate_identifier(identifier: &str) -> Result<(), Status> {
     }
 }
 
-fn sql_string_literal(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
+fn sql_string_literal(
+    engine: DatabaseEngineKind,
+    value: &str,
+    mysql_no_backslash_escapes: bool,
+) -> String {
+    // MySQL 的 NO_BACKSLASH_ESCAPES 模式下保留反斜杠,避免改写用户密码。
+    let escaped = if engine == DatabaseEngineKind::Mysql && mysql_no_backslash_escapes {
+        value.to_owned()
+    } else {
+        value.replace('\\', "\\\\")
+    }
+    .replace('\'', "''");
+    // PG 显式使用 E 字符串,不依赖 standard_conforming_strings 配置。
+    let prefix = if engine == DatabaseEngineKind::Postgres {
+        "E"
+    } else {
+        ""
+    };
+    format!("{prefix}'{escaped}'")
+}
+
+fn postgres_do_block(statement: &str) -> String {
+    // 密码可包含任意 dollar tag,选择未出现的分隔符防止提前结束 DO 块。
+    let mut index = 0u64;
+    loop {
+        let delimiter = format!("$rustpanel_{index}$");
+        if !statement.contains(&delimiter) {
+            return format!("DO {delimiter} {statement} {delimiter};");
+        }
+        index += 1;
+    }
 }
 
 fn returns_rows(sql: &str) -> bool {
@@ -714,6 +764,27 @@ mod tests {
         assert!(validate_identifier("valid_name_1").is_ok());
         assert!(validate_identifier("bad-name").is_err());
         assert!(validate_identifier("name;drop").is_err());
+    }
+
+    #[test]
+    fn password_literals_cannot_escape_strings_or_postgres_blocks() {
+        let password = "a\\'b$$$rustpanel_0$";
+        assert_eq!(
+            sql_string_literal(DatabaseEngineKind::Mysql, password, false),
+            "'a\\\\''b$$$rustpanel_0$'"
+        );
+        assert_eq!(
+            sql_string_literal(DatabaseEngineKind::Mysql, password, true),
+            "'a\\''b$$$rustpanel_0$'"
+        );
+        let literal = sql_string_literal(DatabaseEngineKind::Postgres, password, false);
+        assert_eq!(literal, "E'a\\\\''b$$$rustpanel_0$'");
+        let statement = format!("BEGIN CREATE USER test WITH PASSWORD {literal}; END");
+        let block = postgres_do_block(&statement);
+        assert_eq!(
+            block,
+            format!("DO $rustpanel_1$ {statement} $rustpanel_1$;")
+        );
     }
 
     #[test]

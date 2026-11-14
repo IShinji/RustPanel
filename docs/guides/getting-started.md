@@ -43,7 +43,7 @@ sudo bash rustpanel-install.sh --dry-run
 
 1. **Rust 工具链**: 用于编译后端核心与生成二进制文件。
    - 安装命令: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-   - 要求: 1.80+ (推荐使用稳定版)
+   - 要求: 1.95+ (推荐使用稳定版)
 2. **Node.js 与 Bun**: 用于前端界面的构建及相关脚本运行。
    - 建议使用 Bun 作为包管理器: `npm install -g bun`
 3. **Protobuf 编译器 (`protoc`)**: 用于将 `.proto` 文件编译为 Rust 和 TypeScript 代码。
@@ -57,7 +57,7 @@ sudo bash rustpanel-install.sh --dry-run
 RustPanel/
 ├── docs/                # 文档存放区
 │   ├── planning/        # 架构规划与任务清单
-│   └── guide/           # 使用指南与开发手册
+│   └── guides/          # 使用指南与开发手册
 ├── proto/               # gRPC 通信协议定义目录 (Single Source of Truth)
 ├── src/                 # 后端 Rust 代码
 ├── web/                 # 前端 React / Vite 代码 (待初始化)
@@ -68,7 +68,8 @@ RustPanel/
 ## 开始阅读架构规划
 
 作为一名初次接触此项目的开发者，建议你阅读最新的路线图：
-- 👉 **[v3.0 宝塔免费版功能对齐](../planning/tasks-v3.0-free-version-alignment.md)** (当前正在进行的阶段)
+- 👉 **[v4.0 宝塔功能补齐](../planning/tasks-v4.0-baota-gap-closure.md)** (最新阶段，编码任务已全部收口)
+- 👉 **[v3.0 宝塔免费版功能对齐](../planning/tasks-v3.0-free-version-alignment.md)** (已完成)
 - 👉 **[v2.0 架构演进与功能闭环](../planning/tasks-v2.0-architecture-evolution.md)** (了解系统底层架构)
 
 ## 项目协作（面向 AI 与开发者）
