@@ -284,10 +284,13 @@ impl JwtAuthority {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.set_issuer(&[self.issuer.as_str()]);
 
-        let claims =
-            decode::<JwtClaims>(token, &DecodingKey::from_secret(&self.secret), &validation)
-                .map_err(|_| AuthError::ExpiredOrInvalidToken)?
-                .claims;
+        // jsonwebtoken 12 起 from_secret 返回 Result(空密钥被拒);new() 已校验 ≥32 字节,
+        // 这里的 Err 实际不可达,但仍按非法 token 处理,不 panic。
+        let key =
+            DecodingKey::from_secret(&self.secret).map_err(|_| AuthError::ExpiredOrInvalidToken)?;
+        let claims = decode::<JwtClaims>(token, &key, &validation)
+            .map_err(|_| AuthError::ExpiredOrInvalidToken)?
+            .claims;
 
         if claims.sub.trim().is_empty() {
             return Err(AuthError::EmptySubject);
@@ -317,12 +320,11 @@ impl JwtAuthority {
             exp: expires_at,
             role: role.into(),
         };
-        let token = encode(
-            &Header::new(Algorithm::HS256),
-            &claims,
-            &EncodingKey::from_secret(&self.secret),
-        )
-        .map_err(|_| AuthError::ExpiredOrInvalidToken)?;
+        // 同上:from_secret 返回 Result,密钥长度已在 new() 校验过。
+        let key =
+            EncodingKey::from_secret(&self.secret).map_err(|_| AuthError::ExpiredOrInvalidToken)?;
+        let token = encode(&Header::new(Algorithm::HS256), &claims, &key)
+            .map_err(|_| AuthError::ExpiredOrInvalidToken)?;
 
         Ok(IssuedToken { token, expires_at })
     }
