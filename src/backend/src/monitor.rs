@@ -7,7 +7,7 @@ use std::{
 };
 
 use futures_core::Stream;
-use sysinfo::{Disks, Networks, System};
+use sysinfo::{Disks, LoadAvg, Networks, System};
 use tokio::sync::broadcast;
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use tonic::{Request, Response as GrpcResponse, Status};
@@ -406,7 +406,9 @@ struct ProcessHistorySample {
 
 #[derive(Debug)]
 pub struct SystemCollector {
-    inner: Mutex<CollectorState>,
+    // sysinfo 0.40 起构造器返回 Result,采集器改成首次采集时惰性初始化:
+    // 初始化失败就返回 internal,而不是让构造阶段直接 panic。
+    inner: Mutex<Option<CollectorState>>,
 }
 
 #[derive(Debug)]
@@ -417,23 +419,36 @@ struct CollectorState {
     disk_counters: DiskCounters,
 }
 
+impl CollectorState {
+    fn try_new() -> Option<Self> {
+        Some(Self {
+            system: System::new_all().ok()?,
+            networks: Networks::new_with_refreshed_list().ok()?,
+            disks: Disks::new_with_refreshed_list().ok()?,
+            disk_counters: DiskCounters::read(),
+        })
+    }
+}
+
 impl SystemCollector {
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(CollectorState {
-                system: System::new_all(),
-                networks: Networks::new_with_refreshed_list(),
-                disks: Disks::new_with_refreshed_list(),
-                disk_counters: DiskCounters::read(),
-            }),
+            inner: Mutex::new(None),
         }
     }
 
     pub fn snapshot(&self) -> Result<SystemStatus, Status> {
-        let mut state = self
+        let mut guard = self
             .inner
             .lock()
             .map_err(|_| Status::internal("system collector lock poisoned"))?;
+        let state = match guard.as_mut() {
+            Some(state) => state,
+            None => guard.insert(
+                CollectorState::try_new()
+                    .ok_or_else(|| Status::internal("failed to initialise system collector"))?,
+            ),
+        };
 
         state.system.refresh_cpu_all();
         state.system.refresh_memory();
@@ -442,7 +457,7 @@ impl SystemCollector {
 
         let previous_disk_counters = state.disk_counters.clone();
         state.disk_counters = DiskCounters::read();
-        let load = System::load_average();
+        let load = load_average_or_zero();
         let cpu_cores = state
             .system
             .cpus()
@@ -450,7 +465,7 @@ impl SystemCollector {
             .enumerate()
             .map(|(core_id, cpu)| CpuCoreStatus {
                 core_id: core_id as u32,
-                usage_percent: cpu.cpu_usage(),
+                usage_percent: cpu.usage(),
                 frequency_mhz: cpu.frequency(),
             })
             .collect::<Vec<_>>();
@@ -463,7 +478,7 @@ impl SystemCollector {
             .networks
             .iter()
             .map(|(interface_name, data)| NetworkIoStatus {
-                interface_name: interface_name.to_string(),
+                interface_name: interface_name.to_string_lossy().into_owned(),
                 received_bytes: data.total_received(),
                 transmitted_bytes: data.total_transmitted(),
             })
@@ -506,7 +521,8 @@ impl SystemCollector {
             }),
             networks,
             disks,
-            uptime_seconds: System::uptime(),
+            // uptime 在受限内核上可能读不到,按 0 处理
+            uptime_seconds: System::uptime().unwrap_or_default(),
         })
     }
 }
@@ -515,6 +531,15 @@ impl Default for SystemCollector {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 读不到 load average 就按 0 处理(受限内核 / 部分容器里可能不可用)。
+fn load_average_or_zero() -> LoadAvg {
+    System::load_average().unwrap_or(LoadAvg {
+        one: 0.0,
+        five: 0.0,
+        fifteen: 0.0,
+    })
 }
 
 fn start_monitor_loop(
@@ -591,7 +616,9 @@ fn bounded_process_limit(limit: u32) -> usize {
 }
 
 fn collect_process_snapshot(limit: usize) -> Vec<ProcessResourceSnapshot> {
-    let system = System::new_all();
+    let Ok(system) = System::new_all() else {
+        return Vec::new();
+    };
     let mut processes = system
         .processes()
         .iter()

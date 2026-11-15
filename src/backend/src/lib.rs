@@ -131,21 +131,23 @@ impl SystemService for SystemServiceImpl {
         // sysinfo 已经在 monitor 里使用,这里直接读静态信息;
         // env::var("HOSTNAME") 在 systemd 启动的进程里通常未设置,会显示 unknown,
         // kernel_version 之前硬编码为 unknown,所以页面才出现"unknown · linux · unknown · x86_64"。
+        // sysinfo 0.40 起静态查询统一返回 Result,读不到就退回环境变量 / 常量
         let hostname = sysinfo::System::host_name()
+            .ok()
             .or_else(|| env::var("HOSTNAME").ok())
             .unwrap_or_else(|| "unknown".to_owned());
         let operating_system = sysinfo::System::name()
             .map(|name| {
-                if let Some(version) = sysinfo::System::os_version() {
+                if let Ok(version) = sysinfo::System::os_version() {
                     format!("{name} {version}")
                 } else {
                     name
                 }
             })
-            .unwrap_or_else(|| env::consts::OS.to_owned());
+            .unwrap_or_else(|_| env::consts::OS.to_owned());
         let kernel_version = sysinfo::System::kernel_version()
-            .or_else(sysinfo::System::long_os_version)
-            .unwrap_or_else(|| "unknown".to_owned());
+            .or_else(|_| sysinfo::System::long_os_version())
+            .unwrap_or_else(|_| "unknown".to_owned());
 
         Ok(GrpcResponse::new(GetSystemInfoResponse {
             status: Some(ok_response("ok")),

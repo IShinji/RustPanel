@@ -28,7 +28,10 @@ impl ToolboxService for ToolboxServiceImpl {
         &self,
         _request: Request<GetToolboxRequest>,
     ) -> Result<GrpcResponse<GetToolboxResponse>, Status> {
-        let mut system = System::new();
+        // sysinfo 0.40 起构造器返回 Result:读不到内存信息就明确报错,不返回假 0
+        let Ok(mut system) = System::new() else {
+            return Err(Status::internal("failed to read host memory information"));
+        };
         system.refresh_memory();
         Ok(GrpcResponse::new(GetToolboxResponse {
             status: Some(ok_response("ok")),
@@ -123,7 +126,10 @@ impl ToolboxService for ToolboxServiceImpl {
 }
 
 fn root_available_bytes() -> u64 {
-    Disks::new_with_refreshed_list()
+    let Ok(disks) = Disks::new_with_refreshed_list() else {
+        return 0;
+    };
+    disks
         .iter()
         .find(|disk| disk.mount_point() == Path::new("/"))
         .map(|disk| disk.available_space())

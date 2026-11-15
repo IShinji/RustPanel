@@ -569,7 +569,9 @@ fn process_memory_bytes(pid: i32) -> u64 {
     let Ok(pid) = u32::try_from(pid) else {
         return 0;
     };
-    let mut system = System::new();
+    let Ok(mut system) = System::new() else {
+        return 0;
+    };
     system.refresh_processes(ProcessesToUpdate::Some(&[Pid::from_u32(pid)]), true);
     system
         .process(Pid::from_u32(pid))

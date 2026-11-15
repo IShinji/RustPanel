@@ -763,18 +763,19 @@ fn event_threshold(settings: &StoredSettings, event: NotificationEventKind, fall
 }
 
 fn system_load_percent() -> Option<u32> {
-    let load = System::load_average().one;
+    // sysinfo 0.40 起静态查询返回 Result:读不到就当没有负载数据
+    let load = System::load_average().ok()?.one;
     if load < 0.0 {
         return None;
     }
-    let mut sys = System::new();
+    let mut sys = System::new().ok()?;
     sys.refresh_cpu_all();
     let cores = sys.cpus().len().max(1);
     Some(((load / cores as f64) * 100.0).round() as u32)
 }
 
 fn max_disk_usage_percent() -> Option<(String, u32)> {
-    let disks = Disks::new_with_refreshed_list();
+    let disks = Disks::new_with_refreshed_list().ok()?;
     disks
         .iter()
         .filter(|disk| disk.total_space() > 0)

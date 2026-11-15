@@ -183,7 +183,10 @@ impl CapabilityService for CapabilityServiceImpl {
         &self,
         _request: GrpcRequest<GetResourceBudgetRequest>,
     ) -> Result<GrpcResponse<GetResourceBudgetResponse>, Status> {
-        let mut sys = sysinfo::System::new();
+        // sysinfo 0.40 起构造器返回 Result:读不到内存信息就明确报错,不拿半截数据糊过去
+        let Some(mut sys) = sysinfo::System::new().ok() else {
+            return Err(Status::internal("failed to read host memory information"));
+        };
         sys.refresh_memory();
         sys.refresh_cpu_all();
 
@@ -195,32 +198,9 @@ impl CapabilityService for CapabilityServiceImpl {
             swap_used_bytes: sys.used_swap(),
         };
 
-        let mut disks_view = sysinfo::Disks::new_with_refreshed_list();
-        disks_view.refresh(true);
-        let mut disks: Vec<DiskBudget> = disks_view
-            .list()
-            .iter()
-            .map(|disk| {
-                let mount = disk.mount_point().to_string_lossy().into_owned();
-                DiskBudget {
-                    mount_point: mount,
-                    filesystem: disk.file_system().to_string_lossy().into_owned(),
-                    total_bytes: disk.total_space(),
-                    used_bytes: disk.total_space().saturating_sub(disk.available_space()),
-                    available_bytes: disk.available_space(),
-                }
-            })
-            .collect();
-        // OpenVZ 上很常见 / 重复或被代理(simfs/vzfs);只保留唯一 mount,根分区优先
-        disks.sort_by(|a, b| {
-            let priority = |m: &str| if m == "/" { 0 } else { 1 };
-            priority(&a.mount_point)
-                .cmp(&priority(&b.mount_point))
-                .then(a.mount_point.cmp(&b.mount_point))
-        });
-        disks.dedup_by(|a, b| a.mount_point == b.mount_point);
+        let disks = disk_budgets();
 
-        let load = sysinfo::System::load_average();
+        let load = load_average_or_zero();
 
         let reservations = self.load_reservations().await?;
         let total_ports = env::var("RUSTPANEL_NAT_PORT_TOTAL")
@@ -351,7 +331,18 @@ pub fn probe_capabilities_sync() -> Capabilities {
 /// 同步读取一份资源预算快照,供其他模块判定"装得下吗"。
 /// 不计 NAT 端口预算(那部分需要 IO 读 ports.json,异步)。
 pub fn snapshot_resource_budget_sync() -> ResourceBudget {
-    let mut sys = sysinfo::System::new();
+    // 读不到内存信息就给一份"未知"预算:兼容性判定会跳过 RAM / 磁盘检查,而不是误判装不下
+    let Some(mut sys) = sysinfo::System::new().ok() else {
+        return ResourceBudget {
+            memory: None,
+            disks: Vec::new(),
+            ports: None,
+            cpu_count: 0,
+            load_one: 0.0,
+            load_five: 0.0,
+            load_fifteen: 0.0,
+        };
+    };
     sys.refresh_memory();
     sys.refresh_cpu_all();
 
@@ -363,10 +354,29 @@ pub fn snapshot_resource_budget_sync() -> ResourceBudget {
         swap_used_bytes: sys.used_swap(),
     };
 
-    let mut disks_view = sysinfo::Disks::new_with_refreshed_list();
+    let disks = disk_budgets();
+
+    let load = load_average_or_zero();
+
+    ResourceBudget {
+        memory: Some(memory),
+        disks,
+        ports: None,
+        cpu_count: sys.cpus().len() as u32,
+        load_one: load.one,
+        load_five: load.five,
+        load_fifteen: load.fifteen,
+    }
+}
+
+/// 采一份磁盘预算。读不到就返回空列表:低配机上宁可少显示分区,也别把整页打挂。
+/// OpenVZ 上很常见 / 重复或被代理(simfs/vzfs);只保留唯一 mount,根分区优先。
+fn disk_budgets() -> Vec<DiskBudget> {
+    let Ok(mut disks_view) = sysinfo::Disks::new_with_refreshed_list() else {
+        return Vec::new();
+    };
     disks_view.refresh(true);
     let mut disks: Vec<DiskBudget> = disks_view
-        .list()
         .iter()
         .map(|disk| DiskBudget {
             mount_point: disk.mount_point().to_string_lossy().into_owned(),
@@ -383,18 +393,16 @@ pub fn snapshot_resource_budget_sync() -> ResourceBudget {
             .then(a.mount_point.cmp(&b.mount_point))
     });
     disks.dedup_by(|a, b| a.mount_point == b.mount_point);
+    disks
+}
 
-    let load = sysinfo::System::load_average();
-
-    ResourceBudget {
-        memory: Some(memory),
-        disks,
-        ports: None,
-        cpu_count: sys.cpus().len() as u32,
-        load_one: load.one,
-        load_five: load.five,
-        load_fifteen: load.fifteen,
-    }
+/// 读不到 load average 就按 0 处理(受限内核 / 部分容器里可能不可用)。
+fn load_average_or_zero() -> sysinfo::LoadAvg {
+    sysinfo::System::load_average().unwrap_or(sysinfo::LoadAvg {
+        one: 0.0,
+        five: 0.0,
+        fifteen: 0.0,
+    })
 }
 
 fn probe_capabilities() -> Capabilities {
