@@ -2463,7 +2463,7 @@ async fn two_factor_status() -> TwoFactorStatus {
 /// 验证器里显示的账户名:管理员用户名@主机名。
 fn two_factor_account() -> String {
     let user = env::var("RUSTPANEL_ADMIN_USERNAME").unwrap_or_else(|_| "admin".to_owned());
-    let host = sysinfo::System::host_name().unwrap_or_else(|| "rustpanel".to_owned());
+    let host = sysinfo::System::host_name().unwrap_or_else(|_| "rustpanel".to_owned());
     format!("{user}@{host}")
 }
 
