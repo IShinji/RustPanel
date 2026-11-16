@@ -81,6 +81,8 @@ sudo bash rustpanel-install.sh --dry-run
 
 请参阅完整使用指南：[入门指南 (Getting Started)](docs/guides/getting-started.md)、[NAT VPS 部署](docs/guides/nat-vps-deployment.md)
 
+CI 跑在 self-hosted runner 上,出网问题(下载 action / 推镜像被 TLS 重置)看[Runner 出网排查](docs/guides/runner-network.md)。
+
 ## 开发与协作规范
 
 本项目采用 Agent 协作驱动（Vibe Coding）的理念推进。为保证最高优先级的质量门槛，所有 Agent 或开发者参与时必须遵循以下规范：
