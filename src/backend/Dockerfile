@@ -16,10 +16,20 @@ RUN --mount=type=cache,id=rust-cargo-registry-v1,target=/usr/local/cargo/registr
     && cargo install cargo-chef --locked \
     && cargo install cargo-zigbuild --locked
 # zig 只用来当 x86_64 的链接器/CC(musl 与 glibc 都覆盖),不在 guest 里跑任何 emulation。
+# 校验和取自 https://ziglang.org/download/index.json,升级 ZIG_VERSION 时两个架构一起换。
+ARG ZIG_SHA256_AARCH64=a1546d5646eb184437918d6635ca6b762a0e889eac09cef720ee7a1ed3fe7795
+ARG ZIG_SHA256_X86_64=3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a
 RUN set -eux; \
     arch="$(uname -m)"; \
-    curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-${arch}-linux-${ZIG_VERSION}.tar.xz" \
-      | tar -xJ -C /opt; \
+    case "$arch" in \
+      aarch64) sha="$ZIG_SHA256_AARCH64" ;; \
+      x86_64) sha="$ZIG_SHA256_X86_64" ;; \
+      *) echo "不支持的构建架构: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-${arch}-linux-${ZIG_VERSION}.tar.xz"; \
+    echo "${sha}  /tmp/zig.tar.xz" | sha256sum -c -; \
+    tar -xJf /tmp/zig.tar.xz -C /opt; \
+    rm /tmp/zig.tar.xz; \
     ln -s "/opt/zig-${arch}-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig; \
     zig version
 RUN rustup target add x86_64-unknown-linux-gnu x86_64-unknown-linux-musl
@@ -80,8 +90,10 @@ RUN --mount=type=cache,id=rust-sccache-v1,target=/sccache,sharing=locked \
 # (去掉 bollard / MySQL / Postgres / Redis / portable-pty,见 src/backend/Cargo.toml)
 # 注意:这里刻意不用 cargo chef cook —— cook 走的是普通 cargo,cc-rs 会把 Rust triple
 # 当成 "--target=x86_64-unknown-linux-gnu" 塞给 zig,zig 只认自己的 triple 会直接报错。
-# cargo-zigbuild 自带正确的 CC/AR/linker(ring 之类的 C/汇编 crate 也能编),代价是
-# 依赖层不再被 chef 缓存,换源文件会重编依赖(原生编译,比原来 QEMU 模拟快得多)。
+# cargo-zigbuild 自带正确的 CC/AR/linker(ring 之类的 C/汇编 crate 也能编)。
+# 依赖缓存改用 BuildKit 的 target 目录缓存挂载(替代 chef cook):依赖产物留在 runner 的
+# 缓存卷里,源码变动只增量重编本 crate。挂载目录不进镜像层,所以编完要 cp 到 /out。
+# 不用 sccache:cc-rs 会把 zig 也套一层,把 C 编译拆坏。
 FROM chef AS builder
 ARG BACKEND_CARGO_FLAGS=""
 ARG TARGET_TRIPLE=x86_64-unknown-linux-gnu
@@ -90,12 +102,15 @@ COPY --from=web-builder /app/src/web/dist /app/src/web/dist
 WORKDIR /app/src/backend
 RUN --mount=type=cache,id=rust-cargo-registry-v1,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=rust-cargo-git-v1,target=/usr/local/cargo/git,sharing=locked \
-    cargo zigbuild --release --locked --bins --target $TARGET_TRIPLE $BACKEND_CARGO_FLAGS
+    --mount=type=cache,id=rust-zig-target-gnu-v1,target=/zig-target,sharing=locked \
+    CARGO_TARGET_DIR=/zig-target cargo zigbuild --release --locked --bins --target $TARGET_TRIPLE $BACKEND_CARGO_FLAGS \
+    && mkdir -p /out \
+    && cp /zig-target/$TARGET_TRIPLE/release/rustpanel-backend /out/rustpanel-backend
 
 # 只导出二进制(--target binary-export);必须排在运行时镜像之前 ——
 # 不指定 target 时 docker 用最后一个阶段,排在最后会让推送的镜像变成没有 CMD 的空壳。
 FROM scratch AS binary-export
-COPY --from=builder /app/target/x86_64-unknown-linux-gnu/release/rustpanel-backend /rustpanel-backend
+COPY --from=builder /out/rustpanel-backend /rustpanel-backend
 
 # x86_64 musl 静态产物(Alpine/OpenRC 主机用),同样走 BUILDPLATFORM 交叉编译。
 # 只构建 micro 档(--no-default-features)——128MB 级 Alpine 小鸡这次唯一的目标场景;
@@ -108,16 +123,19 @@ COPY --from=web-builder /app/src/web/dist /app/src/web/dist
 WORKDIR /app/src/backend
 RUN --mount=type=cache,id=rust-musl-cargo-registry-v1,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=rust-musl-cargo-git-v1,target=/usr/local/cargo/git,sharing=locked \
-    cargo zigbuild --release --locked --bins --target $TARGET_TRIPLE $BACKEND_CARGO_FLAGS
+    --mount=type=cache,id=rust-zig-target-musl-v1,target=/zig-target,sharing=locked \
+    CARGO_TARGET_DIR=/zig-target cargo zigbuild --release --locked --bins --target $TARGET_TRIPLE $BACKEND_CARGO_FLAGS \
+    && mkdir -p /out \
+    && cp /zig-target/$TARGET_TRIPLE/release/rustpanel-backend /out/rustpanel-backend
 
 FROM scratch AS binary-export-musl
-COPY --from=builder-musl /app/target/x86_64-unknown-linux-musl/release/rustpanel-backend /rustpanel-backend
+COPY --from=builder-musl /out/rustpanel-backend /rustpanel-backend
 
 # 运行时镜像只 COPY 交叉编译好的 x86_64 二进制,不在 guest 里执行任何东西,
 # 所以基础镜像拉 linux/amd64 也不会触发 emulation。
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
-COPY --from=builder /app/target/x86_64-unknown-linux-gnu/release/rustpanel-backend /app/rustpanel-backend
+COPY --from=builder /out/rustpanel-backend /app/rustpanel-backend
 ENV RUSTPANEL_BACKEND_ADDR=0.0.0.0:8080
 EXPOSE 8080
 CMD ["/app/rustpanel-backend"]

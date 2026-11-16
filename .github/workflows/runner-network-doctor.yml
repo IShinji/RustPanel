@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       proxy:
-        description: '可选的显式代理(如 http://192.168.8.1:7890),填了会额外走一遍代理探测'
+        description: '可选的显式代理(如 http://203.0.113.10:7890),填了会额外走一遍代理探测'
         required: false
         type: string
 
@@ -60,7 +60,8 @@ jobs:
                 echo
                 echo "#### $base$host"
                 echo '```'
-                getent hosts "$host" 2>/dev/null | head -2 || echo '(DNS 解析失败)'
+                getent hosts "$host" 2>/dev/null | head -2
+                [ "${PIPESTATUS[0]}" -eq 0 ] || echo '(DNS 解析失败)'
                 for attempt in 1 2 3; do
                   curl -sS -o /dev/null --max-time 20 $2 \
                     -w "attempt$attempt: http=%{http_code} dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s total=%{time_total}s\n" \

@@ -15,7 +15,7 @@ Error response from daemon: Get "https://ghcr.io/v2/": EOF
 ```bash
 gh workflow run runner-network-doctor.yml --ref main
 # 若已知代理地址,可以顺带验证代理是否真的通:
-gh workflow run runner-network-doctor.yml --ref main -f proxy=http://192.168.8.179:7890
+gh workflow run runner-network-doctor.yml --ref main -f proxy=http://203.0.113.10:7890
 gh run watch "$(gh run list --workflow runner-network-doctor.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 ```
 
@@ -29,7 +29,7 @@ gh run watch "$(gh run list --workflow runner-network-doctor.yml --limit 1 --jso
 ## 修复:把 runner 和 Docker 都指到代理
 
 Mac 侧:`ClashX / Surge / Mihomo` 打开「允许局域网连接」,记下 HTTP 端口(常见 7890)。
-OrbStack 里访问宿主用 `host.internal`,也可以用 Mac 的局域网 IP(如 `192.168.8.179`)。
+OrbStack 里访问宿主用 `host.internal`,也可以用 Mac 的局域网 IP(如 `203.0.113.10`)。
 
 runner 服务(ACTIONS 里跑的 node/git/curl 都吃这套环境变量):
 
@@ -37,8 +37,8 @@ runner 服务(ACTIONS 里跑的 node/git/curl 都吃这套环境变量):
 sudo systemctl edit "actions.runner.<owner>-<repo>.<runner-name>.service"
 # 写入:
 # [Service]
-# Environment=HTTP_PROXY=http://192.168.8.179:7890
-# Environment=HTTPS_PROXY=http://192.168.8.179:7890
+# Environment=HTTP_PROXY=http://203.0.113.10:7890
+# Environment=HTTPS_PROXY=http://203.0.113.10:7890
 # Environment=NO_PROXY=localhost,127.0.0.1,::1,host.internal,.internal
 sudo systemctl daemon-reload
 sudo systemctl restart actions.runner.<owner>-<repo>.<runner-name>.service
@@ -50,8 +50,8 @@ Docker daemon(推/拉 ghcr.io 走 daemon,不吃 runner 的环境变量):
 sudo mkdir -p /etc/systemd/system/docker.service.d
 sudo tee /etc/systemd/system/docker.service.d/proxy.conf >/dev/null <<'EOF'
 [Service]
-Environment="HTTP_PROXY=http://192.168.8.179:7890"
-Environment="HTTPS_PROXY=http://192.168.8.179:7890"
+Environment="HTTP_PROXY=http://203.0.113.10:7890"
+Environment="HTTPS_PROXY=http://203.0.113.10:7890"
 Environment="NO_PROXY=localhost,127.0.0.1,::1"
 EOF
 sudo systemctl daemon-reload
@@ -61,7 +61,7 @@ sudo systemctl restart docker
 ## 验证
 
 ```bash
-gh workflow run runner-network-doctor.yml --ref main -f proxy=http://192.168.8.179:7890
+gh workflow run runner-network-doctor.yml --ref main -f proxy=http://203.0.113.10:7890
 ```
 
 报告里 `[proxy]` 开头的段落全部 `http=200/301` 就说明代理通了;然后重跑 Release CI 的失败 job 即可。
