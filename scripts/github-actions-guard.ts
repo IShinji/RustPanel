@@ -81,8 +81,12 @@ if (fs.existsSync(dockerfilePath)) {
   if (!/^# syntax=docker\/dockerfile:[\d.]+$/m.test(dockerfile)) {
     issues.push('src/backend/Dockerfile: missing required cache marker "# syntax=docker/dockerfile:<version>"')
   }
-  if (!/^FROM oven\/bun:[\d.]+ AS web-builder$/m.test(dockerfile)) {
-    issues.push('src/backend/Dockerfile: missing required cache marker "FROM oven/bun:<version> AS web-builder"')
+  // web 构建必须钉在 BUILDPLATFORM 上:dist 与目标架构无关,跟着 linux/amd64 走 QEMU
+  // 模拟时 Bun 会以 MemoryExhaustion abort,把三个发布 job 全带挂(见 d871cda)。
+  if (!/^FROM --platform=\$BUILDPLATFORM oven\/bun:[\d.]+ AS web-builder$/m.test(dockerfile)) {
+    issues.push(
+      'src/backend/Dockerfile: missing required cache marker "FROM --platform=$BUILDPLATFORM oven/bun:<version> AS web-builder"',
+    )
   }
   for (const required of [
     'bun install --frozen-lockfile',
