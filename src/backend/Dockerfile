@@ -31,7 +31,10 @@ RUN --mount=type=cache,id=rust-musl-cargo-registry-v1,target=/usr/local/cargo/re
 ENV CARGO_INCREMENTAL=0
 ENV PROTOC=/usr/bin/protoc
 
-FROM oven/bun:1.4.4 AS web-builder
+# 静态站点产物(dist)与目标架构无关,固定跑在 BUILDPLATFORM(原生 arm64 runner)上:
+# 之前跟随 --platform linux/amd64 一起走 QEMU 模拟,Bun 1.4.4 在模拟环境里会以
+# "MemoryExhaustion" 直接 abort(bun run build 退出码 134),把三个发布 job 全带挂。
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS web-builder
 WORKDIR /app/src/web
 COPY src/web/package.json src/web/bun.lock ./
 RUN --mount=type=cache,id=bun-web-install-v1,target=/root/.bun/install/cache,sharing=locked \
