@@ -97,7 +97,8 @@ if (fs.existsSync(dockerfilePath)) {
     'FROM chef AS planner',
     'FROM chef AS ci-deps',
     'cargo chef cook --locked --all-targets --recipe-path recipe.json',
-    'cargo chef cook --release --locked --recipe-path recipe.json',
+    // 交叉编译走 cargo-zigbuild(见 Dockerfile 注释),不再用 chef cook --release 那一步
+    'cargo zigbuild --release --locked --bins --target',
     'id=rust-sccache-v1',
     'id=rust-cargo-registry-v1',
     'id=rust-cargo-git-v1',
