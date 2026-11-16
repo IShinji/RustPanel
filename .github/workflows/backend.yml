@@ -139,7 +139,8 @@ jobs:
           container="$(docker create --platform ${{ env.BACKEND_IMAGE_PLATFORM }} "$IMAGE")"
           docker cp "$container:/app/rustpanel-backend" dist/backend-binary/rustpanel-backend
           docker rm "$container" >/dev/null
-          file dist/backend-binary/rustpanel-backend
+          # runner 上没装 file,用 ls 做存在性/大小校验就够了
+          ls -l dist/backend-binary/rustpanel-backend
       - name: Publish full backend binary
         if: steps.backend-crate.outputs.exists == 'true'
         run: |
