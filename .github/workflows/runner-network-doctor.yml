@@ -1,12 +1,22 @@
 name: Runner Network Doctor
 
 # 只做只读探测:不 checkout、不下载任何 action,这样 runner 出网抖动时它照样能跑,
-# 用来定位 codeload / ghcr / blob storage 到底卡在哪一跳(代理、DNS、MTU、TLS)。
+# 用来定位 codeload / api.github.com / ghcr / blob storage 到底卡在哪一跳
+# (透明代理、DNS、MTU、TLS 拦截),以及显式代理是否生效。
 on:
   workflow_dispatch:
+    inputs:
+      proxy:
+        description: '可选的显式代理(如 http://192.168.8.1:7890),填了会额外走一遍代理探测'
+        required: false
+        type: string
 
 permissions:
   contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  NODE_OPTIONS: '--no-deprecation'
 
 jobs:
   diagnose:
@@ -26,28 +36,75 @@ jobs:
             echo '--- docker daemon proxy ---'
             cat /etc/docker/daemon.json 2>/dev/null || echo '(无 daemon.json)'
             systemctl show docker --property=Environment 2>/dev/null | tr ' ' '\n' | grep -i proxy || true
-            echo '--- default route / mtu ---'
-            ip route get 1.1.1.1 2>/dev/null || echo '(ip route 不可用)'
-            ip -o link show 2>/dev/null | awk '{print $2, $NF}' | head -10 || true
+            echo '--- resolv.conf ---'
+            cat /etc/resolv.conf 2>/dev/null | grep -vE '^#'
+            echo '--- mtu probe (DF) ---'
+            for size in 1472 1452 1400; do
+              if ping -M do -c 1 -W 3 -s $size 1.1.1.1 >/dev/null 2>&1; then
+                echo "payload $size: OK"
+              else
+                echo "payload $size: 失败(MTU 偏小或 ICMP 被丢)"
+              fi
+            done
             echo '```'
           } > /tmp/doctor.txt
 
-      - name: Probe endpoints
+      - name: Probe endpoints directly
+        env:
+          PROXY_INPUT: ${{ inputs.proxy }}
         run: |
-          for host in codeload.github.com api.github.com ghcr.io objects.githubusercontent.com pkg-containers.githubusercontent.com static.rust-lang.org index.crates.io ziglang.org; do
-            {
-              echo
-              echo "#### $host"
-              echo '```'
-              getent hosts "$host" 2>/dev/null | head -3 || echo '(DNS 解析失败)'
-              for attempt in 1 2 3; do
-                curl -sS -o /dev/null --max-time 20 \
-                  -w "attempt$attempt: http=%{http_code} dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s total=%{time_total}s\n" \
-                  "https://$host/" 2>&1 || echo "attempt$attempt: curl 失败"
+          probe() {
+            base="$1"
+            for host in codeload.github.com github.com api.github.com uploads.github.com ghcr.io objects.githubusercontent.com pkg-containers.githubusercontent.com static.rust-lang.org index.crates.io ziglang.org; do
+              {
+                echo
+                echo "#### $base$host"
+                echo '```'
+                getent hosts "$host" 2>/dev/null | head -2 || echo '(DNS 解析失败)'
+                for attempt in 1 2 3; do
+                  curl -sS -o /dev/null --max-time 20 $2 \
+                    -w "attempt$attempt: http=%{http_code} dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s total=%{time_total}s\n" \
+                    "https://$host/" 2>&1 || echo "attempt$attempt: curl 失败"
+                done
+                echo '```'
+              } >> /tmp/doctor.txt
+            done
+          }
+          probe "" ""
+          if [ -n "$PROXY_INPUT" ]; then
+            echo >> /tmp/doctor.txt
+            echo "--- 走显式代理 $PROXY_INPUT ---" >> /tmp/doctor.txt
+            probe "[proxy] " "-x $PROXY_INPUT"
+          fi
+
+      - name: Probe host gateway proxy ports
+        # OrbStack 里 Mac 宿主是 host.internal;再叠一层默认网关,覆盖面足够。
+        run: |
+          {
+            echo
+            echo '#### 宿主侧常见代理端口'
+            echo '```'
+            for gw in host.internal $(ip route 2>/dev/null | awk '/default/{print $3; exit}'); do
+              [ -n "$gw" ] || continue
+              for port in 7890 7891 7897 1080 1087 8080 8888 6152; do
+                if timeout 2 bash -c "</dev/tcp/$gw/$port" 2>/dev/null; then
+                  echo "$gw:$port 可连"
+                fi
               done
-              echo '```'
-            } >> /tmp/doctor.txt
-          done
+            done
+            echo '(以上为可连端口;没有输出说明宿主代理没暴露到 runner)'
+            echo '```'
+          } >> /tmp/doctor.txt
+
+      - name: TLS handshake detail
+        run: |
+          {
+            echo
+            echo '#### openssl s_client api.github.com'
+            echo '```'
+            timeout 20 openssl s_client -connect api.github.com:443 -servername api.github.com -brief </dev/null 2>&1 | head -12 || echo '(openssl 探测失败)'
+            echo '```'
+          } >> /tmp/doctor.txt
 
       - name: Publish report
         if: always()
