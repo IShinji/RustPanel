@@ -1,0 +1,56 @@
+name: Runner Network Doctor
+
+# 只做只读探测:不 checkout、不下载任何 action,这样 runner 出网抖动时它照样能跑,
+# 用来定位 codeload / ghcr / blob storage 到底卡在哪一跳(代理、DNS、MTU、TLS)。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, Linux, ARM64, m4-runner, rustpanel-runner]
+    steps:
+      - name: Collect host facts
+        run: |
+          {
+            echo "### Runner network doctor"
+            echo
+            echo '```'
+            uname -a
+            echo '--- proxy env ---'
+            env | grep -iE '^(http|https|all|no)_proxy=' || echo '(无 proxy 环境变量)'
+            echo '--- git proxy ---'
+            git config --global --list 2>/dev/null | grep -i proxy || echo '(无 git proxy 配置)'
+            echo '--- docker daemon proxy ---'
+            cat /etc/docker/daemon.json 2>/dev/null || echo '(无 daemon.json)'
+            systemctl show docker --property=Environment 2>/dev/null | tr ' ' '\n' | grep -i proxy || true
+            echo '--- default route / mtu ---'
+            ip route get 1.1.1.1 2>/dev/null || echo '(ip route 不可用)'
+            ip -o link show 2>/dev/null | awk '{print $2, $NF}' | head -10 || true
+            echo '```'
+          } > /tmp/doctor.txt
+
+      - name: Probe endpoints
+        run: |
+          for host in codeload.github.com api.github.com ghcr.io objects.githubusercontent.com pkg-containers.githubusercontent.com static.rust-lang.org index.crates.io ziglang.org; do
+            {
+              echo
+              echo "#### $host"
+              echo '```'
+              getent hosts "$host" 2>/dev/null | head -3 || echo '(DNS 解析失败)'
+              for attempt in 1 2 3; do
+                curl -sS -o /dev/null --max-time 20 \
+                  -w "attempt$attempt: http=%{http_code} dns=%{time_namelookup}s connect=%{time_connect}s tls=%{time_appconnect}s total=%{time_total}s\n" \
+                  "https://$host/" 2>&1 || echo "attempt$attempt: curl 失败"
+              done
+              echo '```'
+            } >> /tmp/doctor.txt
+          done
+
+      - name: Publish report
+        if: always()
+        run: |
+          cat /tmp/doctor.txt
+          cat /tmp/doctor.txt >> "$GITHUB_STEP_SUMMARY"

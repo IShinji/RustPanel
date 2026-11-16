@@ -59,10 +59,8 @@ jobs:
         run: |
           owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
           echo "image_repository=ghcr.io/${owner_lc}/rustpanel-backend" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v7
-        if: steps.backend-crate.outputs.exists == 'true'
-        with:
-          node-version: '26'
+      # 发布 job 只用 runner 自带的 bun 跑脚本:setup-node 每次都要从 codeload.github.com
+      # 下 action,runner 出网一抖整个 job 直接卡在 Setup,和构建本身无关。
       - name: Verify runner Bun
         if: steps.backend-crate.outputs.exists == 'true'
         run: bun --revision
@@ -76,7 +74,7 @@ jobs:
         if: steps.backend-crate.outputs.exists == 'true'
         env:
           CACHE_PATH: ${{ env.BUILDKIT_CACHE_ROOT }}/${{ env.BACKEND_IMAGE_CACHE_FAMILY }}/${{ env.BUILDKIT_CACHE_PROJECT }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}
-        run: node dist/node-scripts/scripts/validate-buildkit-local-cache.js --path "$CACHE_PATH" --quarantine --label backend-image
+        run: bun dist/node-scripts/scripts/validate-buildkit-local-cache.js --path "$CACHE_PATH" --quarantine --label backend-image
       - name: Collect backend image cache imports
         if: steps.backend-crate.outputs.exists == 'true'
         id: backend-cache
@@ -84,7 +82,7 @@ jobs:
           LOCAL_CACHE_DEST: ${{ env.BUILDKIT_CACHE_ROOT }}/${{ env.BACKEND_IMAGE_CACHE_FAMILY }}/${{ env.BUILDKIT_CACHE_PROJECT }}/${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}
           REGISTRY_CACHE: ${{ steps.image_ref.outputs.image_repository }}:buildcache
         run: |
-          node dist/node-scripts/scripts/collect-buildkit-cache-imports.js \
+          bun dist/node-scripts/scripts/collect-buildkit-cache-imports.js \
             --cache-root "$BUILDKIT_CACHE_ROOT" \
             --family "$BACKEND_IMAGE_CACHE_FAMILY" \
             --project "$BUILDKIT_CACHE_PROJECT" \
@@ -293,9 +291,6 @@ jobs:
           tar -C dist/backend-binary-micro -czf dist/release/rustpanel-backend-micro-linux-amd64.tar.gz rustpanel-backend deploy
           tar -C dist/backend-binary-musl -czf dist/release/rustpanel-backend-micro-linux-musl-amd64.tar.gz rustpanel-backend deploy
           ls -l dist/backend-binary/rustpanel-backend dist/backend-binary-micro/rustpanel-backend dist/backend-binary-musl/rustpanel-backend
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '26'
       - name: Verify runner Bun
         run: bun --revision
       - name: Build release scripts
@@ -304,10 +299,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          node dist/node-scripts/scripts/publish-micro-release.js --asset dist/release/rustpanel-backend-linux-amd64.tar.gz
-          node dist/node-scripts/scripts/publish-micro-release.js \
+          bun dist/node-scripts/scripts/publish-micro-release.js --asset dist/release/rustpanel-backend-linux-amd64.tar.gz
+          bun dist/node-scripts/scripts/publish-micro-release.js \
             --asset dist/release/rustpanel-backend-micro-linux-amd64.tar.gz \
             --asset-name rustpanel-backend-micro-linux-amd64.tar.gz
-          node dist/node-scripts/scripts/publish-micro-release.js \
+          bun dist/node-scripts/scripts/publish-micro-release.js \
             --asset dist/release/rustpanel-backend-micro-linux-musl-amd64.tar.gz \
             --asset-name rustpanel-backend-micro-linux-musl-amd64.tar.gz

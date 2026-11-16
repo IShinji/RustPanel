@@ -54,7 +54,10 @@ if (fs.existsSync(backendWorkflowPath)) {
     'id: image_ref',
     'owner_lc="${GITHUB_REPOSITORY_OWNER,,}"',
     'name: Collect backend image cache imports',
-    'dist/node-scripts/scripts/collect-buildkit-cache-imports.js',
+    // 发布链路只用 runner 自带的 bun 跑脚本,不装 node(action 下载是单点故障)。
+    'bun dist/node-scripts/scripts/validate-buildkit-local-cache.js',
+    'bun dist/node-scripts/scripts/collect-buildkit-cache-imports.js',
+    'bun dist/node-scripts/scripts/publish-micro-release.js',
     '--include-legacy-root-peers',
     'REGISTRY_CACHE: ${{ steps.image_ref.outputs.image_repository }}:buildcache',
     '${{ steps.image_ref.outputs.image_repository }}:latest',
@@ -91,6 +94,13 @@ if (fs.existsSync(backendWorkflowPath)) {
   if (/actions\/(upload|download)-artifact/.test(backend)) {
     issues.push(
       'backend.yml: must not use upload/download-artifact; hand backend binaries over through RELEASE_ARTIFACT_ROOT',
+    )
+  }
+  // 发布 job 不装 node:setup-node 要从 codeload.github.com 下 action,
+  // runner 出网一抖 job 就卡在 Setup(见 43801216199)。只允许 verify job 用一次。
+  if ((backend.match(/actions\/setup-node/g) ?? []).length > 1) {
+    issues.push(
+      'backend.yml: only the verify job may use actions/setup-node; release jobs must run on the runner bun',
     )
   }
 }
