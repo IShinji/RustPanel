@@ -64,6 +64,10 @@ if (fs.existsSync(backendWorkflowPath)) {
     '${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}',
     'dist/node-scripts/scripts/publish-micro-release.js',
     'GITHUB_TOKEN: ${{ github.token }}',
+    // full 二进制靠 artifact 传给 publish job(load: true 后从本地镜像里取),
+    // 不再 docker pull 自己刚推上去的镜像 —— runner ↔ ghcr.io 一抖发布就卡死。
+    'name: rustpanel-backend-full',
+    'name: Export full backend binary',
   ]) {
     if (!backend.includes(required)) {
       issues.push(`backend.yml: missing required cache marker "${required}"`)
@@ -71,6 +75,11 @@ if (fs.existsSync(backendWorkflowPath)) {
   }
   if (/gh\s+release/.test(backend)) {
     issues.push('backend.yml: publish release step must not depend on gh CLI')
+  }
+  if (/docker pull --platform/.test(backend)) {
+    issues.push(
+      'backend.yml: publish step must not docker pull from the registry; export the full binary as the rustpanel-backend-full artifact instead',
+    )
   }
 }
 

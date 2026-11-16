@@ -124,6 +124,27 @@ jobs:
             ${{ steps.image_ref.outputs.image_repository }}:sha-${{ github.sha }}
           cache-from: ${{ steps.backend-cache.outputs.cache-from }}
           cache-to: ${{ steps.backend-cache.outputs.cache-to }}
+          # 顺带 load 到本地:发布用的 full 二进制直接从刚构建好的镜像里取,
+          # 不走 registry 往返(runner ↔ ghcr.io 抖动会把发布卡死)。
+          load: true
+      - name: Export full backend binary
+        if: steps.backend-crate.outputs.exists == 'true'
+        env:
+          IMAGE: ${{ steps.image_ref.outputs.image_repository }}:sha-${{ github.sha }}
+        run: |
+          rm -rf dist/backend-binary
+          mkdir -p dist/backend-binary
+          # 不 docker pull:镜像就是本机刚 push 的那份(load: true)
+          container="$(docker create --platform ${{ env.BACKEND_IMAGE_PLATFORM }} "$IMAGE")"
+          docker cp "$container:/app/rustpanel-backend" dist/backend-binary/rustpanel-backend
+          docker rm "$container" >/dev/null
+          file dist/backend-binary/rustpanel-backend
+      - uses: actions/upload-artifact@v7
+        if: steps.backend-crate.outputs.exists == 'true'
+        with:
+          name: rustpanel-backend-full
+          path: dist/backend-binary/rustpanel-backend
+          retention-days: 1
       - name: Promote backend image BuildKit cache
         if: success() && steps.backend-crate.outputs.exists == 'true'
         env:
@@ -232,26 +253,10 @@ jobs:
     runs-on: [self-hosted, Linux, ARM64, m4-runner, rustpanel-runner]
     steps:
       - uses: actions/checkout@v7
-      - name: Prepare image repository
-        id: image_ref
-        run: |
-          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
-          echo "image_repository=ghcr.io/${owner_lc}/rustpanel-backend" >> "$GITHUB_OUTPUT"
-      - uses: docker/login-action@v4
+      - uses: actions/download-artifact@v8
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract full backend binary from image
-        env:
-          IMAGE: ${{ steps.image_ref.outputs.image_repository }}:sha-${{ github.sha }}
-        run: |
-          rm -rf dist/backend-binary dist/release
-          mkdir -p dist/backend-binary dist/release
-          docker pull --platform linux/amd64 "$IMAGE"
-          container="$(docker create --platform linux/amd64 "$IMAGE")"
-          docker cp "$container:/app/rustpanel-backend" dist/backend-binary/rustpanel-backend
-          docker rm "$container" >/dev/null
+          name: rustpanel-backend-full
+          path: dist/backend-binary
       - uses: actions/download-artifact@v8
         with:
           name: rustpanel-backend-micro
@@ -262,6 +267,8 @@ jobs:
           path: dist/backend-binary-musl
       - name: Package release archives
         run: |
+          rm -rf dist/release
+          mkdir -p dist/release
           chmod +x dist/backend-binary/rustpanel-backend dist/backend-binary-micro/rustpanel-backend dist/backend-binary-musl/rustpanel-backend
           # 部署脚本随二进制一起发布:升级时二进制与单元脚本版本一致
           for dir in dist/backend-binary dist/backend-binary-micro dist/backend-binary-musl; do
