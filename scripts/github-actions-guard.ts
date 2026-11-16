@@ -64,10 +64,15 @@ if (fs.existsSync(backendWorkflowPath)) {
     '${{ env.BACKEND_IMAGE_CACHE_NAME }}-next-${{ github.run_id }}',
     'dist/node-scripts/scripts/publish-micro-release.js',
     'GITHUB_TOKEN: ${{ github.token }}',
-    // full 二进制靠 artifact 传给 publish job(load: true 后从本地镜像里取),
-    // 不再 docker pull 自己刚推上去的镜像 —— runner ↔ ghcr.io 一抖发布就卡死。
-    'name: rustpanel-backend-full',
+    // 三份后端产物靠 runner 本地目录交接(load: true 后从本地镜像里取 full 二进制),
+    // 不走 docker pull 自己刚推的镜像,也不走 artifact 上传/下载:
+    // runner ↔ ghcr.io / GitHub blob storage 一抖,整条发布就卡死。
+    'RELEASE_ARTIFACT_ROOT: ${{ vars.RELEASE_ARTIFACT_ROOT || \'/cache/rustpanel-artifacts\' }}',
     'name: Export full backend binary',
+    'name: Publish full backend binary',
+    'name: Publish micro backend binary',
+    'name: Publish musl backend binary',
+    'name: Collect backend binaries',
   ]) {
     if (!backend.includes(required)) {
       issues.push(`backend.yml: missing required cache marker "${required}"`)
@@ -78,7 +83,14 @@ if (fs.existsSync(backendWorkflowPath)) {
   }
   if (/docker pull --platform/.test(backend)) {
     issues.push(
-      'backend.yml: publish step must not docker pull from the registry; export the full binary as the rustpanel-backend-full artifact instead',
+      'backend.yml: publish step must not docker pull from the registry; hand the full binary over through RELEASE_ARTIFACT_ROOT instead',
+    )
+  }
+  // 产物交接不许再走 artifact:上传/下载都要过 GitHub blob storage,
+  // self-hosted runner 出网抖动时会把发布整条带挂(见 43798143654 / 43789347523)。
+  if (/actions\/(upload|download)-artifact/.test(backend)) {
+    issues.push(
+      'backend.yml: must not use upload/download-artifact; hand backend binaries over through RELEASE_ARTIFACT_ROOT',
     )
   }
 }

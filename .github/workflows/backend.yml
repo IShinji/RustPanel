@@ -23,6 +23,9 @@ env:
   BACKEND_IMAGE_CACHE_FAMILY: rust-backend-linux-amd64-v1
   BUILDKIT_CACHE_PROJECT: rustpanel
   BUILDKIT_CACHE_ROOT: ${{ vars.BUILDKIT_CACHE_ROOT || '/cache/buildkit' }}
+  # 三份后端产物走 runner 本地目录交接,不走 artifact 上传/下载:
+  # artifact 要过 GitHub blob storage,runner 出网一抖就 ECONNRESET 把发布带挂。
+  RELEASE_ARTIFACT_ROOT: ${{ vars.RELEASE_ARTIFACT_ROOT || '/cache/rustpanel-artifacts' }}
 
 jobs:
   verify:
@@ -139,12 +142,13 @@ jobs:
           docker cp "$container:/app/rustpanel-backend" dist/backend-binary/rustpanel-backend
           docker rm "$container" >/dev/null
           file dist/backend-binary/rustpanel-backend
-      - uses: actions/upload-artifact@v7
+      - name: Publish full backend binary
         if: steps.backend-crate.outputs.exists == 'true'
-        with:
-          name: rustpanel-backend-full
-          path: dist/backend-binary/rustpanel-backend
-          retention-days: 1
+        run: |
+          target="$RELEASE_ARTIFACT_ROOT/${{ github.run_id }}/backend-binary"
+          mkdir -p "$target"
+          cp dist/backend-binary/rustpanel-backend "$target/rustpanel-backend"
+          ls -l "$target/rustpanel-backend"
       - name: Promote backend image BuildKit cache
         if: success() && steps.backend-crate.outputs.exists == 'true'
         env:
@@ -209,11 +213,12 @@ jobs:
             --output type=local,dest=dist/backend-binary-micro \
             -f src/backend/Dockerfile .
           ls -l dist/backend-binary-micro/rustpanel-backend
-      - uses: actions/upload-artifact@v7
-        with:
-          name: rustpanel-backend-micro
-          path: dist/backend-binary-micro/rustpanel-backend
-          retention-days: 1
+      - name: Publish micro backend binary
+        run: |
+          target="$RELEASE_ARTIFACT_ROOT/${{ github.run_id }}/backend-binary-micro"
+          mkdir -p "$target"
+          cp dist/backend-binary-micro/rustpanel-backend "$target/rustpanel-backend"
+          ls -l "$target/rustpanel-backend"
 
   # Alpine/OpenRC 主机用的 musl 静态二进制,只建 micro 档——128MB 级小鸡这次
   # 唯一的目标场景,full 档在 Alpine 上没有实际需求,不陪跑一份浪费 CI 时间。
@@ -241,11 +246,12 @@ jobs:
             --output type=local,dest=dist/backend-binary-musl \
             -f src/backend/Dockerfile .
           ls -l dist/backend-binary-musl/rustpanel-backend
-      - uses: actions/upload-artifact@v7
-        with:
-          name: rustpanel-backend-musl
-          path: dist/backend-binary-musl/rustpanel-backend
-          retention-days: 1
+      - name: Publish musl backend binary
+        run: |
+          target="$RELEASE_ARTIFACT_ROOT/${{ github.run_id }}/backend-binary-musl"
+          mkdir -p "$target"
+          cp dist/backend-binary-musl/rustpanel-backend "$target/rustpanel-backend"
+          ls -l "$target/rustpanel-backend"
 
   publish-binaries:
     if: github.event_name != 'pull_request'
@@ -253,18 +259,26 @@ jobs:
     runs-on: [self-hosted, Linux, ARM64, m4-runner, rustpanel-runner]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          name: rustpanel-backend-full
-          path: dist/backend-binary
-      - uses: actions/download-artifact@v8
-        with:
-          name: rustpanel-backend-micro
-          path: dist/backend-binary-micro
-      - uses: actions/download-artifact@v8
-        with:
-          name: rustpanel-backend-musl
-          path: dist/backend-binary-musl
+      - name: Collect backend binaries
+        env:
+          RUN_DIR: ${{ env.RELEASE_ARTIFACT_ROOT }}/${{ github.run_id }}
+        run: |
+          rm -rf dist/backend-binary dist/backend-binary-micro dist/backend-binary-musl
+          for variant in backend-binary backend-binary-micro backend-binary-musl; do
+            src="$RUN_DIR/$variant/rustpanel-backend"
+            if [ ! -f "$src" ]; then
+              echo "缺少后端产物: $src" >&2
+              exit 1
+            fi
+            mkdir -p "dist/$variant"
+            cp "$src" "dist/$variant/rustpanel-backend"
+          done
+          ls -l dist/backend-binary/rustpanel-backend dist/backend-binary-micro/rustpanel-backend dist/backend-binary-musl/rustpanel-backend
+      - name: Prune stale backend binaries
+        if: always()
+        run: |
+          # 只留最近一天:每轮发布三份二进制加起来约 35MB
+          find "$RELEASE_ARTIFACT_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
       - name: Package release archives
         run: |
           rm -rf dist/release
