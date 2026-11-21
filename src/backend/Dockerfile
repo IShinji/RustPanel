@@ -44,7 +44,7 @@ ENV PROTOC=/usr/bin/protoc
 # 静态站点产物(dist)与目标架构无关,固定跑在 BUILDPLATFORM 上:
 # 跟着 --platform linux/amd64 走 QEMU 时 Bun 1.4.4 会以 "MemoryExhaustion" 直接 abort
 # (bun run build 退出码 134),把三个发布 job 全带挂。
-FROM --platform=$BUILDPLATFORM oven/bun:1.4.4 AS web-builder
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.5 AS web-builder
 WORKDIR /app/src/web
 COPY src/web/package.json src/web/bun.lock ./
 RUN --mount=type=cache,id=bun-web-install-v1,target=/root/.bun/install/cache,sharing=locked \
